@@ -6,6 +6,6 @@ numpy>=1.18.1
 imageio>=2.5.0
 decorator>=4.3.0
 tqdm>=4.0.0
-Pillow==9.5.0
+Pillow==10.3.0
 pytubefix>=8.5.0
 pyyaml>=6.0.1
