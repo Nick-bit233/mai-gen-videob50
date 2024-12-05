@@ -355,6 +355,7 @@ def pre_gen():
             generate_b50_images(username, b35_data, b15_data, image_output_path)
         except Exception as e:
             print(f"Error: 生成图片时发生异常: {e}")
+            traceback.print_exc()
             return 1
 
         print("#####【3/4】搜索b50视频信息 #####")
