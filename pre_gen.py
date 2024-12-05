@@ -9,7 +9,7 @@ from front_end.server import run_server, open_browser
 from update_music_data import fetch_music_data
 from gene_images import generate_b50_images
 from utils.Utils import get_b50_data_from_fish
-from utils.video_crawler import PurePytubefixDownloader
+from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
 
 # Global configuration variables
 global_config = {}
@@ -118,8 +118,26 @@ def update_b50_data(b50_raw_file, b50_data_file, username):
     return new_local_b50_data
 
 
+def get_keyword(downloader_type, title_name, difficulty_name, type):
+    if downloader_type == "youtube":
+        suffix = "AP【maimaiでらっくす外部出力】"
+        return f"{title_name} {'DX譜面' if type != 'SD' else ''} {difficulty_name} {suffix}"
+    elif downloader_type == "bilibili":
+        prefix = "【maimai】【谱面确认】"
+        return f"{prefix}{title_name} {difficulty_name} {'DX谱' if type != 'SD' else ''}"
+    
+
 def search_b50_videos(downloader, b50_data, b50_data_file, search_wait_time=(0,0)):
     global search_max_results
+
+    if isinstance(downloader, PurePytubefixDownloader):
+        downloader_type = "youtube"
+    elif isinstance(downloader, BilibiliDownloader):
+        downloader_type = "bilibili"
+    else:
+        print(f"Error: No Downloader Found!")
+        raise RuntimeError("Not support Downloader Type.")
+
     i = 0
     for song in b50_data:
         i += 1
@@ -130,10 +148,7 @@ def search_b50_videos(downloader, b50_data, b50_data_file, search_wait_time=(0,0
         title_name = song['title']
         difficulty_name = song['level_label']
         type = song['type']
-        if type == "SD":
-            keyword = f"{title_name} {difficulty_name} AP【maimaiでらっくす外部出力】"
-        else:
-            keyword = f"{title_name} DX譜面 {difficulty_name} AP【maimaiでらっくす外部出力】"
+        keyword = get_keyword(downloader_type, title_name, difficulty_name, type)
 
         print(f"正在搜索视频({i}/50): {keyword}")
         videos = downloader.search_video(keyword)

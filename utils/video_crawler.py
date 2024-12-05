@@ -1,6 +1,7 @@
-# from googleapiclient.discovery import build
 from pytubefix import YouTube, Search
+from bilibili_api import search, sync
 from typing import Tuple
+from abc import ABC, abstractmethod
 import os
 import yaml
 import json
@@ -8,6 +9,7 @@ import time
 import random
 import traceback
 import subprocess
+import re  # 确保导入re模块
 
 def custom_po_token_verifier() -> Tuple[str, str]:
 
@@ -52,7 +54,28 @@ def autogen_po_token_verifier() -> Tuple[str, str]:
     
     return output["visitorData"], output["poToken"]
 
-class PurePytubefixDownloader:
+def remove_html_tags_and_invalid_chars(text: str) -> str:
+    """去除字符串中的HTML标记和非法字符"""
+    # 去除HTML标记
+    clean = re.compile('<.*?>')
+    text = re.sub(clean, '', text)
+    
+    # 去除非法字符
+    invalid_chars = r'[<>:"/\\|?*【】]'  # 定义非法字符
+    text = re.sub(invalid_chars, '', text)  # 替换为''
+
+    return text.strip()  # 去除首尾空白字符
+
+class Downloader(ABC):
+    @abstractmethod
+    def search_video(self, keyword):
+        pass
+
+    @abstractmethod
+    def download_video(self, video_url, output_name, output_path, high_res=False):
+        pass
+
+class PurePytubefixDownloader(Downloader):
     """
     只使用pytubefix进行搜索和下载的youtube视频下载器
     """
@@ -88,12 +111,9 @@ class PurePytubefixDownloader:
                          po_token_verifier=self.po_token_verifier)
         videos = []
         for result in results.videos:
-            # print(f'Title: {result.title}')
-            # print(f'URL: {result.watch_url}')
-            # print(f'Duration: {result.length} sec')
             videos.append({
                 'id': result.video_id,
-                'title': result.title,
+                'title': remove_html_tags_and_invalid_chars(result.title),
                 'url': result.watch_url,
                 'duration': result.length
             })
@@ -148,3 +168,37 @@ class PurePytubefixDownloader:
             traceback.print_exc()
             return None
 
+class BilibiliDownloader(Downloader):
+    def __init__(self, proxy=None, credential=None, search_max_results=3):
+        self.proxy = proxy
+        self.search_max_results = search_max_results
+    
+    def search_video(self, keyword):
+        results = sync(
+            search.search_by_type(keyword=keyword, 
+                                  search_type=search.SearchObjectType.VIDEO,
+                                  page=1,
+                                  page_size=self.search_max_results)
+        )
+        videos = []
+        # print(results)  # Debugging line to check the structure of results
+        res_list = results['result']
+        for each in res_list:
+            videos.append({
+                'id': each['bvid'],
+                'aid': each['aid'],
+                'cid': each['cid'] if 'cid' in each else 0,
+                'title': remove_html_tags_and_invalid_chars(each['title']),  # 去除特殊字符
+                'url': each['arcurl'],
+                'duration': each['duration']  # 注意这里是 分钟:秒 的形式
+            })
+        print(videos[0])
+        return videos
+
+    def download_video(self, video_url, output_name, output_path, high_res=False):
+        pass
+
+# test
+if __name__ == "__main__":
+    dl = BilibiliDownloader()
+    dl.search_video("【maimai】【谱面确认】 系ぎて")

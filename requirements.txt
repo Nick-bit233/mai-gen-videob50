@@ -9,3 +9,4 @@ tqdm>=4.0.0
 Pillow==10.3.0
 pytubefix>=8.5.0
 pyyaml>=6.0.1
+bilibili-api-python

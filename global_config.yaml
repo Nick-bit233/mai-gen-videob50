@@ -1,14 +1,20 @@
 ## 【必填】水鱼查分器用户ID（请替换为你的用户名）
 USER_ID: xxxxxx
 
-## 代理设置
+## 【下载器设置】
+DOWNLOADER: "youtube"
+
+## 【代理设置】
 
 # 是否使用代理
-USE_PROXY: true
+USE_PROXY: false
 # 代理地址（如果使用 clash，通常无需更改，请检查端口与你的设置是否一致）
 HTTP_PROXY: "127.0.0.1:7890"
 
-## Youtube 抓取相关配置
+## 【Bilibili 抓取相关配置】
+
+
+## 【Youtube 抓取相关配置】
 
 # 是否使用自定义 PO Token 抓取视频（和自动获取 PO Token 互斥）
 USE_CUSTOM_PO_TOKEN: false
@@ -30,7 +36,7 @@ SEARCH_MAX_RESULTS: 3
 # 每次抓取结束后的等待时间（定义随机范围，秒）
 SEARCH_WAIT_TIME: [5, 10]
 
-## 视频输出配置
+## 【视频输出配置】
 
 # 视频分辨率设置 (宽度, 高度)
 VIDEO_RES: [1920, 1080]
