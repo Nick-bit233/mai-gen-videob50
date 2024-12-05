@@ -71,9 +71,9 @@ class Utils:
             _Type = _Type.resize((180, 50), Image.BICUBIC)
             return _Type.copy()
 
-    def AchievementLoader(self, Achievement: int = 0):
+    def AchievementLoader(self, Achievement: float = 0.0):
         IntegerPart = str(Achievement).split('.')[0]
-        DecimalPart = str(Achievement).split('.')[1].zfill(4)
+        DecimalPart = f"{float('0.' + str(Achievement).split('.')[1]):.4f}".split('.')[1]
 
         Background = Image.new('RGBA', (800, 118), (0, 0, 0, 0))
         Background.convert("RGBA")
