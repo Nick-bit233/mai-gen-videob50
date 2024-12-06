@@ -14,7 +14,7 @@ A clear and concise description of what the bug is.
 Steps to reproduce the behavior:
 如果该问题可以复现，提供下面的信息：
 1.Your `global_config.yaml` config content.
-1.你使用的`global_config.yaml`配置文件内容
+1.你使用的`global_config.yaml`配置文件内容（最好以附件的形式上传）
 2.Other modification you have been made.
 2.（如果有）你对代码的其他修改
 
