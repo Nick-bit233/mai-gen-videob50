@@ -2,7 +2,7 @@
 USER_ID: xxxxxx
 
 ## 【下载器设置】
-DOWNLOADER: "youtube"
+DOWNLOADER: "bilibili"
 
 ## 【代理设置】
 
@@ -13,6 +13,9 @@ HTTP_PROXY: "127.0.0.1:7890"
 
 ## 【Bilibili 抓取相关配置】
 
+# 禁用b站账号登录。
+# 注意：不使用账号登录可能导致无法下载高分辨率视频，或受到风控
+NO_BILIBILI_CREDENTIAL: false
 
 ## 【Youtube 抓取相关配置】
 
@@ -34,7 +37,7 @@ USE_OAUTH: false
 SEARCH_MAX_RESULTS: 3
 
 # 每次抓取结束后的等待时间（定义随机范围，秒）
-SEARCH_WAIT_TIME: [5, 10]
+SEARCH_WAIT_TIME: [1, 2]
 
 ## 【视频输出配置】
 
@@ -58,8 +61,9 @@ USE_ALL_CACHE: false
 ONLY_GENERATE_CLIPS: false
 
 # 下载高分辨率视频（1080p）
-# 注意：高分辨率视频有较大的下载失败率与合并失败率，并会占用更多网络带宽和存储空间，谨慎使用！
-DOWNLOAD_HIGH_RES: false
+# 注意：高分辨率视频有更高的下载失败率与合并失败率，并会占用更多的网络带宽和存储空间
+# 如果使用bilibili下载，请确保登录账号。不推荐使用youtube下载高分辨率视频
+DOWNLOAD_HIGH_RES: true
 
 # 是否使用默认的提示词填充开头结尾以及b50评论
 # true: 默认生成，方便你在合成完整视频前，从配置文件中定位评论并修改
