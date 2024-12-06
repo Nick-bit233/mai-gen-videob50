@@ -8,6 +8,7 @@ import time
 import random
 import traceback
 import subprocess
+import re  # 确保导入re模块
 
 def custom_po_token_verifier() -> Tuple[str, str]:
 
@@ -52,6 +53,22 @@ def autogen_po_token_verifier() -> Tuple[str, str]:
     
     return output["visitorData"], output["poToken"]
 
+def remove_html_tags_and_invalid_chars(text: str) -> str:
+    """去除字符串中的HTML标记和非法字符"""
+    # 去除HTML标记
+    clean = re.compile('<.*?>')
+    text = re.sub(clean, '', text)
+    
+    # 去除非法字符
+    invalid_chars = r'[<>:"/\\|?*【】]'  # 定义非法字符
+    text = re.sub(invalid_chars, '', text)  # 替换为''
+
+    return text.strip()  # 去除首尾空白字符
+
+def convert_duration_to_seconds(duration: str) -> int:
+    minutes, seconds = map(int, duration.split(':'))
+    return minutes * 60 + seconds
+
 class PurePytubefixDownloader:
     """
     只使用pytubefix进行搜索和下载的youtube视频下载器
@@ -93,7 +110,7 @@ class PurePytubefixDownloader:
             # print(f'Duration: {result.length} sec')
             videos.append({
                 'id': result.video_id,
-                'title': result.title,
+                'title': remove_html_tags_and_invalid_chars(result.title),
                 'url': result.watch_url,
                 'duration': result.length
             })
@@ -138,6 +155,11 @@ class PurePytubefixDownloader:
                 # 重命名下载到的视频文件
                 new_filename = f"{output_name}.mp4"
                 output_file = os.path.join(output_path, new_filename)
+  
+                # 检查文件是否存在，如果存在则删除
+                if os.path.exists(output_file):
+                    os.remove(output_file)  # 删除已存在的文件
+                
                 os.rename(downloaded_file, output_file)
                 print(f"下载完成，存储为: {new_filename}")
 
@@ -148,3 +170,11 @@ class PurePytubefixDownloader:
             traceback.print_exc()
             return None
 
+# test
+if __name__ == "__main__":
+    dl = PurePytubefixDownloader(
+        proxy="127.0.0.1:7890"
+    )
+    videos = dl.search_video("【maimai DX 外部出力】オモイヨシノ / MASTER AP")
+    print(videos[0])
+    dl.download_video(videos[0]['url'], "y-test-1", "./videos/test")
