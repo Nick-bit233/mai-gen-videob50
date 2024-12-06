@@ -20,8 +20,9 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 如果一切OK，请参考[使用说明](#使用说明)开始生成你的B50视频!
 
-我正在制作一个教程视频，稍后会贴在这里
+效果展示和教程请参考视频：
 
+[【舞萌2024/工具发布】还在手搓b50视频？我写了一个自动生成器！](https://www.bilibili.com/video/BV1bJi2YVEiE)
 
 ## 当前生成效果预览
 
