@@ -136,7 +136,7 @@ class Utils:
             case _ if SyncStatus == 'fsd':
                 with Image.open("./images/SyncStatus/3.png") as _syncStatus:
                     return _syncStatus.copy()
-            case _ if SyncStatus == 'fdsp':
+            case _ if SyncStatus == 'fsdp':
                 with Image.open("./images/SyncStatus/4.png") as _syncStatus:
                     return _syncStatus.copy()
             case _ if SyncStatus == 'sync':
