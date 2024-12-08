@@ -335,6 +335,7 @@ def pre_gen():
         f"./b50_images",
         f"./videos",
         f"./videos/downloads",
+        f"./cred_datas"
     ]
     for path in cache_pathes:
         if not os.path.exists(path):
