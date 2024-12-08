@@ -202,7 +202,7 @@ def test_system():
         return -1
     
     # test search
-    results = downloader.search_video("系ぎて")
+    results = downloader.search_video("系ぎて Re:MASTER AP【maimaiでらっくす外部出力】")
     for result in results:
         print(f"测试搜索结果: {result}")
 

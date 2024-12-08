@@ -20,6 +20,7 @@ if platform.system() == "Windows":
 else:
     REDIRECT = "> /dev/null 2>&1"
 
+FFMPEG_PATH = 'ffmpeg'
 MAX_LOGIN_RETRIES = 3
 
 def custom_po_token_verifier() -> Tuple[str, str]:
@@ -135,7 +136,6 @@ async def download_url_from_bili(url: str, out: str, info: str):
         print("Done.\n")
 
 async def bilibili_download(bvid, credential, output_name, output_path, high_res=False):
-    FFMPEG_PATH = 'ffmpeg'
     v = video.Video(bvid=bvid, credential=credential)
     download_url_data = await v.get_download_url(0)
     detecter = video.VideoDownloadURLDataDetecter(data=download_url_data)
@@ -247,12 +247,14 @@ class PurePytubefixDownloader(Downloader):
                 video = yt.streams.filter(adaptive=True, file_extension='mp4').\
                     order_by('resolution').desc().first()
                 audio = yt.streams.filter(only_audio=True).first()
-                down_video = video.download(output_path)
-                down_audio = audio.download(output_path)
+                down_video = video.download(output_path, filename="video_temp")
+                down_audio = audio.download(output_path, filename="audio_temp")
                 print(f"下载完成，正在合并视频和音频")
-                # 使用 ffmpeg 合并视频和音频
                 output_file = os.path.join(output_path, f"{output_name}.mp4")
-                subprocess.run(['ffmpeg', '-y -i', down_video, '-i', down_audio, '-c:v', 'copy', '-c:a', 'aac', output_file, REDIRECT])
+                os.system(f'{FFMPEG_PATH} -y -i {down_video} -i {down_audio} -vcodec copy -acodec copy {output_file} {REDIRECT}')
+                # 删除临时文件
+                os.remove(f"{down_video}")
+                os.remove(f"{down_audio}")
                 print(f"合并完成，存储为: {output_name}.mp4")
             else:
                 downloaded_file = yt.streams.filter(progressive=True, file_extension='mp4').\
