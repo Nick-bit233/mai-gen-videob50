@@ -190,6 +190,7 @@ def test_system():
             auto_get_potoken=use_auto_potoken,
             search_max_results=search_max_results
         )
+        keyword = "系ぎて Re:MASTER AP【maimaiでらっくす外部出力】"
 
     elif downloader_type == "bilibili":
         downloader = BilibiliDownloader(
@@ -197,12 +198,14 @@ def test_system():
             no_credential=True,
             search_max_results=search_max_results
         )
+        keyword = "【maimai】【谱面确认】 系ぎて Re:MASTER 15"
+
     else:
         print(f"Error: 未配置正确的下载器，请检查global_config.yaml配置文件！")
         return -1
     
     # test search
-    results = downloader.search_video("系ぎて Re:MASTER AP【maimaiでらっくす外部出力】")
+    results = downloader.search_video(keyword=keyword)
     for result in results:
         print(f"测试搜索结果: {result}")
 
