@@ -6,7 +6,8 @@ import traceback
 from gene_images import generate_single_image
 from gene_video import create_info_segment, create_video_segment, add_clip_with_transition
 from moviepy import CompositeVideoClip
-from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
+from utils.video_crawler import PurePytubefixDownloader
+from update_music_data import fetch_music_data
 
 
 def test_network_proxy(use_proxy, http_proxy):
@@ -119,6 +120,13 @@ def test_system():
     
     search_max_results = config["SEARCH_MAX_RESULTS"]
     download_high_res = config["DOWNLOAD_HIGH_RES"]
+
+    print("#####【尝试从水鱼获取乐曲更新数据】 #####")
+    try:
+        fetch_music_data()
+    except Exception as e:
+        print(f"Error: 获取乐曲更新数据时发生异常: {e}")
+        traceback.print_exc()
 
     test_network_proxy(use_proxy, http_proxy)
 

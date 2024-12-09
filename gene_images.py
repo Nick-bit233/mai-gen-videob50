@@ -2,6 +2,7 @@ import os
 import json
 from PIL import Image, ImageDraw, ImageFont
 from utils.Utils import Utils
+from copy import deepcopy
 
 
 def generate_single_image(background_path, record_detail, user_id, prefix, index):
@@ -27,42 +28,35 @@ def generate_b50_images(UserID, b35_data, b15_data, output_dir):
     print("生成B50图片中...")
     os.makedirs(output_dir, exist_ok=True)
 
-    def check_mask_waring(acc_string, cnt, warned=False):
+    def _check_mask_waring(acc_string, cnt, warned=False):
         if len(acc_string.split('.')[1]) >= 4 and acc_string.split('.')[1][-3:] == "000":
             cnt = cnt + 1
-            if mask_check_cnt > 5 and not warned:
+            if cnt > 5 and not warned:
                 print(f"Warning： 检测到多个仅有一位小数精度的成绩，请尝试取消查分器设置的成绩掩码以获取精确成绩。特殊情况请忽略。")
                 warned = True
         return cnt, warned
-    
-    mask_check_cnt = 0
-    mask_warn = False
+
+    def _gene_images_batch(data, user_id, prefix):
+        mask_check_cnt = 0
+        mask_warn = False
+        for index, record_detail in enumerate(data):
+            acc_string = f"{record_detail['achievements']:.4f}"
+            mask_check_cnt, mask_warn = _check_mask_waring(acc_string, mask_check_cnt, mask_warn)
+            record_for_gene_image = deepcopy(record_detail)
+            record_for_gene_image['achievements'] = acc_string
+            generate_single_image(
+                "./images/B50ViedoBase.png",
+                record_for_gene_image,
+                user_id,
+                prefix,
+                index,
+            )
+
     # 生成历史最佳图片
-    for index, record_detail in enumerate(b35_data):
-        # 检查: 是否有多个成绩仅包含小数点后一位，提醒用户检查是否开启了成绩掩码
-        # acc = record_detail['achievements']
-        acc = f"{record_detail['achievements']:.4f}"
-        mask_check_cnt, mask_warn = check_mask_waring(acc, mask_check_cnt, mask_warn)
-        record_detail['achievements'] = acc
-        generate_single_image(
-            "./images/B50ViedoBase.png",
-            record_detail,
-            UserID,
-            "PastBest",
-            index,
-        )
+    _gene_images_batch(b35_data, UserID, "PastBest")
     
     # 生成最新最佳图片
-    for index, record_detail in enumerate(b15_data):
-        acc = f"{record_detail['achievements']:.4f}"
-        record_detail['achievements'] = acc
-        generate_single_image(
-            "./images/B50ViedoBase.png",
-            record_detail,
-            UserID,
-            "NewBest",
-            index,
-        )
+    _gene_images_batch(b15_data, UserID, "NewBest")
 
     print(f"已生成 {UserID} 的 B50 图片，请在 b50_images/{UserID} 文件夹中查看。")
 
