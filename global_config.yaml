@@ -37,7 +37,7 @@ USE_OAUTH: false
 SEARCH_MAX_RESULTS: 3
 
 # 每次抓取结束后的等待时间（定义随机范围，秒）
-SEARCH_WAIT_TIME: [1, 2]
+SEARCH_WAIT_TIME: [5, 10]
 
 ## 【视频输出配置】
 

@@ -131,7 +131,8 @@ async def download_url_from_bili(url: str, out: str, info: str):
                     break
 
                 process += len(chunk)
-                print(f'      -- [正在从bilibili下载流: {info} {process} / {length}]', end='\r')
+                percentage = (process / int(length)) * 100 if length else 0
+                print(f'      -- [正在从bilibili下载流: {info} {percentage:.2f}%]', end='\r')
                 f.write(chunk)
         print("Done.\n")
 
