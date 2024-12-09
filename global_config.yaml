@@ -1,83 +1,30 @@
-## 【必填】水鱼查分器用户ID（请替换为你的用户名）
-USER_ID: xxxxxx
-
-## 【下载器设置】
-DOWNLOADER: "bilibili"
-
-## 【代理设置】
-
-# 是否使用代理
-USE_PROXY: false
-# 代理地址（如果使用 clash，通常无需更改，请检查端口与你的设置是否一致）
-HTTP_PROXY: "127.0.0.1:7890"
-
-## 【Bilibili 抓取相关配置】
-
-# 禁用b站账号登录。
-# 注意：不使用账号登录可能导致无法下载高分辨率视频，或受到风控
-NO_BILIBILI_CREDENTIAL: false
-
-## 【Youtube 抓取相关配置】
-
-# 是否使用自定义 PO Token 抓取视频（和自动获取 PO Token 互斥）
-USE_CUSTOM_PO_TOKEN: false
-
-# 配置自行抓取的 PO Token，包括两个部分，visitor_data 和 po_token
-CUSTOMER_PO_TOKEN:  
-  visitor_data: ""  
-  po_token: "" 
-
-# 是否自动获取 PO Token 抓取视频（请先阅读相关文档并确保已安装 Node.js 环境）
-USE_AUTO_PO_TOKEN: false
-
-# 是否使用 OAuth 登录抓取视频（注意：需要根据提示在浏览器中登录账号，可能存在风险，谨慎使用）
-USE_OAUTH: false
-
-# 搜索结果数量限制
-SEARCH_MAX_RESULTS: 3
-
-# 每次抓取结束后的等待时间（定义随机范围，秒）
-SEARCH_WAIT_TIME: [5, 10]
-
-## 【视频输出配置】
-
-# 视频分辨率设置 (宽度, 高度)
-VIDEO_RES: [1920, 1080]
-
-# 是否启用视频片段之间的过渡效果
-VIDEO_TRANS_ENABLE: true
-
-# 视频片段之间的过渡时间（单位：秒）
-VIDEO_TRANS_TIME: 1.5
-
-# 是否使用已有缓存
-# 设置为true将使用全部本地已生成的图片和视频，并不再从互联网上获取数据
-# 仅在视频合并失败或中断时使用
-USE_ALL_CACHE: false
-
-# 是否只生成视频片段
-# true: 只生成单独的视频片段
-# false: 生成完整的合并视频
-ONLY_GENERATE_CLIPS: false
-
-# 下载高分辨率视频（1080p）
-# 注意：高分辨率视频有更高的下载失败率与合并失败率，并会占用更多的网络带宽和存储空间
-# 如果使用bilibili下载，请确保登录账号。不推荐使用youtube下载高分辨率视频
-DOWNLOAD_HIGH_RES: true
-
-# 是否使用默认的提示词填充开头结尾以及b50评论
-# true: 默认生成，方便你在合成完整视频前，从配置文件中定位评论并修改
-# false: 默认不生成，使用空字符串，推荐在仅生成视频片段并用于二次创作时使用
-DEFAULT_COMMENT_PLACEHOLDERS: true
-
-# 合成完整视频时，每段谱面确认默认播放的时长（单位：秒）
 CLIP_PLAY_TIME: 10
-
-# 合成完整视频时，每段谱面确认默认开始播放的时间随机范围（单位：秒）
-# 填写相同的值将会使得随机失效
-# 一般无需修改，你可以稍后在配置页面中调整每段谱面确认的开始和持续时间
-CLIP_START_INTERVAL: [15, 105]
-
-# 合成完整视频时，是否完整延长Best1的谱面确认乐曲，直到结尾评论结束
-# 注意：目前开启该选项会使得结尾画面之间的过渡丢失。
+CLIP_START_INTERVAL:
+- 15
+- 105
+CUSTOMER_PO_TOKEN:
+  po_token: ''
+  visitor_data: ''
+DEFAULT_COMMENT_PLACEHOLDERS: true
+DOWNLOADER: bilibili
+DOWNLOAD_HIGH_RES: true
 FULL_LAST_CLIP: false
+HTTP_PROXY: 127.0.0.1:7890
+NO_BILIBILI_CREDENTIAL: false
+ONLY_GENERATE_CLIPS: false
+PROXY_ADDRESS: 127.0.0.1:7890
+SEARCH_MAX_RESULTS: 3
+SEARCH_WAIT_TIME:
+- 5
+- 10
+USER_ID: nickbit
+USE_ALL_CACHE: false
+USE_AUTO_PO_TOKEN: false
+USE_CUSTOM_PO_TOKEN: false
+USE_OAUTH: false
+USE_PROXY: false
+VIDEO_RES:
+- 1920
+- 1080
+VIDEO_TRANS_ENABLE: true
+VIDEO_TRANS_TIME: 1.5
