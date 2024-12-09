@@ -207,8 +207,20 @@ def create_video_segment(clip_config, resolution, font_path, text_size=28, inlin
 
     # 检查视频是否存在
     if 'video' in clip_config and os.path.exists(clip_config['video']):
-        video_clip = VideoFileClip(clip_config['video']).subclipped(start_time=clip_config['start'], 
-                                                                    end_time=clip_config['end'])
+        video_clip = VideoFileClip(clip_config['video'])
+        
+        # 添加调试信息
+        print(f"Start time: {clip_config['start']}, Clip duration: {video_clip.duration}, End time: {clip_config['end']}")
+        
+        # 检查 start_time 和 end_time 是否超出 clip 的持续时间
+        if clip_config['start'] < 0 or clip_config['start'] >= video_clip.duration:
+            raise ValueError(f"片段开始时间 {clip_config['start']} 超出视频{clip_config['video']}的长度. 请检查该片段的时间配置.")
+        
+        if clip_config['end'] <= clip_config['start'] or clip_config['end'] > video_clip.duration:
+            raise ValueError(f"片段结束时间 {clip_config['end']} 超出视频{clip_config['video']}的长度. 请检查该片段的时间配置.")
+        
+        video_clip = video_clip.subclipped(start_time=clip_config['start'],
+                                            end_time=clip_config['end'])
         # 等比例缩放，在高为1080像素的情况下，谱面确认的高度应该是540像素，因此比例为0.5
         video_clip = video_clip.with_effects([vfx.Resize(height=0.5 * resolution[1])])
         
@@ -409,7 +421,7 @@ def combine_full_video_from_existing_clips(video_clip_path, resolution, trans_ti
         else:
             # 为前一个片段添加音频渐出效果
             clips[-1] = clips[-1].with_audio_fadeout(trans_time)
-            # 为当前片段添加音频渐入效果和视频渐入效���
+            # 为当前片段添加音频渐入效果和视频渐入效果
             current_clip = clip.with_audio_fadein(trans_time).with_crossfadein(trans_time)
             # 设置片段开始时间
             clips.append(current_clip.with_start(clips[-1].end - trans_time))

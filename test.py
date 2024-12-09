@@ -6,7 +6,7 @@ import traceback
 from gene_images import generate_single_image
 from gene_video import create_info_segment, create_video_segment, add_clip_with_transition
 from moviepy import CompositeVideoClip
-from utils.video_crawler import PurePytubefixDownloader
+from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
 from update_music_data import fetch_music_data
 
 
@@ -135,7 +135,7 @@ def test_system():
         "ds": 15.0,
         "dxScore": 4200,
         "fc": "app",
-        "fs": "fdsp",
+        "fs": "fsdp",
         "level": "15",
         "level_index": 4,
         "level_label": "Re:MASTER",
