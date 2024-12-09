@@ -10,3 +10,4 @@ Pillow==10.4.0
 pytubefix>=8.5.0
 pyyaml>=6.0.1
 bilibili-api-python>=16.3.0
+flask>=2.4.5

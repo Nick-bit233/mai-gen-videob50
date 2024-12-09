@@ -71,6 +71,7 @@ Auto search and generate your best 50 videoes of MaimaiDX
     ```bash
     pip install -r requirements.txt
     ```
+    > 注意，如果你使用linux系统，在登陆b站过程中需要弹出tkinter窗口。而在linux的python没有预装`tk`库，请自行使用`sudo apt-get install python3-tk`安装。
 
 3. 安装必要的工具软件：
 
@@ -331,11 +332,17 @@ MoviePy - video ready videos/test/test_video.mp4
 
     请检查网络连接。如果你使用代理，请检查是否在启用了`USE_PROXY`的情况下没有打开代理，或代理服务是否正常。
 
-- urlopen error或SSLEOFError异常：
+- 下载视频过程中出现RemoteProtocolError或SSLEOFError异常：
+
+    ```
+    httpx.RemoteProtocolError: peer closed connection without sending complete message body
+    ```
 
     ```
     <urlopen error [Errno 2] No such file or directory>
+    ```
 
+    ```
     ssl.SSLEOFError: EOF occurred in violation of protocol (_ssl.c:2423)
     ```
 
