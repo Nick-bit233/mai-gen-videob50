@@ -20,7 +20,7 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 - [x] [水鱼查分器](https://www.diving-fish.com/maimaidx/prober/)：请注意在个人选项中允许公开获取你的B50数据。
 
-- [] [落雪查分器](https://www.luoxue.com/maimaidx/prober/)（暂未支持）
+- [ ] [落雪查分器](https://maimai.lxns.net/)（暂未支持）
 
 流媒体源支持情况：
 
