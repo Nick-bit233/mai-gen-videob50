@@ -110,12 +110,15 @@ def load_credential(credential_path):
         if not is_valid:
             print("#####【bilibili登录凭证无效，请在弹出的窗口中重新扫码登录】")
             return None
-        
-        need_refresh = sync(credential.check_refresh())
-        print(need_refresh)
-        if need_refresh:
-            print("#####【bilibili登录凭据需要刷新，正在尝试刷新中……】")
-            sync(credential.refresh())
+        try:
+            need_refresh = sync(credential.check_refresh())
+            if need_refresh:
+                print("#####【bilibili登录凭据需要刷新，正在尝试刷新中……】")
+                sync(credential.refresh())
+        except:
+            traceback.print_exc()
+            print("#####【刷新bilibili登录凭据失败，请在弹出的窗口中重新扫码登录】")
+            return None
         
         print(f"#####【缓存登录bilibili成功，登录账号为：{sync(user.get_self_info(credential))['name']}】")
         return credential

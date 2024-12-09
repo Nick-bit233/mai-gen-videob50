@@ -110,12 +110,13 @@ def update_b50_data(b50_raw_file, b50_data_file, username):
             for new_song in b50_data:
                 song_key = (new_song['song_id'], new_song['level_index'], new_song['type'])
                 if song_key in local_song_map:
-                    # 如果记录已存在，保留原有数据（包括已抓取的视频信息）
+                    # 如果记录已存在，使用新数据但保留原有的视频信息
                     cached_song = local_song_map[song_key]
-                    cached_song['clip_id'] = new_song['clip_id']
-                    new_local_b50_data.append(cached_song)
+                    new_song['video_info_list'] = cached_song.get('video_info_list', [])
+                    new_song['video_info_match'] = cached_song.get('video_info_match', {})
+                    new_local_b50_data.append(new_song)
                 else:
-                    # 如果是新记录，使用新数据
+                    # 如果是新记录，直接使用新数据
                     new_local_b50_data.append(new_song)  
     else:
         new_local_b50_data = b50_data
