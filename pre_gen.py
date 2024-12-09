@@ -71,8 +71,7 @@ def update_b50_data(b50_raw_file, b50_data_file, username):
         print("Error: 读取 JSON 文件时发生错误，请检查数据格式。")
         return None 
     if 'error' in fish_data:
-        print(f"Error: 从水鱼获得B50数据失败。错误信息：{fish_data['error']}")
-        return None
+        raise Exception(f"Error: 从水鱼获得B50数据失败。错误信息：{fish_data['error']}")
     
     charts_data = fish_data['charts']
     # user_rating = fish_data['rating']
