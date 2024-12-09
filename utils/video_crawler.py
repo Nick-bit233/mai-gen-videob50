@@ -11,7 +11,7 @@ import httpx
 import traceback
 import subprocess
 import platform
-import re  # 确保导入re模块
+import re
 
 # 根据操作系统选择FFMPEG的输出重定向方式
 # TODO：添加日志输出
@@ -263,6 +263,11 @@ class PurePytubefixDownloader(Downloader):
                 # 重命名下载到的视频文件
                 new_filename = f"{output_name}.mp4"
                 output_file = os.path.join(output_path, new_filename)
+  
+                # 检查文件是否存在，如果存在则删除
+                if os.path.exists(output_file):
+                    os.remove(output_file)  # 删除已存在的文件
+                
                 os.rename(downloaded_file, output_file)
                 print(f"下载完成，存储为: {new_filename}")
 
