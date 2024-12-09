@@ -5,17 +5,20 @@ import time
 import yaml
 import traceback
 import threading
-from front_end.server import run_server, open_browser
+import webbrowser
+from front_end.server import run_server
 from update_music_data import fetch_music_data
 from gene_images import generate_b50_images
 from utils.Utils import get_b50_data_from_fish
-from utils.video_crawler import PurePytubefixDownloader
+from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
 
 # Global configuration variables
 global_config = {}
 username = ""
 use_proxy = False
 proxy = ""
+downloader_type = ""
+no_bilibili_credential = False
 use_customer_potoken = False
 use_auto_potoken = False
 use_potoken = False
@@ -29,10 +32,14 @@ clip_start_interval = (0, 0)
 full_last_clip = False
 default_comment_placeholders = True
 
+def open_browser():
+    webbrowser.open('http://localhost:8000')
+
 def load_global_config():
     global global_config, username, use_proxy, proxy, use_customer_potoken, use_auto_potoken
     global use_potoken, use_oauth, search_max_results, search_wait_time, use_all_cache
     global download_high_res, clip_play_time, clip_start_interval, full_last_clip
+    global downloader_type, no_bilibili_credential
 
     # Read global_config.yaml file
     with open("./global_config.yaml", "r", encoding="utf-8") as f:
@@ -41,6 +48,8 @@ def load_global_config():
     username = global_config["USER_ID"]
     use_proxy = global_config["USE_PROXY"]
     proxy = global_config["HTTP_PROXY"]
+    downloader_type = global_config["DOWNLOADER"]
+    no_bilibili_credential = global_config["NO_BILIBILI_CREDENTIAL"]
     use_customer_potoken = global_config["USE_CUSTOM_PO_TOKEN"]
     use_auto_potoken = global_config["USE_AUTO_PO_TOKEN"]
     use_potoken = use_customer_potoken or use_auto_potoken
@@ -118,8 +127,38 @@ def update_b50_data(b50_raw_file, b50_data_file, username):
     return new_local_b50_data
 
 
+def get_keyword(downloader_type, title_name, level_index, type):
+    match level_index:
+        case 0:
+            dif_CN_name = "绿谱"
+            dif_name = "Basic"
+        case 1:
+            dif_CN_name = "黄谱"
+            dif_name = "Advance"
+        case 2:
+            dif_CN_name = "红谱"
+            dif_name = "Expert"
+        case 3:
+            dif_CN_name = "紫谱"
+            dif_name = "Master"
+        case 4:
+            dif_CN_name = "白谱"
+            dif_name = "Re:MASTER"
+        case _:
+            dif_CN_name = ""
+            dif_name = ""
+            print(f"Warning: {title_name}具有未指定的谱面难度！")
+    if downloader_type == "youtube":
+        suffix = "AP【maimaiでらっくす外部出力】"
+        return f"{title_name} {'DX譜面' if type != 'SD' else ''} {dif_name} {suffix}"
+    elif downloader_type == "bilibili":
+        prefix = "【maimai】【谱面确认】"
+        return f"{prefix} {'DX谱面' if type != 'SD' else '标准谱面'} {title_name} {dif_CN_name} {dif_name} "
+    
+
 def search_b50_videos(downloader, b50_data, b50_data_file, search_wait_time=(0,0)):
-    global search_max_results
+    global search_max_results, downloader_type
+
     i = 0
     for song in b50_data:
         i += 1
@@ -129,17 +168,15 @@ def search_b50_videos(downloader, b50_data, b50_data_file, search_wait_time=(0,0
             continue
         title_name = song['title']
         difficulty_name = song['level_label']
+        level_index = song['level_index']
         type = song['type']
-        if type == "SD":
-            keyword = f"{title_name} {difficulty_name} AP【maimaiでらっくす外部出力】"
-        else:
-            keyword = f"{title_name} DX譜面 {difficulty_name} AP【maimaiでらっくす外部出力】"
+        keyword = get_keyword(downloader_type, title_name, level_index, type)
 
         print(f"正在搜索视频({i}/50): {keyword}")
         videos = downloader.search_video(keyword)
 
         if len(videos) == 0:
-            print(f"Error: 没有找到{title_name}-{difficulty_name}-{type}的视频")
+            print(f"Error: 没有找到{title_name}-{difficulty_name}({level_index})-{type}的视频")
             song['video_info_list'] = []
             song['video_info_match'] = {}
             continue
@@ -154,7 +191,7 @@ def search_b50_videos(downloader, b50_data, b50_data_file, search_wait_time=(0,0
         with open(b50_data_file, "w", encoding="utf-8") as f:
             json.dump(b50_data, f, ensure_ascii=False, indent=4)
         
-        # 等待10-15秒，以减少被检测为bot的风险
+        # 等待几秒，以减少被检测为bot的风险
         if search_wait_time[0] > 0 and search_wait_time[1] > search_wait_time[0]:
             time.sleep(random.randint(search_wait_time[0], search_wait_time[1]))
     
@@ -181,12 +218,13 @@ def download_b50_videos(downloader, b50_data, video_download_path, download_wait
             print(f"Error: 没有{song['title']}-{song['level_label']}-{song['type']}的视频信息，Skipping………")
             continue
         video_info = song['video_info_match']
-        downloader.download_video(video_info['url'], 
+        v_id = video_info['id'] 
+        downloader.download_video(v_id, 
                                   clip_name, 
                                   video_download_path, 
                                   high_res=download_high_res)
         
-        # 等待5-10秒，以减少被检测为bot的风险
+        # 等待几秒，以减少被检测为bot的风险
         if download_wait_time[0] > 0 and download_wait_time[1] > download_wait_time[0]:
             time.sleep(random.randint(download_wait_time[0], download_wait_time[1]))
         print("\n")
@@ -301,6 +339,7 @@ def pre_gen():
         f"./b50_images",
         f"./videos",
         f"./videos/downloads",
+        f"./cred_datas"
     ]
     for path in cache_pathes:
         if not os.path.exists(path):
@@ -310,18 +349,34 @@ def pre_gen():
     b50_data_file = f"./b50_datas/b50_config_{username}.json"
 
     # init downloader
-    print(f"##### 【当前配置信息】##### \n"
+    if downloader_type == "youtube":
+        downloader = PurePytubefixDownloader(
+            proxy=proxy if use_proxy else None,
+            use_potoken=use_potoken,
+            use_oauth=use_oauth,
+            auto_get_potoken=use_auto_potoken,
+            search_max_results=search_max_results
+        )
+        print(f"##### 【当前配置信息】##### \n"
+          f"  下载器: {downloader_type}\n" 
           f"  代理: {proxy if use_proxy else '未启用'}\n"
           f"  使用potoken: {use_potoken}\n"
           f"  使用oauth: {use_oauth}\n"
           f"  自动获取potoken: {use_auto_potoken}")
-    downloader = PurePytubefixDownloader(
-        proxy=proxy if use_proxy else None,
-        use_potoken=use_potoken,
-        use_oauth=use_oauth,
-        auto_get_potoken=use_auto_potoken,
-        search_max_results=search_max_results
-    )
+    elif downloader_type == "bilibili":
+        downloader = BilibiliDownloader(
+            proxy=proxy if use_proxy else None,
+            no_credential=no_bilibili_credential,
+            credential_path="./cred_datas/bilibili_cred.pkl",
+            search_max_results=search_max_results
+        )
+        print(f"##### 【当前配置信息】##### \n"
+          f"  下载器: {downloader_type}\n" 
+          f"  代理: {proxy if use_proxy else '未启用'}\n"
+          f"  禁用账号登录: {no_bilibili_credential}")
+    else:
+        print(f"Error: 未配置正确的下载器，请检查global_config.yaml配置文件！")
+        return -1
 
     image_output_path = f"./b50_images/{username}"
     video_download_path = f"./videos/downloads"  # 不同用户的视频缓存均存放在downloads文件夹下

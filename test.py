@@ -111,6 +111,8 @@ def test_system():
     use_proxy = config["USE_PROXY"]
     http_proxy = config["HTTP_PROXY"]
 
+    downloader_type = config["DOWNLOADER"]
+
     use_customer_potoken = config["USE_CUSTOM_PO_TOKEN"]
     use_auto_potoken = config["USE_AUTO_PO_TOKEN"]
     use_potoken = use_customer_potoken or use_auto_potoken
@@ -125,7 +127,7 @@ def test_system():
     except Exception as e:
         print(f"Error: 获取乐曲更新数据时发生异常: {e}")
         traceback.print_exc()
- 
+
     test_network_proxy(use_proxy, http_proxy)
 
     image_config = {
@@ -150,7 +152,6 @@ def test_system():
     test_image_generation(test_image_config=image_config)
 
     print("\n## [3/4]测试视频搜索和下载功能...")
-    test_video_url = "https://www.youtube.com/watch?v=olmYHXHiLGg"
     test_video_config = {
         "intro": [
         {
@@ -189,20 +190,36 @@ def test_system():
     if os.path.exists("videos/test/11663-4-DX.mp4"):
         os.remove("videos/test/11663-4-DX.mp4")
 
-    downloader = PurePytubefixDownloader(
-        proxy=http_proxy if use_proxy else None,
-        use_potoken=use_potoken,
-        use_oauth=use_oauth,
-        auto_get_potoken=use_auto_potoken,
-        search_max_results=search_max_results
-    )
+    if downloader_type == "youtube":
+        downloader = PurePytubefixDownloader(
+            proxy=http_proxy if use_proxy else None,
+            use_potoken=use_potoken,
+            use_oauth=use_oauth,
+            auto_get_potoken=use_auto_potoken,
+            search_max_results=search_max_results
+        )
+        keyword = "系ぎて Re:MASTER AP【maimaiでらっくす外部出力】"
+
+    elif downloader_type == "bilibili":
+        downloader = BilibiliDownloader(
+            proxy=http_proxy if use_proxy else None,
+            no_credential=True,
+            search_max_results=search_max_results
+        )
+        keyword = "【maimai】【谱面确认】 系ぎて Re:MASTER 15"
+
+    else:
+        print(f"Error: 未配置正确的下载器，请检查global_config.yaml配置文件！")
+        return -1
+    
     # test search
-    results = downloader.search_video("系ぎて")
+    results = downloader.search_video(keyword=keyword)
     for result in results:
         print(f"测试搜索结果: {result}")
 
     # test download
-    downloader.download_video(test_video_url, "11663-4-DX", "videos/test", high_res=download_high_res)
+    test_video_id = results[0]['id']
+    downloader.download_video(test_video_id, "11663-4-DX", "videos/test", high_res=download_high_res)
     print("## [3/4]测试完毕")
 
     test_video_generation(test_video_config=test_video_config)

@@ -1,11 +1,12 @@
 httplib2>=0.22.0
 requests>=2.31.0
 pysocks>=1.7.1
-moviepy>=2.0.0
+moviepy>=2.1.1
 numpy>=1.18.1
-imageio>=2.5.0
+imageio>=2.36.0
 decorator>=4.3.0
 tqdm>=4.0.0
-Pillow==10.3.0
+Pillow==10.4.0
 pytubefix>=8.5.0
 pyyaml>=6.0.1
+bilibili-api-python>=16.3.0

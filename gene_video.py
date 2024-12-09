@@ -209,8 +209,8 @@ def create_video_segment(clip_config, resolution, font_path, text_size=28, inlin
     if 'video' in clip_config and os.path.exists(clip_config['video']):
         video_clip = VideoFileClip(clip_config['video']).subclipped(start_time=clip_config['start'], 
                                                                     end_time=clip_config['end'])
-        # 将视频预览等比例地缩放
-        video_clip = video_clip.with_effects([vfx.Resize(width=540/1080 * resolution[0])])
+        # 等比例缩放，在高为1080像素的情况下，谱面确认的高度应该是540像素，因此比例为0.5
+        video_clip = video_clip.with_effects([vfx.Resize(height=0.5 * resolution[1])])
         
         # 裁剪成正方形
         video_height = video_clip.h

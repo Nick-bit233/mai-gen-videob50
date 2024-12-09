@@ -3,8 +3,9 @@ node_modules/
 package-lock.json
 package.json
 
-# ignore template mp3 files
+# ignore template mp3 files and template credential file.
 /*.mp3
+cred_datas/
 
 # B50 cache directories
 b50_datas/
