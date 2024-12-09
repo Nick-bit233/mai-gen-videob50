@@ -5,7 +5,8 @@ import time
 import yaml
 import traceback
 import threading
-from front_end.server import run_server, open_browser
+import webbrowser
+from front_end.server import run_server
 from update_music_data import fetch_music_data
 from gene_images import generate_b50_images
 from utils.Utils import get_b50_data_from_fish
@@ -30,6 +31,9 @@ clip_play_time = 0
 clip_start_interval = (0, 0)
 full_last_clip = False
 default_comment_placeholders = True
+
+def open_browser():
+    webbrowser.open('http://localhost:8000')
 
 def load_global_config():
     global global_config, username, use_proxy, proxy, use_customer_potoken, use_auto_potoken
