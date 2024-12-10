@@ -327,7 +327,10 @@ class BilibiliDownloader(Downloader):
                                   page_size=self.search_max_results)
         )
         videos = []
-        # print(results)  # Debugging line to check the structure of results
+        if 'result' not in results:
+            print(f"搜索结果异常，请检查如下输出：")
+            print(results)
+            return []
         res_list = results['result']
         for each in res_list:
             videos.append({
@@ -351,3 +354,8 @@ class BilibiliDownloader(Downloader):
                               output_path=output_path,
                               high_res=high_res)
         )
+
+# test
+if __name__ == "__main__":
+    downloader = BilibiliDownloader()
+    downloader.search_video("【(maimai】【谱面确认】 DX谱面 Aegleseeker 紫谱 Master")
