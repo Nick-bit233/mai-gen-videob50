@@ -320,6 +320,7 @@ def start_editor_server(config_output_file, image_output_path, video_download_pa
     run_server(config_output_file, image_output_path, video_download_path, username)
     return True
 
+
 def pre_gen():
     print("#####【Mai-genb50视频生成器 - Step1 信息预处理和素材获取】#####")
 
@@ -449,6 +450,50 @@ def pre_gen():
         return 1
 
     return 0
+
+
+def st_update_b50_data():
+    load_global_config()
+
+    print("#####【尝试从水鱼获取乐曲更新数据】 #####")
+    try:
+        fetch_music_data()
+    except Exception as e:
+        print(f"Error: 获取乐曲更新数据时发生异常: {e}")
+        traceback.print_exc()
+
+    # 创建缓存文件夹
+    cache_pathes = [
+        f"./b50_datas",
+        f"./b50_images",
+        f"./videos",
+        f"./videos/downloads",
+        f"./cred_datas"
+    ]
+    for path in cache_pathes:
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+    b50_raw_file = f"./b50_datas/b50_raw_{username}.json"
+    b50_data_file = f"./b50_datas/b50_config_{username}.json"
+    config_output_file = f"./b50_datas/video_configs_{username}.json"
+
+    # 检查用户是否已有完整的配置文件
+    if os.path.exists(config_output_file):
+        with open(config_output_file, "r", encoding="utf-8") as f:
+            configs = json.load(f)
+            if "enable_re_modify" in configs and configs["enable_re_modify"]:
+                # 从缓存文件中读取b50数据
+                with open(b50_data_file, "r", encoding="utf-8") as f:
+                    b50_data = json.load(f)
+                # "#####【已检测到用户{username}的视频内容缓存文件，跳过数据更新】 #####"
+                return {"info": "keep", "data": b50_data}
+    try:
+        b50_data = update_b50_data(b50_raw_file, b50_data_file, username)
+        return {"info": "updated", "data": b50_data}
+    except Exception as e:
+        print(f"Error: 更新b50数据时发生异常: {e}")
+        return {"info": "error", "traceback": traceback.print_exc()}
 
 
 if __name__ == "__main__":
