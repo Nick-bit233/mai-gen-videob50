@@ -70,11 +70,11 @@ def remove_html_tags_and_invalid_chars(text: str) -> str:
     """去除字符串中的HTML标记和非法字符"""
     # 去除HTML标记
     clean = re.compile('<.*?>')
-    text = re.sub(clean, '', text)
+    text = re.sub(clean, ' ', text)
     
     # 去除非法字符
     invalid_chars = r'[<>:"/\\|?*【】]'  # 定义非法字符
-    text = re.sub(invalid_chars, '', text)  # 替换为''
+    text = re.sub(invalid_chars, ' ', text)  # 替换为' '
 
     return text.strip()  # 去除首尾空白字符
 
@@ -299,6 +299,11 @@ class BilibiliDownloader(Downloader):
             if log_succ:
                 break  # 登录成功，退出循环
             print(f"正在尝试第 {attempt + 1} 次重新登录...")
+    
+    def get_credential_username(self):
+        if not self.credential:
+            return None
+        return sync(user.get_self_info(self.credential))['name']
 
     def log_in(self, credential_path):
         # credential = login.login_with_qrcode_term() # 在终端打印二维码登录

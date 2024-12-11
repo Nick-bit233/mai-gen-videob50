@@ -64,7 +64,7 @@ def update_preview(preview_placeholder, config, current_index):
             st.write(f"结束时间: {new_end_minutes:02d}:{new_end_seconds:02d}")
         st.write(f"持续时间: {item['duration']}")
 
-st.header("Step 3: 视频内容编辑")
+st.header("Step 4: 视频内容编辑")
 
 # 加载配置文件
 config = load_config(f"./b50_datas/video_configs_{G_config['USER_ID']}.json")

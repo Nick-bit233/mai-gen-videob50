@@ -12,25 +12,25 @@ from gene_images import generate_b50_images
 from utils.Utils import get_b50_data_from_fish
 from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
 
-# Global configuration variables
-global_config = {}
-username = ""
-use_proxy = False
-proxy = ""
-downloader_type = ""
-no_bilibili_credential = False
-use_customer_potoken = False
-use_auto_potoken = False
-use_potoken = False
-use_oauth = False
-search_max_results = 0
-search_wait_time = (0, 0)
-use_all_cache = False
-download_high_res = False
-clip_play_time = 0
-clip_start_interval = (0, 0)
-full_last_clip = False
-default_comment_placeholders = True
+# # Global configuration variables
+# global_config = {}
+# username = ""
+# use_proxy = False
+# proxy = ""
+# downloader_type = ""
+# no_bilibili_credential = False
+# use_customer_potoken = False
+# use_auto_potoken = False
+# use_potoken = False
+# use_oauth = False
+# search_max_results = 0
+# search_wait_time = (0, 0)
+# use_all_cache = False
+# download_high_res = False
+# clip_play_time = 0
+# clip_start_interval = (0, 0)
+# full_last_clip = False
+# default_comment_placeholders = True
 
 def open_browser():
     webbrowser.open('http://localhost:8000')
@@ -156,6 +156,35 @@ def get_keyword(downloader_type, title_name, level_index, type):
         return f"{prefix} {'DX谱面' if type != 'SD' else '标准谱面'} {title_name} {dif_CN_name} {dif_name} "
     
 
+def search_one_video(downloader, song_data):
+    title_name = song_data['title']
+    difficulty_name = song_data['level_label']
+    level_index = song_data['level_index']
+    type = song_data['type']
+    dl_type = "youtube" if isinstance(downloader, PurePytubefixDownloader) \
+                else "bilibili" if isinstance(downloader, BilibiliDownloader) \
+                else "None"
+    keyword = get_keyword(dl_type, title_name, level_index, type)
+
+    print(f"搜索关键词: {keyword}")
+    videos = downloader.search_video(keyword)
+
+    if len(videos) == 0:
+        output_info = f"Error: 没有找到{title_name}-{difficulty_name}({level_index})-{type}的视频"
+        print(output_info)
+        song_data['video_info_list'] = []
+        song_data['video_info_match'] = {}
+        return song_data, output_info
+
+    match_index = 0
+    output_info = f"首个搜索结果: {videos[match_index]['title']}, {videos[match_index]['url']}"
+    print(f"首个搜索结果: {videos[match_index]['title']}, {videos[match_index]['url']}")
+
+    song_data['video_info_list'] = videos
+    song_data['video_info_match'] = videos[match_index]
+    return song_data, output_info
+
+
 def search_b50_videos(downloader, b50_data, b50_data_file, search_wait_time=(0,0)):
     global search_max_results, downloader_type
 
@@ -166,26 +195,9 @@ def search_b50_videos(downloader, b50_data, b50_data_file, search_wait_time=(0,0
         if 'video_info_match' in song and song['video_info_match']:
             print(f"跳过({i}/50): {song['title']} ，已储存有相关视频信息")
             continue
-        title_name = song['title']
-        difficulty_name = song['level_label']
-        level_index = song['level_index']
-        type = song['type']
-        keyword = get_keyword(downloader_type, title_name, level_index, type)
-
-        print(f"正在搜索视频({i}/50): {keyword}")
-        videos = downloader.search_video(keyword)
-
-        if len(videos) == 0:
-            print(f"Error: 没有找到{title_name}-{difficulty_name}({level_index})-{type}的视频")
-            song['video_info_list'] = []
-            song['video_info_match'] = {}
-            continue
-
-        match_index = 0
-        print(f"首个搜索结果({i}/50): {videos[match_index]['title']}, {videos[match_index]['url']}")
-
-        song['video_info_list'] = videos
-        song['video_info_match'] = videos[match_index]
+        
+        print(f"正在搜索视频({i}/50): {song['title']}")
+        song_data = search_one_video(downloader, song)
 
         # 每次搜索后都写入b50_data_file
         with open(b50_data_file, "w", encoding="utf-8") as f:
@@ -335,16 +347,7 @@ def pre_gen():
         traceback.print_exc()
 
     # 创建缓存文件夹
-    cache_pathes = [
-        f"./b50_datas",
-        f"./b50_images",
-        f"./videos",
-        f"./videos/downloads",
-        f"./cred_datas"
-    ]
-    for path in cache_pathes:
-        if not os.path.exists(path):
-            os.makedirs(path)
+    st_init_cache_pathes()
 
     b50_raw_file = f"./b50_datas/b50_raw_{username}.json"
     b50_data_file = f"./b50_datas/b50_config_{username}.json"
@@ -451,6 +454,17 @@ def pre_gen():
 
     return 0
 
+def st_init_cache_pathes():
+    cache_pathes = [
+        f"./b50_datas",
+        f"./b50_images",
+        f"./videos",
+        f"./videos/downloads",
+        f"./cred_datas"
+    ]
+    for path in cache_pathes:
+        if not os.path.exists(path):
+            os.makedirs(path)
 
 def st_update_b50_data():
     load_global_config()
