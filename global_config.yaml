@@ -17,7 +17,7 @@ SEARCH_MAX_RESULTS: 3
 SEARCH_WAIT_TIME: !!python/tuple
 - 3
 - 5
-USER_ID: asdfasdf99
+USER_ID: nickbit
 USE_ALL_CACHE: false
 USE_AUTO_PO_TOKEN: true
 USE_CUSTOM_PO_TOKEN: false

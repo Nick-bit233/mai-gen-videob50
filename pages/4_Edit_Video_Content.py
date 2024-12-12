@@ -38,13 +38,21 @@ def update_preview(preview_placeholder, config, current_index):
         else:
             video_duration = DEFAULT_VIDEO_MAX_DURATION
 
-        current_start = int(item.get('start', 0))
-        current_duration = int(item.get('duration', 15))
+        def get_valid_time_range(config_item):
+            start = config_item.get('start', 0)
+            end = config_item.get('end', 0) 
+            # 如果起始时间大于等于结束时间，调整起始时间
+            if start >= end:
+                start = end - 1
+            return start, end
 
+        # 在使用select_slider之前，先获取有效的时间范围
+        start_time, end_time = get_valid_time_range(config['main'][current_index])
+        # 然后再传入select_slider
         start_time, end_time = st.select_slider(
-            "选择片段的开始和结束时间", 
-            options=range(0, video_duration), 
-            value=(current_start, current_start + current_duration)
+            "选择视频片段的起始和结束时间",
+            options=range(0, video_duration),
+            value=(start_time, end_time)
         )
         
         # 计算总秒数并更新config
