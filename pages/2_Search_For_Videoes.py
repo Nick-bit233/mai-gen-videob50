@@ -98,14 +98,14 @@ if st.button("保存配置"):
     st.success("配置已保存！")
     st.session_state.config_saved_step2 = True  # 添加状态标记
 
-def st_init_downloader(placeholder):
+def st_init_downloader():
     global downloader, no_credential, use_oauth, use_custom_po_token, use_auto_po_token, po_token, visitor_data
 
     if downloader == "youtube":
-        placeholder.write("正在初始化YouTube下载器...")
+        st.toast("正在初始化YouTube下载器...")
         use_potoken = use_custom_po_token or use_auto_po_token
         if use_oauth and not use_potoken:
-            placeholder.write("使用OAuth登录...请点击控制台窗口输出的链接进行登录")
+            st.toast("使用OAuth登录...请点击控制台窗口输出的链接进行登录")
         dl_instance = PurePytubefixDownloader(
             proxy=proxy_address if use_proxy else None,
             use_potoken=use_potoken,
@@ -115,9 +115,9 @@ def st_init_downloader(placeholder):
         )
 
     elif downloader == "bilibili":
-        placeholder.write("正在初始化Bilibili下载器...")
+        st.toast("正在初始化Bilibili下载器...")
         if not no_credential:
-            placeholder.write("正在使用B站账号登录...")
+            st.toast("正在尝试登录B站...如果弹出二维码窗口，请使用bilibili客户端扫描进行登录")
         dl_instance = BilibiliDownloader(
             proxy=proxy_address if use_proxy else None,
             no_credential=no_credential,
@@ -126,7 +126,7 @@ def st_init_downloader(placeholder):
         )
         bilibili_username = dl_instance.get_credential_username()
         if bilibili_username:
-            placeholder.write(f"登录成功，当前登录账号为：{bilibili_username}")
+            st.toast(f"登录成功，当前登录账号为：{bilibili_username}")
     else:
         st.error(f"未配置正确的下载器，请重新确定上方配置！")
         return None
@@ -172,7 +172,7 @@ if st.session_state.get('config_saved_step2', False):
     
     if st.button(button_label):
         try:
-            dl_instance = st_init_downloader(info_placeholder)
+            dl_instance = st_init_downloader()
             st_search_b50_videoes(dl_instance, info_placeholder, search_wait_time)
             st.session_state.search_completed = True  # Reset error flag if successful
             st.success("搜索完成！请点击下一步按钮检查详细搜索信息。")

@@ -14,31 +14,52 @@ def convert_to_compatible_types(data):
     return data
 
 def update_editor(placeholder, config, current_index):
+
+    def update_match_info(placeholder, v_info_match):
+        with placeholder.container(border=True):
+            # 使用markdown添加带颜色的标题
+            st.markdown('<p style="color: #28a745;">当前匹配的视频信息:</p>', unsafe_allow_html=True)
+            # 只取id, title, url, duration
+            show_match_info = {k: v_info_match[k] for k in ['id', 'title', 'url', 'duration']}
+            st.dataframe(convert_to_compatible_types(show_match_info), width=800)
+
     with placeholder.container(border=True):
         song = config[current_index]
         # 获取当前匹配的视频信息
         st.subheader(f"当前记录: {song['clip_id']}")
-        st.write("当前匹配的视频信息:")
-        # 只取id, title, url, duration
-        show_match_info = {k: song['video_info_match'][k] for k in ['id', 'title', 'url', 'duration']}
-        current_match_info = st.dataframe(convert_to_compatible_types(show_match_info), width=800)
+
+        match_info_placeholder = st.empty()
+        update_match_info(match_info_placeholder, song['video_info_match'])
+
         # 获取当前所有搜索得到的视频信息
         st.write("当前所有搜索得到的视频信息:")
         to_match_videos = song['video_info_list']
-        for video in to_match_videos:
-            video['index'] = str(to_match_videos.index(video) + 1)
-        st.dataframe(to_match_videos, column_order=["index", "id", "title", "url", "duration", "aid", "cid"])
+        
+        # 为每个视频创建一个格式化的标签，包含可点击的链接
+        video_options = [
+            f"[{i+1}] 【{video['title']}】({video['duration']}秒) [🔗{video['id']}]({video['url']})"
+            for i, video in enumerate(to_match_videos)
+        ]
+        
+        selected_index = st.radio(
+            "选择正确匹配的谱面确认视频:",
+            options=range(len(video_options)),
+            format_func=lambda x: video_options[x],
+            key=f"radio_select_{song['clip_id']}",
+            label_visibility="visible"
+        )
 
-        selected_index = st.number_input("选择正确匹配的谱面确认视频信息（选择序号）", 
-                                         min_value=1, 
-                                         max_value=len(to_match_videos), 
-                                         value=1,
-                                         key=f"selected_index_{song['clip_id']}")
+        # 显示选中视频的详细信息
+        if selected_index is not None:
+            st.write("已选择视频的详细信息:")
+            selected_video = to_match_videos[selected_index]
+            st.dataframe(convert_to_compatible_types(selected_video), width=800)
 
         if st.button("确定使用该信息", key=f"confirm_selected_match_{song['clip_id']}"):
-            song['video_info_match'] = to_match_videos[selected_index - 1]
+            song['video_info_match'] = to_match_videos[selected_index]
             save_config(b50_config_file, b50_config)
             st.toast("配置已保存！")
+            update_match_info(match_info_placeholder, song['video_info_match'])
         
         # 如果搜索结果均不符合，手动输入地址：
         st.write("以上都不对？输入正确的谱面确认视频地址：")
@@ -52,8 +73,8 @@ def update_editor(placeholder, config, current_index):
             }
             song['video_info_match'] = new_match_info
             save_config(b50_config_file, b50_config)
-            # current_match_info = st.dataframe(convert_to_compatible_types(song['video_info_match']), width=800)
             st.toast("配置已保存！")
+            update_match_info(match_info_placeholder, song['video_info_match'])
 
 b50_config_file = os.path.join(os.path.dirname(__file__), '..', 'b50_datas', f"b50_config_{G_config['USER_ID']}.json")
 b50_config = load_config(b50_config_file)
