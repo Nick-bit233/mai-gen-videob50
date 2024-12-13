@@ -173,6 +173,8 @@ if st.session_state.get('config_saved_step2', False):
     if st.button(button_label):
         try:
             dl_instance = st_init_downloader()
+            # 缓存downloader对象
+            st.session_state.downloader = dl_instance
             st_search_b50_videoes(dl_instance, info_placeholder, search_wait_time)
             st.session_state.search_completed = True  # Reset error flag if successful
             st.success("搜索完成！请点击下一步按钮检查详细搜索信息。")

@@ -210,6 +210,28 @@ def search_b50_videos(downloader, b50_data, b50_data_file, search_wait_time=(0,0
     return b50_data
 
 
+def download_one_video(downloader, song, video_download_path, high_res=False):
+    clip_name = f"{song['song_id']}-{song['level_index']}-{song['type']}"
+    
+    # Check if video already exists
+    video_path = os.path.join(video_download_path, f"{clip_name}.mp4")
+    if os.path.exists(video_path):
+        print(f"已找到谱面视频的缓存: {clip_name}")
+        return {"status": "skip", "info": f"已找到谱面视频的缓存: {clip_name}"}
+        
+    if 'video_info_match' not in song or not song['video_info_match']:
+        print(f"Error: 没有{song['title']}-{song['level_label']}-{song['type']}的视频信息，Skipping………")
+        return {"status": "error", "info": f"Error: 没有{song['title']}-{song['level_label']}-{song['type']}的视频信息，Skipping………"}
+    
+    video_info = song['video_info_match']
+    v_id = video_info['id'] 
+    downloader.download_video(v_id, 
+                              clip_name, 
+                              video_download_path, 
+                              high_res=high_res)
+    return {"status": "success", "info": f"下载{clip_name}完成"}
+
+    
 def download_b50_videos(downloader, b50_data, video_download_path, download_wait_time=(0,0)):
     global download_high_res
 
@@ -496,7 +518,7 @@ def st_update_b50_data():
     if os.path.exists(config_output_file):
         with open(config_output_file, "r", encoding="utf-8") as f:
             configs = json.load(f)
-            if "enable_re_modify" in configs and configs["enable_re_modify"]:
+            if "enable_re_modify" in configs and configs["enable_re_modify"] and os.path.exists(b50_data_file):
                 # 从缓存文件中读取b50数据
                 with open(b50_data_file, "r", encoding="utf-8") as f:
                     b50_data = json.load(f)
