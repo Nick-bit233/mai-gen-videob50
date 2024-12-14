@@ -1,7 +1,7 @@
 import streamlit as st
 import os
 import json
-import subprocess
+import traceback
 from utils.PageUtils import *
 
 DEFAULT_VIDEO_MAX_DURATION = 180
@@ -11,8 +11,13 @@ G_config = read_global_config()
 # 通过向empty容器添加新的container，更新预览
 def update_preview(preview_placeholder, config, current_index):
     with preview_placeholder.container(border=True):
-        # 获取当前视频片段
+        # 获取当前视频的配置信息
         item = config['main'][current_index]
+
+        # 检查是否存在图片和视频：
+        if not os.path.exists(item['main_image']):
+            st.error(f"图片文件不存在: {item['main_image']}，请检查前置步骤是否正常完成！")
+            return
 
         # 显示当前视频片段的内容
         st.subheader(f"当前预览: {item['id']}")
@@ -26,8 +31,25 @@ def update_preview(preview_placeholder, config, current_index):
         with main_col1:
             st.image(item['main_image'], caption="成绩图片")
         with main_col2:
-            st.video(item['video'])
-            # TODO：添加修改视频的按钮
+            
+            @st.dialog("删除视频确认")
+            def delete_video_dialog():
+                st.warning("确定要删除这个视频吗？此操作不可撤销！")
+                if st.button("确认删除", key=f"confirm_delete_{item['id']}"):
+                    try:
+                        os.remove(item['video'])
+                        st.toast("视频已删除！")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"删除视频失败: 详细错误信息: {traceback.format_exc()}")
+
+            if os.path.exists(item['video']):
+                st.video(item['video'])         
+                st.info(f"谱面确认视频不是想要的那个？可能刚才在检查下载链接的时候弄错了什么…… \n 点击下面按钮可以删除此视频，然后请回到上一步重新下载。")
+                if st.button("删除该视频", key=f"delete_btn_{item['id']}"):
+                    delete_video_dialog()
+            else:
+                st.warning("谱面确认视频文件不存在，请检查下载步骤是否正常完成！")
 
         item['text'] = st.text_area("评论", value=item.get('text', ''), key=f"text_{item['id']}")
 
@@ -93,7 +115,7 @@ if config:
     # 快速跳转组件的实现
     def on_jump_to_clip():
         target_index = video_ids.index(clip_selector)
-        print(f"跳转到视频片段: {target_index}")
+        # print(f"跳转到视频片段: {target_index}")
         if target_index != st.session_state.current_index:
             # 保存当前配置
             save_config(f"./b50_datas/video_configs_{G_config['USER_ID']}.json", config)

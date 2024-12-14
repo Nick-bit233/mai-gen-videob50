@@ -14,7 +14,7 @@ def st_download_video(placeholder, dl_instance, G_config, b50_config):
     search_wait_time = G_config['SEARCH_WAIT_TIME']
     download_high_res = G_config['DOWNLOAD_HIGH_RES']
     video_download_path = f"./videos/downloads"
-    with placeholder.container(border=True, height=600):
+    with placeholder.container(border=True, height=560):
         with st.spinner("正在下载视频……"):
             progress_bar = st.progress(0)
             write_container = st.container(border=True, height=400)
@@ -35,6 +35,8 @@ def st_download_video(placeholder, dl_instance, G_config, b50_config):
                 # 等待几秒，以减少被检测为bot的风险
                 if search_wait_time[0] > 0 and search_wait_time[1] > search_wait_time[0]:
                     time.sleep(random.randint(search_wait_time[0], search_wait_time[1]))
+
+            st.success("下载完成！请点击下一步按钮核对视频素材的详细信息。")
 
 # 在显示数据框之前，将数据转换为兼容的格式
 def convert_to_compatible_types(data):
@@ -207,7 +209,6 @@ if b50_config:
         try:
             st_download_video(download_info_placeholder, dl_instance, G_config, b50_config)
             st.session_state.download_completed = True  # Reset error flag if successful
-            st.success("下载完成！请点击下一步按钮检查详细下载信息。")
         except Exception as e:
             st.session_state.download_completed = False
             st.error(f"下载过程中出现错误: {e}, 请尝试重新下载")

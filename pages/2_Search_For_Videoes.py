@@ -177,7 +177,7 @@ if st.session_state.get('config_saved_step2', False):
             st.session_state.downloader = dl_instance
             st_search_b50_videoes(dl_instance, info_placeholder, search_wait_time)
             st.session_state.search_completed = True  # Reset error flag if successful
-            st.success("搜索完成！请点击下一步按钮检查详细搜索信息。")
+            st.success("搜索完成！请点击下一步按钮检查搜索到的视频信息，以及下载视频。")
         except Exception as e:
             st.session_state.search_completed = False
             st.error(f"搜索过程中出现错误: {e}, 请尝试重新搜索")
