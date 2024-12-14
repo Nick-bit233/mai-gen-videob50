@@ -3,10 +3,16 @@ import os
 import json
 import traceback
 from utils.PageUtils import *
+from pre_gen import st_gene_resource_config
 
 DEFAULT_VIDEO_MAX_DURATION = 180
 
+st.header("Step 4-1: 视频内容编辑")
+
 G_config = read_global_config()
+image_output_path = f"./b50_images/{G_config['USER_ID']}"
+video_download_path = f"./videos/downloads"
+config_output_file = f"./b50_datas/video_configs_{G_config['USER_ID']}.json"
 
 # 通过向empty容器添加新的container，更新预览
 def update_preview(preview_placeholder, config, current_index):
@@ -94,10 +100,21 @@ def update_preview(preview_placeholder, config, current_index):
             st.write(f"结束时间: {new_end_minutes:02d}:{new_end_seconds:02d}")
         st.write(f"持续时间: {item['duration']}")
 
-st.header("Step 4: 视频内容编辑")
-
 # 加载配置文件
 config = load_config(f"./b50_datas/video_configs_{G_config['USER_ID']}.json")
+if not config or 'main' not in config:
+    st.toast("未找到视频生成配置或当前视频生成配置无效，正在重新生成……")
+    b50_config_file = os.path.join(os.path.dirname(__file__), '..', 'b50_datas', f"b50_config_{G_config['USER_ID']}.json")
+    b50_config = load_config(b50_config_file) # TODO: B50 config 区分 yt 和 bilibili
+    try:
+        config = st_gene_resource_config(b50_config, 
+                                         image_output_path, video_download_path, config_output_file,
+                                         G_config['CLIP_START_INTERVAL'], G_config['CLIP_PLAY_TIME'], G_config['DEFAULT_COMMENT_PLACEHOLDERS'])
+        st.success("视频配置生成完成！")
+    except Exception as e:
+        st.error(f"视频配置生成失败，错误信息: {traceback.format_exc()}")
+        config = None
+
 if config:
     # 获取所有视频片段的ID
     video_ids = [item['id'] + " : " + item['achievement_title'] for item in config['main']]
@@ -165,3 +182,6 @@ if config:
     if st.button("保存配置"):
         save_config(f"./b50_datas/video_configs_{G_config['USER_ID']}.json", config)
         st.success("配置已保存！")
+
+if st.button("进行下一步"):
+    st.switch_page("pages/5_Edit_OpEd_Content.py")

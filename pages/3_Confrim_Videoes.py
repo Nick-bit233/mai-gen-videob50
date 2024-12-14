@@ -205,7 +205,7 @@ if b50_config:
 
     download_info_placeholder = st.empty()
     st.session_state.download_completed = False
-    if st.button("确认当前配置，开始下载视频"):
+    if st.button("确认当前配置，开始下载视频", disabled=not dl_instance):
         try:
             st_download_video(download_info_placeholder, dl_instance, G_config, b50_config)
             st.session_state.download_completed = True  # Reset error flag if successful
