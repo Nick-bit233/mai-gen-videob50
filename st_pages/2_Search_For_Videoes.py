@@ -138,6 +138,11 @@ def st_init_downloader():
 b50_data_file = os.path.join(os.path.dirname(__file__), '..', 'b50_datas', f"b50_config_{username}.json")
 # 根据下载器类型，生成对应的b50_config副本
 b50_config_file = os.path.join(os.path.dirname(__file__), '..', 'b50_datas', f"b50_config_{username}_{downloader}.json")
+
+if not os.path.exists(b50_data_file):
+    st.error("未找到b50数据文件，请先进行第一步配置！")
+    st.stop()
+
 if not os.path.exists(b50_config_file):
     # 复制b50_data_file到b50_config_file
     shutil.copy(b50_data_file, b50_config_file)
