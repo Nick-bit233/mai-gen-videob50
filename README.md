@@ -28,15 +28,13 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 - [x] [bilibili](https://www.bilibili.com/)
 
-计划开发特性：
+计划特性开发情况：
 
-- [ ] 可交互的谱面确认视频选择和替换配置界面
+- [x] 可交互的全流程界面（streamlit）
 
 - [ ] 更好的B50数据存档和更新覆盖确认
 
 - [ ] 可自行筛选的特殊B50数据（如AP B50）
-
-- [ ] 可交互的生成选项配置界面
 
 - [ ] （远期）支持中二B30视频生成
 
@@ -52,10 +50,37 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 - 如果你具有基本的计算机和python知识，可以独立（或者GPT辅助）完成环境配置和脚本操作，请直接clone仓库代码，参考[使用说明](#使用说明)开始使用!
 
-- 如果你没有上述经验，请从Release页面下载打包版本，并参考该[教程视频](https://www.bilibili.com/video/BV1bJi2YVEiE/?p=2)使用。
+- 如果你没有上述经验，请**从右侧Release页面下载最新的**打包版本，双击包内的`start.bat`文件启动应用使用。
 
 
 ## 使用说明
+
+1. 安装python环境和依赖，推荐使用 `conda`。注意，python版本需要3.10以上。
+
+    ```bash
+    conda create -n mai-gen-videob50 python=3.10
+    conda activate mai-gen-videob50
+    ```
+
+2. 从 requirements.txt 安装依赖
+
+    ```bash
+    pip install -r requirements.txt
+    ```
+    > 注意，如果你使用linux系统，在登陆b站过程中需要弹出tkinter窗口。而在linux的python没有预装`tk`库，请自行使用`sudo apt-get install python3-tk`安装。
+
+3. 使用下面的命令启动streamlit网页应用
+
+    ```
+    streamlit run st_app.py
+    ```
+    在网页运行程序时，请保持终端窗口打开，其中可能会输出有用的调试信息。
+    
+注意，如果你使用youtube源且使用代理下载，你可能会遇到风控情况，此时请额外按照youtube的 po token生成相关依赖，具体请参考：[使用自定义OAuth或PO Token](UseTokenGuide.md)
+
+---
+
+### 如果你使用V3.0.0之前的老版本，请参考下面的旧版使用说明：
 
 ### 环境安装和准备工作
 
