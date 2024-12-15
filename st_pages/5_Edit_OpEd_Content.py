@@ -4,7 +4,7 @@ import json
 import traceback
 from utils.PageUtils import *
 
-st.header("Step 4-2: 编辑片头/片尾内容")
+st.header("Step 4-2: 片头/片尾内容编辑")
 
 G_config = read_global_config()
 
@@ -87,4 +87,6 @@ if config:
     st.write("配置完毕后，请点击下面按钮进入视频生成步骤（请注意两边都要点击保存）")
     if st.button("进行下一步"):
         st.switch_page("st_pages/6_Compostie_Videoes.py")
+else:
+    st.warning("未找到视频生成生成配置！请检查是否完成了4-1步骤！")
 

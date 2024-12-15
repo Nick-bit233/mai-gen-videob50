@@ -19,7 +19,7 @@ SEARCH_WAIT_TIME: !!python/tuple
 - 2
 USER_ID: nickbit
 USE_ALL_CACHE: false
-USE_AUTO_PO_TOKEN: true
+USE_AUTO_PO_TOKEN: false
 USE_CUSTOM_PO_TOKEN: false
 USE_OAUTH: false
 USE_PROXY: false

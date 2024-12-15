@@ -6,6 +6,8 @@ from utils.PageUtils import *
 
 st.header("Step 5: 视频生成")
 
+st.info("在执行视频生成前，请确保已经完成了4-1和4-2步骤，并且检查所有填写的配置无误。")
+
 G_config = read_global_config()
 
 st.write("视频生成相关设置")
@@ -59,6 +61,7 @@ if st.button("开始生成视频"):
     if v_mode_index == 0:
         try:
             with placeholder.container(border=True, height=560):
+                st.warning("生成过程中请不要手动跳转到其他页面，或刷新本页面，否则可能导致生成失败！")
                 with st.spinner("正在生成所有视频片段……"):
                     progress_bar = st.progress(0)
                     write_container = st.container(border=True, height=400)
@@ -81,6 +84,8 @@ if st.button("开始生成视频"):
     else:
         try:
             with placeholder.container(border=True, height=560):
+                st.info("请注意，生成完整视频通常需要一定时间，您可以在控制台窗口中查看进度")
+                st.warning("生成过程中请不要手动跳转到其他页面，或刷新本页面，否则可能导致生成失败！")
                 with st.spinner("正在生成完整视频……"):
                     output_info = generate_complete_video(configs=video_configs, 
                                                     username=G_config['USER_ID'],
@@ -96,5 +101,4 @@ if st.button("开始生成视频"):
             subprocess.run(f"explorer {video_output_path}", shell=True)
         except Exception as e:
             st.error(f"完整视频生成失败，错误详情: {traceback.print_exc()}")
-
 

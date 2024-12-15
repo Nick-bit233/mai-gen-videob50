@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import shutil
 import random
 import traceback
 import streamlit as st
@@ -19,8 +20,7 @@ _use_auto_po_token = G_config.get('USE_AUTO_PO_TOKEN', False)
 _use_oauth = G_config.get('USE_OAUTH', False)
 _customer_po_token = G_config.get('CUSTOMER_PO_TOKEN', '')
 
-
-st.header("Step 2: 搜索视频和下载")
+st.header("Step 2: 谱面确认视频搜索和抓取")
 
 st.write("请先确认视频抓取设置")
 
@@ -97,6 +97,7 @@ if st.button("保存配置"):
     write_global_config(G_config)
     st.success("配置已保存！")
     st.session_state.config_saved_step2 = True  # 添加状态标记
+    st.session_state.downloader_type = downloader
 
 def st_init_downloader():
     global downloader, no_credential, use_oauth, use_custom_po_token, use_auto_po_token, po_token, visitor_data
@@ -135,17 +136,22 @@ def st_init_downloader():
 
 # b50 config文件位置
 b50_data_file = os.path.join(os.path.dirname(__file__), '..', 'b50_datas', f"b50_config_{username}.json")
+# 根据下载器类型，生成对应的b50_config副本
+b50_config_file = os.path.join(os.path.dirname(__file__), '..', 'b50_datas', f"b50_config_{username}_{downloader}.json")
+if not os.path.exists(b50_config_file):
+    # 复制b50_data_file到b50_config_file
+    shutil.copy(b50_data_file, b50_config_file)
 
 def st_search_b50_videoes(dl_instance, placeholder, search_wait_time):
     # read b50_data
-    b50_data = load_config(b50_data_file)
+    b50_config = load_config(b50_config_file)
 
     with placeholder.container(border=True, height=600):
         with st.spinner("正在搜索b50视频信息..."):
             progress_bar = st.progress(0)
             write_container = st.container(border=True, height=400)
             i = 0
-            for song in b50_data:
+            for song in b50_config:
                 i += 1
                 progress_bar.progress(i / 50, text=f"正在搜索({i}/50): {song['title']}")
                 if 'video_info_match' in song and song['video_info_match']:
@@ -156,8 +162,8 @@ def st_search_b50_videoes(dl_instance, placeholder, search_wait_time):
                 write_container.write(f"【{i}/50】{ouput_info}")
 
                 # 每次搜索后都写入b50_data_file
-                with open(b50_data_file, "w", encoding="utf-8") as f:
-                    json.dump(b50_data, f, ensure_ascii=False, indent=4)
+                with open(b50_config_file, "w", encoding="utf-8") as f:
+                    json.dump(b50_config, f, ensure_ascii=False, indent=4)
                 
                 # 等待几秒，以减少被检测为bot的风险
                 if search_wait_time[0] > 0 and search_wait_time[1] > search_wait_time[0]:

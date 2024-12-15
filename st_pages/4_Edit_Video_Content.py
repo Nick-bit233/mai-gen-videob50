@@ -12,7 +12,7 @@ st.header("Step 4-1: 视频内容编辑")
 G_config = read_global_config()
 image_output_path = f"./b50_images/{G_config['USER_ID']}"
 video_download_path = f"./videos/downloads"
-config_output_file = f"./b50_datas/video_configs_{G_config['USER_ID']}.json"
+video_config_output_file = f"./b50_datas/video_configs_{G_config['USER_ID']}.json"
 
 # 通过向empty容器添加新的container，更新预览
 def update_preview(preview_placeholder, config, current_index):
@@ -101,23 +101,29 @@ def update_preview(preview_placeholder, config, current_index):
         st.write(f"持续时间: {item['duration']}")
 
 # 加载配置文件
-config = load_config(f"./b50_datas/video_configs_{G_config['USER_ID']}.json")
-if not config or 'main' not in config:
+if 'downloader_type' in st.session_state:
+    downloader_type = st.session_state.downloader_type
+else:
+    downloader_type = G_config['DOWNLOADER']
+
+b50_config_file = os.path.join(os.path.dirname(__file__), '..', 'b50_datas', f"b50_config_{G_config['USER_ID']}_{downloader_type}.json")
+b50_config = load_config(b50_config_file)
+
+video_config = load_config(video_config_output_file)
+if not video_config or 'main' not in video_config:
     st.toast("未找到视频生成配置或当前视频生成配置无效，正在重新生成……")
-    b50_config_file = os.path.join(os.path.dirname(__file__), '..', 'b50_datas', f"b50_config_{G_config['USER_ID']}.json")
-    b50_config = load_config(b50_config_file) # TODO: B50 config 区分 yt 和 bilibili
     try:
-        config = st_gene_resource_config(b50_config, 
-                                         image_output_path, video_download_path, config_output_file,
+        video_config = st_gene_resource_config(b50_config, 
+                                         image_output_path, video_download_path, video_config_output_file,
                                          G_config['CLIP_START_INTERVAL'], G_config['CLIP_PLAY_TIME'], G_config['DEFAULT_COMMENT_PLACEHOLDERS'])
         st.success("视频配置生成完成！")
     except Exception as e:
         st.error(f"视频配置生成失败，错误信息: {traceback.format_exc()}")
-        config = None
+        video_config = None
 
-if config:
+if video_config:
     # 获取所有视频片段的ID
-    video_ids = [item['id'] + " : " + item['achievement_title'] for item in config['main']]
+    video_ids = [item['id'] + " : " + item['achievement_title'] for item in video_config['main']]
     # 使用session_state来存储当前选择的视频片段索引
     if 'current_index' not in st.session_state:
         st.session_state.current_index = 0
@@ -127,7 +133,7 @@ if config:
 
     # 片段预览和编辑组件，使用empty容器
     preview_placeholder = st.empty()
-    update_preview(preview_placeholder, config, st.session_state.current_index)
+    update_preview(preview_placeholder, video_config, st.session_state.current_index)
 
     # 快速跳转组件的实现
     def on_jump_to_clip():
@@ -135,11 +141,11 @@ if config:
         # print(f"跳转到视频片段: {target_index}")
         if target_index != st.session_state.current_index:
             # 保存当前配置
-            save_config(f"./b50_datas/video_configs_{G_config['USER_ID']}.json", config)
+            save_config(video_config_output_file, video_config)
             st.toast("配置已保存！")
             # 更新session_state
             st.session_state.current_index = target_index
-            update_preview(preview_placeholder, config, st.session_state.current_index)
+            update_preview(preview_placeholder, video_config, st.session_state.current_index)
         else:
             st.toast("已经是当前视频片段！")
     
@@ -159,28 +165,28 @@ if config:
         if st.button("上一个"):
             if st.session_state.current_index > 0:
                 # 保存当前配置
-                save_config(f"./b50_datas/video_configs_{G_config['USER_ID']}.json", config)
+                save_config(video_config_output_file, video_config)
                 st.toast("配置已保存！")
                 # 切换到上一个视频片段
                 st.session_state.current_index -= 1
-                update_preview(preview_placeholder, config, st.session_state.current_index)
+                update_preview(preview_placeholder, video_config, st.session_state.current_index)
             else:
                 st.toast("已经是第一个视频片段！")
     with col2:
         if st.button("下一个"):
             if st.session_state.current_index < len(video_ids) - 1:
                 # 保存当前配置
-                save_config(f"./b50_datas/video_configs_{G_config['USER_ID']}.json", config)
+                save_config(video_config_output_file, video_config)
                 st.toast("配置已保存！")
                 # 切换到下一个视频片段
                 st.session_state.current_index += 1
-                update_preview(preview_placeholder, config, st.session_state.current_index)
+                update_preview(preview_placeholder, video_config, st.session_state.current_index)
             else:
                 st.toast("已经是最后一个视频片段！")
     
     # 保存配置按钮
     if st.button("保存配置"):
-        save_config(f"./b50_datas/video_configs_{G_config['USER_ID']}.json", config)
+        save_config(video_config_output_file, video_config)
         st.success("配置已保存！")
 
 if st.button("进行下一步"):

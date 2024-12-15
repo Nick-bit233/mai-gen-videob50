@@ -8,7 +8,7 @@ from pre_gen import search_one_video, download_one_video
 
 G_config = read_global_config()
 
-st.header("Step 3: 谱面视频详情确认")
+st.header("Step 3: 谱面视频信息检查和下载")
 
 def st_download_video(placeholder, dl_instance, G_config, b50_config):
     search_wait_time = G_config['SEARCH_WAIT_TIME']
@@ -126,7 +126,17 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
                     st.toast("配置已保存！")
                     update_match_info(match_info_placeholder, song['video_info_match'])
 
-b50_config_file = os.path.join(os.path.dirname(__file__), '..', 'b50_datas', f"b50_config_{G_config['USER_ID']}.json")
+# 尝试读取缓存下载器
+if 'downloader' in st.session_state and 'downloader_type' in st.session_state:
+    downloader_type = st.session_state.downloader_type
+    dl_instance = st.session_state.downloader
+else:
+    downloader_type = ""
+    dl_instance = None
+    st.error("未找到缓存的下载器，无法进行手动搜索和下载视频！请回到上一页先进行一次搜索！")
+    st.stop()
+
+b50_config_file = os.path.join(os.path.dirname(__file__), '..', 'b50_datas', f"b50_config_{G_config['USER_ID']}_{downloader_type}.json")
 b50_config = load_config(b50_config_file)
 
 if b50_config:
@@ -135,13 +145,6 @@ if b50_config:
     # 使用session_state来存储当前选择的视频片段索引
     if 'current_index' not in st.session_state:
         st.session_state.current_index = 0
-
-    # 尝试读取缓存下载器
-    if 'downloader' in st.session_state:
-        dl_instance = st.session_state.downloader
-    else:
-        dl_instance = None
-        st.error("未找到缓存的下载器，无法进行手动搜索和下载视频！请尝试回到上一页先进行搜索！")
 
     # 快速跳转组件的容器
     selector_container = st.container(border=True)
@@ -154,10 +157,6 @@ if b50_config:
     def on_jump_to_record():
         target_index = record_ids.index(clip_selector)
         if target_index != st.session_state.current_index:
-            # # 保存当前配置
-            # save_config(b50_config_file, b50_config)
-            # st.toast("配置已保存！")
-            # 更新session_state
             st.session_state.current_index = target_index
             update_editor(link_editor_placeholder, b50_config, st.session_state.current_index, dl_instance)
         else:
@@ -200,7 +199,7 @@ if b50_config:
     
     # 保存配置按钮
     if st.button("保存配置"):
-        save_config(f"./b50_datas/b50_config_{G_config['USER_ID']}.json", b50_config)
+        save_config(b50_config_file, b50_config)
         st.success("配置已保存！")
 
     download_info_placeholder = st.empty()
@@ -216,4 +215,50 @@ if b50_config:
 
     if st.button("进行下一步", disabled=not st.session_state.download_completed):
         st.switch_page("st_pages/4_Edit_Video_Content.py")
+
+    with st.container(border=True):
+        video_config_file = f"./b50_datas/video_configs_{G_config['USER_ID']}.json"
+        video_download_path = f"./videos/downloads"
+        st.warning("危险区域 Danger Zone")
+        st.write("如果你在使用过程中更换了下载器，你可能希望删除已生成的配置文件，以及在本地缓存文件中下载的视频。")
+        st.markdown(f"`./videos/downloads` 目录中是已下载的视频")
+        st.markdown(f"`./b50_datas/video_configs_{G_config['USER_ID']}.json` 是生成视频的配置文件")
+        st.write("你可以手动检查、修改这些文件，或者点击下面按钮删除已生成的配置文件或视频。")
+
+        @st.dialog("删除配置确认")
+        def delete_video_config_dialog(file):
+            st.warning("确定要执行删除操作吗？此操作不可撤销！")
+            if st.button("确认删除", key=f"confirm_delete_video_config"):
+                try:
+                    os.remove(file)
+                    st.toast("文件已删除！")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"删除文件失败: 详细错误信息: {traceback.format_exc()}")
+
+        if os.path.exists(video_config_file):
+            if st.button("删除视频生成配置文件", key=f"delete_btn_video_config"):
+                delete_video_config_dialog(video_config_file)
+        else:
+            st.info("当前还没有创建视频生成配置文件")
+
+        @st.dialog("删除视频确认")
+        def delete_videoes_dialog(file_path):
+            st.warning("确定要执行删除操作吗？此操作不可撤销！")
+            if st.button("确认删除", key=f"confirm_delete_videoes"):
+                try:
+                    for file in os.listdir(file_path):
+                        os.remove(os.path.join(file_path, file))
+                    st.toast("所有已下载视频已清空！")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"删除视频失败: 详细错误信息: {traceback.format_exc()}")
+
+        if os.path.exists(video_download_path):
+            if st.button("删除所有已下载视频", key=f"delete_btn_videoes"):
+                delete_videoes_dialog(video_download_path)
+        else:
+            st.info("当前还没有下载任何视频")
+
+
 

@@ -96,7 +96,7 @@ if st.session_state.get('config_saved', False):
                 st.error(f"生成成绩背景图片时发生错误: {e}")
                 st.error(traceback.format_exc())
         if st.button("进行下一步"):
-            st.switch_page("pages/2_Search_For_Videoes.py")
+            st.switch_page("st_pages/2_Search_For_Videoes.py")
 
 else:
     st.warning("请先确定配置！")  # 如果未保存配置，给出提示
