@@ -12,25 +12,25 @@ from gene_images import generate_b50_images
 from utils.Utils import get_b50_data_from_fish
 from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
 
-# Global configuration variables
-global_config = {}
-username = ""
-use_proxy = False
-proxy = ""
-downloader_type = ""
-no_bilibili_credential = False
-use_customer_potoken = False
-use_auto_potoken = False
-use_potoken = False
-use_oauth = False
-search_max_results = 0
-search_wait_time = (0, 0)
-use_all_cache = False
-download_high_res = False
-clip_play_time = 0
-clip_start_interval = (0, 0)
-full_last_clip = False
-default_comment_placeholders = True
+# # Global configuration variables
+# global_config = {}
+# username = ""
+# use_proxy = False
+# proxy = ""
+# downloader_type = ""
+# no_bilibili_credential = False
+# use_customer_potoken = False
+# use_auto_potoken = False
+# use_potoken = False
+# use_oauth = False
+# search_max_results = 0
+# search_wait_time = (0, 0)
+# use_all_cache = False
+# download_high_res = False
+# clip_play_time = 0
+# clip_start_interval = (0, 0)
+# full_last_clip = False
+# default_comment_placeholders = True
 
 def open_browser():
     webbrowser.open('http://localhost:8000')
@@ -156,6 +156,35 @@ def get_keyword(downloader_type, title_name, level_index, type):
         return f"{prefix} {'DX谱面' if type != 'SD' else '标准谱面'} {title_name} {dif_CN_name} {dif_name} "
     
 
+def search_one_video(downloader, song_data):
+    title_name = song_data['title']
+    difficulty_name = song_data['level_label']
+    level_index = song_data['level_index']
+    type = song_data['type']
+    dl_type = "youtube" if isinstance(downloader, PurePytubefixDownloader) \
+                else "bilibili" if isinstance(downloader, BilibiliDownloader) \
+                else "None"
+    keyword = get_keyword(dl_type, title_name, level_index, type)
+
+    print(f"搜索关键词: {keyword}")
+    videos = downloader.search_video(keyword)
+
+    if len(videos) == 0:
+        output_info = f"Error: 没有找到{title_name}-{difficulty_name}({level_index})-{type}的视频"
+        print(output_info)
+        song_data['video_info_list'] = []
+        song_data['video_info_match'] = {}
+        return song_data, output_info
+
+    match_index = 0
+    output_info = f"首个搜索结果: {videos[match_index]['title']}, {videos[match_index]['url']}"
+    print(f"首个搜索结果: {videos[match_index]['title']}, {videos[match_index]['url']}")
+
+    song_data['video_info_list'] = videos
+    song_data['video_info_match'] = videos[match_index]
+    return song_data, output_info
+
+
 def search_b50_videos(downloader, b50_data, b50_data_file, search_wait_time=(0,0)):
     global search_max_results, downloader_type
 
@@ -166,26 +195,9 @@ def search_b50_videos(downloader, b50_data, b50_data_file, search_wait_time=(0,0
         if 'video_info_match' in song and song['video_info_match']:
             print(f"跳过({i}/50): {song['title']} ，已储存有相关视频信息")
             continue
-        title_name = song['title']
-        difficulty_name = song['level_label']
-        level_index = song['level_index']
-        type = song['type']
-        keyword = get_keyword(downloader_type, title_name, level_index, type)
-
-        print(f"正在搜索视频({i}/50): {keyword}")
-        videos = downloader.search_video(keyword)
-
-        if len(videos) == 0:
-            print(f"Error: 没有找到{title_name}-{difficulty_name}({level_index})-{type}的视频")
-            song['video_info_list'] = []
-            song['video_info_match'] = {}
-            continue
-
-        match_index = 0
-        print(f"首个搜索结果({i}/50): {videos[match_index]['title']}, {videos[match_index]['url']}")
-
-        song['video_info_list'] = videos
-        song['video_info_match'] = videos[match_index]
+        
+        print(f"正在搜索视频({i}/50): {song['title']}")
+        song_data = search_one_video(downloader, song)
 
         # 每次搜索后都写入b50_data_file
         with open(b50_data_file, "w", encoding="utf-8") as f:
@@ -198,6 +210,28 @@ def search_b50_videos(downloader, b50_data, b50_data_file, search_wait_time=(0,0
     return b50_data
 
 
+def download_one_video(downloader, song, video_download_path, high_res=False):
+    clip_name = f"{song['song_id']}-{song['level_index']}-{song['type']}"
+    
+    # Check if video already exists
+    video_path = os.path.join(video_download_path, f"{clip_name}.mp4")
+    if os.path.exists(video_path):
+        print(f"已找到谱面视频的缓存: {clip_name}")
+        return {"status": "skip", "info": f"已找到谱面视频的缓存: {clip_name}"}
+        
+    if 'video_info_match' not in song or not song['video_info_match']:
+        print(f"Error: 没有{song['title']}-{song['level_label']}-{song['type']}的视频信息，Skipping………")
+        return {"status": "error", "info": f"Error: 没有{song['title']}-{song['level_label']}-{song['type']}的视频信息，Skipping………"}
+    
+    video_info = song['video_info_match']
+    v_id = video_info['id'] 
+    downloader.download_video(v_id, 
+                              clip_name, 
+                              video_download_path, 
+                              high_res=high_res)
+    return {"status": "success", "info": f"下载{clip_name}完成"}
+
+    
 def download_b50_videos(downloader, b50_data, video_download_path, download_wait_time=(0,0)):
     global download_high_res
 
@@ -320,6 +354,7 @@ def start_editor_server(config_output_file, image_output_path, video_download_pa
     run_server(config_output_file, image_output_path, video_download_path, username)
     return True
 
+
 def pre_gen():
     print("#####【Mai-genb50视频生成器 - Step1 信息预处理和素材获取】#####")
 
@@ -334,16 +369,7 @@ def pre_gen():
         traceback.print_exc()
 
     # 创建缓存文件夹
-    cache_pathes = [
-        f"./b50_datas",
-        f"./b50_images",
-        f"./videos",
-        f"./videos/downloads",
-        f"./cred_datas"
-    ]
-    for path in cache_pathes:
-        if not os.path.exists(path):
-            os.makedirs(path)
+    st_init_cache_pathes()
 
     b50_raw_file = f"./b50_datas/b50_raw_{username}.json"
     b50_data_file = f"./b50_datas/b50_config_{username}.json"
@@ -450,6 +476,135 @@ def pre_gen():
 
     return 0
 
+def st_init_cache_pathes():
+    cache_pathes = [
+        f"./b50_datas",
+        f"./b50_images",
+        f"./videos",
+        f"./videos/downloads",
+        f"./cred_datas"
+    ]
+    for path in cache_pathes:
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+def st_update_b50_data():
+    load_global_config()
+
+    print("#####【尝试从水鱼获取乐曲更新数据】 #####")
+    try:
+        fetch_music_data()
+    except Exception as e:
+        print(f"Error: 获取乐曲更新数据时发生异常: {e}")
+        traceback.print_exc()
+
+    # 创建缓存文件夹
+    cache_pathes = [
+        f"./b50_datas",
+        f"./b50_images",
+        f"./videos",
+        f"./videos/downloads",
+        f"./cred_datas"
+    ]
+    for path in cache_pathes:
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+    b50_raw_file = f"./b50_datas/b50_raw_{username}.json"
+    b50_data_file = f"./b50_datas/b50_config_{username}.json"
+    config_output_file = f"./b50_datas/video_configs_{username}.json"
+
+    # 检查用户是否已有完整的配置文件
+    if os.path.exists(config_output_file):
+        with open(config_output_file, "r", encoding="utf-8") as f:
+            configs = json.load(f)
+            if "enable_re_modify" in configs and configs["enable_re_modify"] and os.path.exists(b50_data_file):
+                # 从缓存文件中读取b50数据
+                with open(b50_data_file, "r", encoding="utf-8") as f:
+                    b50_data = json.load(f)
+                # "#####【已检测到用户{username}的视频内容缓存文件，跳过数据更新】 #####"
+                return {"info": "keep", "data": b50_data}
+    try:
+        b50_data = update_b50_data(b50_raw_file, b50_data_file, username)
+        return {"info": "updated", "data": b50_data}
+    except Exception as e:
+        print(f"Error: 更新b50数据时发生异常: {e}")
+        return {"info": "error", "traceback": traceback.print_exc()}
+
+def st_gene_resource_config(b50_data, 
+                            images_path, videoes_path, output_file,
+                            clip_start_interval, clip_play_time, default_comment_placeholders):
+    intro_clip_data = {
+        "id": "intro_1",
+        "duration": 10,
+        "text": "【请填写前言部分】" if default_comment_placeholders else ""
+    }
+
+    ending_clip_data = {
+        "id": "ending_1",
+        "duration": 10,
+        "text": "【请填写后记部分】" if default_comment_placeholders else ""
+    }
+
+    video_config_data = {
+        "enable_re_modify": False,
+        "intro": [intro_clip_data],
+        "ending": [ending_clip_data],
+        "main": [],
+    }
+
+    main_clips = []
+    
+    if clip_start_interval[0] > clip_start_interval[1]:
+        print(f"Error: 视频开始时间区间设置错误，请检查global_config.yaml文件中的CLIP_START_INTERVAL配置。")
+        clip_start_interval = (clip_start_interval[1], clip_start_interval[1])
+
+    for song in b50_data:
+        if not song['clip_id']:
+            print(f"Error: 没有找到 {song['title']}-{song['level_label']}-{song['type']} 的clip_id，请检查数据格式，跳过该片段。")
+            continue
+        id = song['clip_id']
+        video_name = f"{song['song_id']}-{song['level_index']}-{song['type']}"
+        __image_path = os.path.join(images_path, id + ".png")
+        __image_path = os.path.normpath(__image_path)
+        if not os.path.exists(__image_path):
+            print(f"Error: 没有找到 {id}.png 图片，请检查本地缓存数据。")
+            __image_path = ""
+
+        __video_path = os.path.join(videoes_path, video_name + ".mp4")
+        __video_path = os.path.normpath(__video_path)
+        if not os.path.exists(__video_path):
+            print(f"Error: 没有找到 {video_name}.mp4 视频，请检查本地缓存数据。")
+            __video_path = ""
+        
+        duration = clip_play_time
+        start = random.randint(clip_start_interval[0], clip_start_interval[1])
+        end = start + duration
+
+        main_clip_data = {
+            "id": id,
+            "achievement_title": f"{song['title']}-{song['level_label']}-{song['type']}",
+            "song_id": song['song_id'],
+            "level_index": song['level_index'],
+            "type": song['type'],
+            "main_image": __image_path,
+            "video": __video_path,
+            "duration": duration,
+            "start": start,
+            "end": end,
+            "text": "【请填写b50评价】" if default_comment_placeholders else "",
+        }
+        main_clips.append(main_clip_data)
+
+    # 倒序排列（b15在前，b35在后）
+    main_clips.reverse()
+
+    video_config_data["main"] = main_clips
+
+    with open(output_file, 'w', encoding="utf-8") as file:
+        json.dump(video_config_data, file, ensure_ascii=False, indent=4)
+
+    return video_config_data
 
 if __name__ == "__main__":
     pre_gen()
