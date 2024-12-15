@@ -86,5 +86,5 @@ if config:
 
     st.write("配置完毕后，请点击下面按钮进入视频生成步骤（请注意两边都要点击保存）")
     if st.button("进行下一步"):
-        st.switch_page("pages/6_Compostie_Videoes.py")
+        st.switch_page("st_pages/6_Compostie_Videoes.py")
 

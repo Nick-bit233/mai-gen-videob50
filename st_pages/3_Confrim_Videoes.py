@@ -215,5 +215,5 @@ if b50_config:
             st.error(f"详细错误信息: {traceback.format_exc()}")
 
     if st.button("进行下一步", disabled=not st.session_state.download_completed):
-        st.switch_page("pages/4_Edit_Video_Content.py")
+        st.switch_page("st_pages/4_Edit_Video_Content.py")
 

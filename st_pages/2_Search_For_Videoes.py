@@ -183,7 +183,7 @@ if st.session_state.get('config_saved_step2', False):
             st.error(f"搜索过程中出现错误: {e}, 请尝试重新搜索")
             st.error(f"详细错误信息: {traceback.format_exc()}")
     if st.button("进行下一步", disabled=not st.session_state.search_completed):
-        st.switch_page("pages/3_Confrim_Videoes.py")
+        st.switch_page("st_pages/3_Confrim_Videoes.py")
 else:
     st.warning("请先保存配置！")  # 如果未保存配置，给出提示
 
