@@ -8,7 +8,7 @@ from pre_gen import search_one_video, download_one_video
 
 G_config = read_global_config()
 
-st.header("Step 3: 谱面视频信息检查和下载")
+st.header("Step 3: 视频信息检查和下载")
 
 def st_download_video(placeholder, dl_instance, G_config, b50_config):
     search_wait_time = G_config['SEARCH_WAIT_TIME']

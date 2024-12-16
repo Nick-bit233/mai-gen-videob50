@@ -140,7 +140,7 @@ b50_data_file = os.path.join(os.path.dirname(__file__), '..', 'b50_datas', f"b50
 b50_config_file = os.path.join(os.path.dirname(__file__), '..', 'b50_datas', f"b50_config_{username}_{downloader}.json")
 
 if not os.path.exists(b50_data_file):
-    st.error("未找到b50数据文件，请先进行第一步配置！")
+    st.error("未找到b50数据文件，请先进行第一步！")
     st.stop()
 
 if not os.path.exists(b50_config_file):
@@ -153,13 +153,14 @@ b50_data = load_config(b50_data_file)
 b50_config = load_config(b50_config_file)
 merged_b50_config, update_count = merge_b50_data(b50_data, b50_config)
 save_config(b50_config_file, merged_b50_config)
-st.toast(f"已加载平台{downloader}的b50索引，共更新{update_count}条数据")
+if update_count > 0:
+    st.toast(f"已加载平台{downloader}的b50索引，共更新{update_count}条数据")
 
 def st_search_b50_videoes(dl_instance, placeholder, search_wait_time):
     # read b50_data
     b50_config = load_config(b50_config_file)
 
-    with placeholder.container(border=True, height=600):
+    with placeholder.container(border=True, height=560):
         with st.spinner("正在搜索b50视频信息..."):
             progress_bar = st.progress(0)
             write_container = st.container(border=True, height=400)

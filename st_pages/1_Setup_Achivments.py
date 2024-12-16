@@ -23,12 +23,16 @@ with st.container(border=True):
     username = st.text_input("输入水鱼查分器用户名", value=username)
 
     if st.button("确定"):
-        # 更新配置字典
-        G_config['USER_ID'] = username
-        # 写入配置文件
-        write_global_config(G_config)
-        st.success("配置已保存！")
-        st.session_state.config_saved = True  # 添加状态标记
+        if not username:
+            st.error("用户名不能为空！")
+            st.session_state.config_saved = False
+        else:   
+            # 更新配置字典
+            G_config['USER_ID'] = username
+            # 写入配置文件
+            write_global_config(G_config)
+            st.success("配置已保存！")
+            st.session_state.config_saved = True  # 添加状态标记
 
 def st_generate_b50_images(placeholder, user_id):
     b50_data_file = os.path.join(os.path.dirname(__file__), '..', 'b50_datas', f"b50_config_{user_id}.json")

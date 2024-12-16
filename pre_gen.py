@@ -45,6 +45,9 @@ def merge_b50_data(new_b50_data, old_b50_data):
             new_song['video_info_match'] = cached_song.get('video_info_match', {})
             if new_song == cached_song:
                 keep_count += 1
+        else:
+            new_song['video_info_list'] = []
+            new_song['video_info_match'] = {}
         merged_b50_data.append(new_song)
 
     update_count = len(new_b50_data) - keep_count

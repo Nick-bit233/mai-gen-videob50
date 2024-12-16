@@ -1,6 +1,8 @@
 import os
 import json
 import yaml
+import subprocess
+import platform
 from moviepy import VideoFileClip
 
 
@@ -36,3 +38,18 @@ def get_video_duration(video_path):
     except Exception as e:
         print(f"Error getting video duration: {e}")
         return 0
+
+def open_file_explorer(path):
+    try:
+        # Windows
+        if platform.system() == "Windows":
+            subprocess.run(['explorer', path], check=True)
+        # macOS
+        elif platform.system() == "Darwin":
+            subprocess.run(['open', path], check=True)
+        # Linux
+        elif platform.system() == "Linux":
+            subprocess.run(['xdg-open', path], check=True)
+        return True
+    except Exception as e:
+        return False
