@@ -1,7 +1,7 @@
 CLIP_PLAY_TIME: 10
 CLIP_START_INTERVAL:
 - 15
-- 105
+- 75
 CUSTOMER_PO_TOKEN:
   po_token: ''
   visitor_data: ''
@@ -16,8 +16,8 @@ PROXY_ADDRESS: 127.0.0.1:7890
 SEARCH_MAX_RESULTS: 3
 SEARCH_WAIT_TIME: !!python/tuple
 - 1
-- 2
-USER_ID: nickbit
+- 5
+USER_ID: ''
 USE_ALL_CACHE: false
 USE_AUTO_PO_TOKEN: false
 USE_CUSTOM_PO_TOKEN: false

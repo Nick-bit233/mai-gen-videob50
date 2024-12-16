@@ -30,9 +30,12 @@ def update_preview(preview_placeholder, config, current_index):
         info_col1, info_col2 = st.columns(2)
         with info_col1:
             song_name, song_level, song_type = item['achievement_title'].split('-')
-            st.text(f"谱面名称：{song_name}")
+            st.text(f"谱面名称：{song_name} ({song_type}) {song_level}")
         with info_col2:
-            st.text(f"谱面确认：({song_type}) {song_level}")
+            absolute_path = os.path.abspath(os.path.dirname(item['video']))
+            st.text(f"谱面确认视频文件：{os.path.basename(item['video'])}")
+            if st.button("打开视频所在文件夹", key=f"open_folder_{item['id']}"):
+                open_file_explorer(absolute_path)
         main_col1, main_col2 = st.columns(2)
         with main_col1:
             st.image(item['main_image'], caption="成绩图片")
@@ -118,7 +121,8 @@ if not video_config or 'main' not in video_config:
                                          G_config['CLIP_START_INTERVAL'], G_config['CLIP_PLAY_TIME'], G_config['DEFAULT_COMMENT_PLACEHOLDERS'])
         st.success("视频配置生成完成！")
     except Exception as e:
-        st.error(f"视频配置生成失败，错误信息: {traceback.format_exc()}")
+        st.error(f"视频配置生成失败，请检查步骤1-3是否正常完成！")
+        st.error(f"详细错误信息: {traceback.format_exc()}")
         video_config = None
 
 if video_config:

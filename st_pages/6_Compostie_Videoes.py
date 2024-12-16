@@ -54,6 +54,8 @@ if st.button("开始生成视频"):
     st.toast("配置已保存！")
 
     video_output_path = f"./videos/{G_config['USER_ID']}"
+    if not os.path.exists(video_output_path):
+        os.makedirs(video_output_path)
     video_configs = load_config(f"./b50_datas/video_configs_{G_config['USER_ID']}.json")
     video_res = (v_res_width, v_res_height)
 

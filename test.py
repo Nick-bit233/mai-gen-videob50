@@ -10,7 +10,7 @@ from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
 from update_music_data import fetch_music_data
 
 
-def test_network_proxy(use_proxy, http_proxy):
+def test_network_proxy(use_proxy, http_proxy, downloader_type):
     print("\n## [1/4]测试网络代理配置...")
     try:
         if use_proxy:
@@ -19,11 +19,11 @@ def test_network_proxy(use_proxy, http_proxy):
             print("当前未使用代理，进行直连网络测试")
 
         # 测试访问 youtube
-        youtube_url = "https://www.youtube.com"
+        url = "https://www.youtube.com" if downloader_type == "youtube" else "https://www.bilibili.com"
         if use_proxy:
-            response = requests.get(youtube_url, proxies={"http": http_proxy, "https": http_proxy})
+            response = requests.get(url, proxies={"http": http_proxy, "https": http_proxy})
         else:
-            response = requests.get(youtube_url)
+            response = requests.get(url)
 
         if response.status_code == 200:
             print("## [1/4]网络测试成功")
