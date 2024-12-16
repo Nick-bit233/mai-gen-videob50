@@ -140,6 +140,11 @@ b50_config_file = os.path.join(os.path.dirname(__file__), '..', 'b50_datas', f"b
 b50_config = load_config(b50_config_file)
 
 if b50_config:
+    for song in b50_config:
+        if not song['video_info_match'] or not song['video_info_list'] or not song['clip_id']:
+            st.error(f"未找到有效视频下载信息，请检查上一页步骤是否完成！")
+            st.stop()
+
     # 获取所有视频片段的ID
     record_ids = [f"{item['clip_id']} : {item['title']} {item['level_label']}" for item in b50_config]
     # 使用session_state来存储当前选择的视频片段索引

@@ -4,7 +4,7 @@ import json
 import subprocess
 import traceback
 from copy import deepcopy
-from pre_gen import st_update_b50_data, st_init_cache_pathes
+from pre_gen import update_b50_data, st_init_cache_pathes
 from gene_images import generate_single_image, check_mask_waring
 from utils.PageUtils import *
 
@@ -18,16 +18,17 @@ username = G_config.get('USER_ID', '')
 
 st.header("Step 1: 配置生成器参数和B50成绩数据")
 
-# 配置输入
-username = st.text_input("输入水鱼查分器用户名", value=username)
+with st.container(border=True):
+    # 配置输入
+    username = st.text_input("输入水鱼查分器用户名", value=username)
 
-if st.button("确定"):
-    # 更新配置字典
-    G_config['USER_ID'] = username
-    # 写入配置文件
-    write_global_config(G_config)
-    st.success("配置已保存！")
-    st.session_state.config_saved = True  # 添加状态标记
+    if st.button("确定"):
+        # 更新配置字典
+        G_config['USER_ID'] = username
+        # 写入配置文件
+        write_global_config(G_config)
+        st.success("配置已保存！")
+        st.session_state.config_saved = True  # 添加状态标记
 
 def st_generate_b50_images(placeholder, user_id):
     b50_data_file = os.path.join(os.path.dirname(__file__), '..', 'b50_datas', f"b50_config_{user_id}.json")
@@ -61,42 +62,57 @@ def st_generate_b50_images(placeholder, user_id):
 
 # 仅在配置已保存时显示"开始预生成"按钮
 if st.session_state.get('config_saved', False):
+
+    st_init_cache_pathes()
+
+    b50_raw_file = f"./b50_datas/b50_raw_{username}.json"
+    b50_data_file = f"./b50_datas/b50_config_{username}.json"
+    config_output_file = f"./b50_datas/video_configs_{username}.json"
+    b50_data = None
+
+    if 'data_updated_step1' not in st.session_state:
+        st.session_state.data_updated_step1 = False
+
+    if os.path.exists(b50_data_file):
+        st.warning("检测到用户已缓存有B50数据，是否确认获取最新的数据？这将会覆盖当前已有数据。")
+        options = ["仍然使用缓存数据", "更新并替换当前数据"]
+        replace_confirm = st.radio("请选择", options, index=0)
+        replace_b50_data = replace_confirm == options[1]
+    else:
+        replace_b50_data = True
+
     if st.button("获取B50数据"):
         with st.spinner("正在获取B50数据更新..."):
-            update_info_placeholder = st.empty()
-
-            st_init_cache_pathes()
-            
-            # 执使用你现有的pre_gen.py代码）
-            res = st_update_b50_data()
-            info = res.get("info", "unknown")
-            b50_data = res.get("data", None)
-            if info == "updated":
-                st.success(f"B50数据更新完成，共更新了{len(b50_data)}条数据")
-                st.session_state.data_updated_step1 = True
-            elif info == "keep":
-                st.success(f"B50数据已存在，共更新了{len(b50_data)}条数据")
-                st.session_state.data_updated_step1 = True
-            else:
-                st.error("B50数据更新失败！请点击按钮重试")
-                update_info_placeholder.write(f"错误信息: {b50_data}")
-                st.session_state.data_updated_step1 = False
-            if info == "updated" or info == "keep":
+            update_info_placeholder = st.empty()  
+            try:
+                if replace_b50_data:
+                    b50_data = update_b50_data(b50_raw_file, b50_data_file, username)
+                    st.success("已更新B50数据！")
+                    st.session_state.data_updated_step1 = True
+                else:
+                    b50_data = load_config(b50_data_file)
+                    st.success("已加载缓存的B50数据")
+                    st.session_state.data_updated_step1 = True
                 show_b50_dataframe(update_info_placeholder, username, b50_data)
+            except Exception as e:
+                st.session_state.data_updated_step1 = False
+                st.error(f"获取B50数据时发生错误: {e}")
+                st.error(traceback.format_exc())
 
     if st.session_state.get('data_updated_step1', False):
-        st.write("确认你的B50数据无误后，点击下面按钮生成成绩背景图片")
-        st.info("如果你已经生成过背景图片，且无需更新，可以跳过，请点击“进行下一步”按钮。")
-        if st.button("生成成绩背景图片"):
-            generate_info_placeholder = st.empty()
-            try:
-                st_generate_b50_images(generate_info_placeholder, username)
-                st.success("生成成绩背景图片完成！")
-            except Exception as e:
-                st.error(f"生成成绩背景图片时发生错误: {e}")
-                st.error(traceback.format_exc())
-        if st.button("进行下一步"):
-            st.switch_page("st_pages/2_Search_For_Videoes.py")
+        with st.container(border=True):
+            st.write("确认你的B50数据无误后，请点击下面的按钮，生成成绩背景图片：")
+            if st.button("生成成绩背景图片"):
+                generate_info_placeholder = st.empty()
+                try:
+                    st_generate_b50_images(generate_info_placeholder, username)
+                    st.success("生成成绩背景图片完成！")
+                except Exception as e:
+                    st.error(f"生成成绩背景图片时发生错误: {e}")
+                    st.error(traceback.format_exc())
+            st.info("如果你已经生成过背景图片，且无需更新，可以跳过，请点击进行下一步按钮。")
+            if st.button("进行下一步"):
+                st.switch_page("st_pages/2_Search_For_Videoes.py")
 
 else:
     st.warning("请先确定配置！")  # 如果未保存配置，给出提示

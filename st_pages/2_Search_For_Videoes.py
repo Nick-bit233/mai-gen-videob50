@@ -7,7 +7,7 @@ import traceback
 import streamlit as st
 from utils.PageUtils import load_config, save_config, read_global_config, write_global_config
 from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
-from pre_gen import search_one_video
+from pre_gen import merge_b50_data, search_one_video
 
 G_config = read_global_config()
 username = G_config.get('USER_ID', '')
@@ -146,6 +146,14 @@ if not os.path.exists(b50_data_file):
 if not os.path.exists(b50_config_file):
     # 复制b50_data_file到b50_config_file
     shutil.copy(b50_data_file, b50_config_file)
+    st.toast(f"已生成平台{downloader}的b50索引文件")
+
+# 对比以及合并b50_data_file和b50_config_file
+b50_data = load_config(b50_data_file)
+b50_config = load_config(b50_config_file)
+merged_b50_config, update_count = merge_b50_data(b50_data, b50_config)
+save_config(b50_config_file, merged_b50_config)
+st.toast(f"已加载平台{downloader}的b50索引，共更新{update_count}条数据")
 
 def st_search_b50_videoes(dl_instance, placeholder, search_wait_time):
     # read b50_data
