@@ -26,7 +26,7 @@ MAX_LOGIN_RETRIES = 3
 def custom_po_token_verifier() -> Tuple[str, str]:
 
     with open("global_config.yaml", "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+        config = yaml.load(f, Loader=yaml.FullLoader)
     
     if config['CUSTOMER_PO_TOKEN']['visitor_data'] == "" or config['CUSTOMER_PO_TOKEN']['po_token'] == "":
         print("未配置CUSTOMER_PO_TOKEN，请检查global_config.yaml")

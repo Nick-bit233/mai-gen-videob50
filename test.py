@@ -106,7 +106,7 @@ def test_system():
 
     # 读取全局配置
     with open("global_config.yaml", "r", encoding="utf-8") as file:
-        config = yaml.safe_load(file)
+        config = yaml.load(file, Loader=yaml.FullLoader)
 
     use_proxy = config["USE_PROXY"]
     http_proxy = config["HTTP_PROXY"]
