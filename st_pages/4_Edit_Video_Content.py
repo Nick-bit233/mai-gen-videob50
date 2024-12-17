@@ -29,8 +29,7 @@ def update_preview(preview_placeholder, config, current_index):
         st.subheader(f"当前预览: {item['id']}")
         info_col1, info_col2 = st.columns(2)
         with info_col1:
-            song_name, song_level, song_type = item['achievement_title'].split('-')
-            st.text(f"谱面名称：{song_name} ({song_type}) {song_level}")
+            st.text(f"谱面名称：{item['achievement_title']} ({item['type']}) [{LEVEL_LABELS[item['level_index']]}]")
         with info_col2:
             absolute_path = os.path.abspath(os.path.dirname(item['video']))
             st.text(f"谱面确认视频文件：{os.path.basename(item['video'])}")
@@ -60,7 +59,8 @@ def update_preview(preview_placeholder, config, current_index):
             else:
                 st.warning("谱面确认视频文件不存在，请检查下载步骤是否正常完成！")
 
-        item['text'] = st.text_area("评论", value=item.get('text', ''), key=f"text_{item['id']}")
+        item['text'] = st.text_area("心得体会评论", value=item.get('text', ''), key=f"text_{item['id']}",
+                                    placeholder="请填写b50评价")
 
         # 从文件中获取视频的时长
         video_path = item['video']
@@ -127,7 +127,8 @@ if not video_config or 'main' not in video_config:
 
 if video_config:
     # 获取所有视频片段的ID
-    video_ids = [item['id'] + " : " + item['achievement_title'] for item in video_config['main']]
+    video_ids = [f"{item['id']}: {item['achievement_title']} ({item['type']}) [{LEVEL_LABELS[item['level_index']]}]" \
+                 for item in video_config['main']]
     # 使用session_state来存储当前选择的视频片段索引
     if 'current_index' not in st.session_state:
         st.session_state.current_index = 0

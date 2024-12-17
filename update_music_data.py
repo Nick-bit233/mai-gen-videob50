@@ -55,6 +55,14 @@ def fetch_music_data():
     else:
         print(f"Failed to fetch music data. Status code: {response.status_code}")
 
+def get_single_song_info(song_id: str):
+    with open(music_info_path, 'r', encoding='utf-8') as file:
+        music_data = json.load(file)
+
+    for song in music_data:
+        if song['id'] == song_id:
+            return song
+
 
 if __name__ == "__main__":
     fetch_music_data()

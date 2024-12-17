@@ -5,6 +5,14 @@ import subprocess
 import platform
 from moviepy import VideoFileClip
 
+LEVEL_LABELS = {
+    0: "BASIC",
+    1: "ADVANCED",
+    2: "EXPERT",
+    3: "MASTER",
+    4: "Re:MASTER",
+}
+
 
 def load_config(config_file):
     if os.path.exists(config_file):

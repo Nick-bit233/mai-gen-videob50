@@ -60,21 +60,23 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
 
     def update_match_info(placeholder, v_info_match):
         with placeholder.container(border=True):
+            st.markdown(f"""<p style="color: #00BFFF;">当前记录的谱面信息 : {song['title']} ({song['type']}) [{song['level_label']}]</p>"""
+                        , unsafe_allow_html=True)
             # 使用markdown添加带颜色的标题
-            st.markdown('<p style="color: #28a745;">当前匹配的视频信息:</p>', unsafe_allow_html=True)
+            st.markdown("""<p style="color: #28a745;">当前匹配的视频信息 :</p>""", unsafe_allow_html=True)
             # 使用封装的函数展示视频信息
             show_video_info(v_info_match)
 
     with placeholder.container(border=True):
         song = config[current_index]
         # 获取当前匹配的视频信息
-        st.subheader(f"当前记录: {song['clip_id']}")
+        st.subheader(f"片段ID: {song['clip_id']}")
 
         match_info_placeholder = st.empty()
         update_match_info(match_info_placeholder, song['video_info_match'])
 
         # 获取当前所有搜索得到的视频信息
-        st.write("当前所有搜索得到的视频信息:")
+        st.write("请检查上述视频信息与谱面是否匹配。如果有误，请从下方备选结果中选择正确的视频。")
         to_match_videos = song['video_info_list']
         
         # 为每个视频创建一个格式化的标签，包含可点击的链接
@@ -84,7 +86,7 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
         ]
         
         selected_index = st.radio(
-            "选择正确匹配的谱面确认视频:",
+            "搜索备选结果:",
             options=range(len(video_options)),
             format_func=lambda x: video_options[x],
             key=f"radio_select_{song['clip_id']}",
@@ -93,7 +95,7 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
 
         # 显示选中视频的详细信息
         if selected_index is not None:
-            st.write("已选择视频的详细信息:")
+            st.write("选中的视频详细信息:")
             show_video_info(to_match_videos[selected_index])
 
         if st.button("确定使用该信息", key=f"confirm_selected_match_{song['clip_id']}"):
@@ -146,7 +148,7 @@ if b50_config:
             st.stop()
 
     # 获取所有视频片段的ID
-    record_ids = [f"{item['clip_id']} : {item['title']} {item['level_label']}" for item in b50_config]
+    record_ids = [f"{item['clip_id']}: {item['title']} ({item['type']}) [{item['level_label']}]" for item in b50_config]
     # 使用session_state来存储当前选择的视频片段索引
     if 'current_index' not in st.session_state:
         st.session_state.current_index = 0
