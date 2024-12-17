@@ -2,12 +2,6 @@ import json
 import os
 import random
 import time
-import yaml
-import traceback
-import threading
-import webbrowser
-from update_music_data import fetch_music_data
-from gene_images import generate_b50_images
 from utils.Utils import get_b50_data_from_fish
 from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
 
@@ -287,7 +281,7 @@ def gene_resource_config(b50_data, images_path, videoes_path, ouput_file):
 
         main_clip_data = {
             "id": id,
-            "achievement_title": f"{song['title']}-{song['level_label']}-{song['type']}",
+            "achievement_title": song['title'],
             "song_id": song['song_id'],
             "level_index": song['level_index'],
             "type": song['type'],
@@ -376,7 +370,7 @@ def st_gene_resource_config(b50_data,
 
         main_clip_data = {
             "id": id,
-            "achievement_title": f"{song['title']}-{song['level_label']}-{song['type']}",
+            "achievement_title": song['title'],
             "song_id": song['song_id'],
             "level_index": song['level_index'],
             "type": song['type'],
