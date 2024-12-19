@@ -2,7 +2,7 @@ import streamlit as st
 
 st.title("Mai-gen Videob50 视频生成器")
 
-st.write("当前版本: v0.3.1")
+st.write("当前版本: v0.3.2")
 
 st.markdown(
     """

@@ -227,11 +227,14 @@ if b50_config:
         video_config_file = f"./b50_datas/video_configs_{G_config['USER_ID']}.json"
         video_download_path = f"./videos/downloads"
         st.warning("危险区域 Danger Zone")
-        st.write("如果你在使用过程中更换了下载器，你可能希望删除已生成的配置文件，以及在本地缓存文件中下载的视频。")
-        st.markdown(f"`./videos/downloads` 目录中是已下载的视频")
-        st.markdown(f"`./b50_datas/video_configs_{G_config['USER_ID']}.json` 是生成视频的配置文件")
-        st.write("你可以手动检查、修改这些文件，或者点击下面按钮删除已生成的配置文件或视频。")
-
+        st.write("如果因为手动更新b50等原因而需要检查和修改配置，点击下方按钮打开配置文件夹。")
+        if st.button("打开配置文件夹", key=f"open_folder_video_config"):
+            absolute_path = os.path.abspath(os.path.dirname(video_config_file))
+            open_file_explorer(absolute_path)
+        st.markdown(f"""其中，`b50_configs_{G_config['USER_ID']}_{downloader_type}.json` 是你当前使用平台的b50数据文件，
+                    `video_configs_{G_config['USER_ID']}.json` 是生成视频的配置文件
+                    """)
+        st.write("如果在使用过程中遇到不可逆的错误，请尝试删除已生成的配置文件和下载的视频，以重新开始。")
         @st.dialog("删除配置确认")
         def delete_video_config_dialog(file):
             st.warning("确定要执行删除操作吗？此操作不可撤销！")

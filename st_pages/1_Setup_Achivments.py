@@ -15,6 +15,7 @@ def show_b50_dataframe(info_placeholder, user_id, data):
 
 G_config = read_global_config()
 username = G_config.get('USER_ID', '')
+image_path = f"./b50_images/{username}"
 
 st.header("Step 1: 配置生成器参数和B50成绩数据")
 
@@ -114,6 +115,12 @@ if st.session_state.get('config_saved', False):
                 except Exception as e:
                     st.error(f"生成成绩背景图片时发生错误: {e}")
                     st.error(traceback.format_exc())
+            if os.path.exists(image_path):
+                absolute_path = os.path.abspath(image_path)
+            else:
+                absolute_path = os.path.abspath(os.path.dirname(image_path))
+            if st.button("打开成绩图片文件夹", key=f"open_folder_{username}"):
+                open_file_explorer(absolute_path)
             st.info("如果你已经生成过背景图片，且无需更新，可以跳过，请点击进行下一步按钮。")
             if st.button("进行下一步"):
                 st.switch_page("st_pages/2_Search_For_Videoes.py")
