@@ -79,11 +79,14 @@ def read_b50_from_html(b50_raw_file):
         },
         "username": username
     }
+    song_id_placeholder = 0 # Avoid same file names for downloaded videos
     for song in iterate_songs(html_tree, b35_screw):
-        song_json = parse_html_to_json(song)
+        song_id_placeholder -= 1 # Remove after implemented dataset
+        song_json = parse_html_to_json(song, song_id_placeholder)
         b50_json["charts"]["sd"].append(song_json)
     for song in iterate_songs(html_tree, b15_screw):
-        song_json = parse_html_to_json(song)
+        song_id_placeholder -= 1 # Remove after implemented dataset
+        song_json = parse_html_to_json(song, song_id_placeholder)
         b50_json["charts"]["dx"].append(song_json)
 
     # Write b50 JSON to raw file
@@ -100,22 +103,22 @@ def iterate_songs(html_tree, div_screw):
         yield current_div
 
 # Parse HTML div of a song to diving-fish raw data JSON
-def parse_html_to_json(song_div):
+def parse_html_to_json(song_div, song_id_placeholder):
     LEVEL_DIV_LABEL = ["basic", "advanced", "expert", "master", "remaster"]
     LEVEL_LABEL = ["Basic", "Advanced", "Expert", "Master", "Re:MASTER"]
     # Initialise chart JSON
     chart = {
-        "achievements": -1,
-        "ds": -1,
-        "dxScore": -1,
+        "achievements": 0,
+        "ds": 0,
+        "dxScore": 0,
         "fc": "",
         "fs": "",
         "level": "",
         "level_index": -1,
         "level_label": "",
-        "ra": -1,
+        "ra": 0,
         "rate": "",
-        "song_id": -1,
+        "song_id": song_id_placeholder,
         "title": "",
         "type": "",
     }
