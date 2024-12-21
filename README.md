@@ -1,3 +1,39 @@
+# mai-gen-videob50 DX.NET Support
+
+为Nick-bit233/mai-gen-videob50项目开发的DX NET国际服兼容扩展包。
+
+Extra content for supporting DX NET International Ver. of repository 'Nick-bit233/mai-gen-videob50'.
+
+## 简易使用说明
+
+0. 如果需要使用Youtube下载，请在`global_congfig.yaml`文件中修改。与
+
+1. 打开maimai DX NET并进入B50查看页面（链接：https://maimaidx-eng.com/maimai-mobile/home/ratingTargetMusic/）。保存当前网页，将其中html后缀文件（大概率为`maimai DX NET－Music for DX RATING－.html`）放置与软件根目录下。
+
+2. 运行`pre_gen_int.py`文件，程序将会从HTML文件中读取B50数据，并抓取相关谱面确认视频。注意事项和剩余步骤详见[原操作流程](#完整b50视频生成操作流程)的第1点起。
+
+    ```bash
+    python pre_gen_int.py
+    ```
+
+## 插件特性
+
+- 尽可能保留原仓库的.py文件，避免分支更新产生冲突
+
+- （目前）使用保存的Rating对象乐曲网页作为B50信息的读取源，替代国服使用的水鱼查分器获取B50.
+
+## 开发计划
+
+- [ ] 接入支持日服曲库的数据库，以获取乐曲id、封面、定数；
+
+- [ ] 优化B50的获取方式，避免保存网页的复杂操作；
+
+- [ ] 为本插件录制一个简单的介绍视频。
+
+
+
+本文件以下内容为 CST 2024 Dec 11 02:00 AM 时原仓库内README.md内容。
+
 # mai-gen-videob50
 
 自动从流媒体上搜索并构建你的舞萌DX B50视频

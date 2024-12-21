@@ -187,3 +187,9 @@ b50/Scripts/pip3.9.exe
 b50/Scripts/pip3.exe
 b50/Scripts/python.exe
 b50/Scripts/pythonw.exe
+
+# Experimental scripts
+dev.py
+
+# User HTML
+maimai DX NET－Music for DX RATING－.html
