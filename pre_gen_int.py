@@ -104,7 +104,7 @@ def iterate_songs(html_tree, div_screw):
 
 # Parse HTML div of a song to diving-fish raw data JSON
 def parse_html_to_json(song_div, song_id_placeholder):
-    LEVEL_DIV_LABEL = ["basic", "advanced", "expert", "master", "remaster"]
+    LEVEL_DIV_LABEL = ["_basic", "_advanced", "_expert", "_master", "_remaster"]
     LEVEL_LABEL = ["Basic", "Advanced", "Expert", "Master", "Re:MASTER"]
     # Initialise chart JSON
     chart = {
