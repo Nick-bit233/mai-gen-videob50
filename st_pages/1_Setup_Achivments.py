@@ -87,7 +87,7 @@ if st.session_state.get('config_saved', False):
     else:
         replace_b50_data = True
 
-    if st.button("获取B50数据"):
+    if st.button("从水鱼获取B50数据"):
         with st.spinner("正在获取B50数据更新..."):
             update_info_placeholder = st.empty()  
             try:
@@ -105,7 +105,7 @@ if st.session_state.get('config_saved', False):
                 st.error(f"获取B50数据时发生错误: {e}")
                 st.error(traceback.format_exc())
     
-    if st.button("本地HTML读取B50"):
+    if st.button("从本地HTML读取B50"):
         with st.spinner("正在读取HTML数据..."):
             update_info_placeholder = st.empty()  
             try:
