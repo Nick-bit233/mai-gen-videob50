@@ -26,7 +26,7 @@ MAX_LOGIN_RETRIES = 3
 def custom_po_token_verifier() -> Tuple[str, str]:
 
     with open("global_config.yaml", "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+        config = yaml.load(f, Loader=yaml.FullLoader)
     
     if config['CUSTOMER_PO_TOKEN']['visitor_data'] == "" or config['CUSTOMER_PO_TOKEN']['po_token'] == "":
         print("未配置CUSTOMER_PO_TOKEN，请检查global_config.yaml")
@@ -70,11 +70,11 @@ def remove_html_tags_and_invalid_chars(text: str) -> str:
     """去除字符串中的HTML标记和非法字符"""
     # 去除HTML标记
     clean = re.compile('<.*?>')
-    text = re.sub(clean, '', text)
+    text = re.sub(clean, ' ', text)
     
     # 去除非法字符
     invalid_chars = r'[<>:"/\\|?*【】]'  # 定义非法字符
-    text = re.sub(invalid_chars, '', text)  # 替换为''
+    text = re.sub(invalid_chars, ' ', text)  # 替换为' '
 
     return text.strip()  # 去除首尾空白字符
 
@@ -299,6 +299,11 @@ class BilibiliDownloader(Downloader):
             if log_succ:
                 break  # 登录成功，退出循环
             print(f"正在尝试第 {attempt + 1} 次重新登录...")
+    
+    def get_credential_username(self):
+        if not self.credential:
+            return None
+        return sync(user.get_self_info(self.credential))['name']
 
     def log_in(self, credential_path):
         # credential = login.login_with_qrcode_term() # 在终端打印二维码登录
@@ -327,7 +332,10 @@ class BilibiliDownloader(Downloader):
                                   page_size=self.search_max_results)
         )
         videos = []
-        # print(results)  # Debugging line to check the structure of results
+        if 'result' not in results:
+            print(f"搜索结果异常，请检查如下输出：")
+            print(results)
+            return []
         res_list = results['result']
         for each in res_list:
             videos.append({
@@ -351,3 +359,8 @@ class BilibiliDownloader(Downloader):
                               output_path=output_path,
                               high_res=high_res)
         )
+
+# test
+if __name__ == "__main__":
+    downloader = BilibiliDownloader()
+    downloader.search_video("【(maimai】【谱面确认】 DX谱面 Aegleseeker 紫谱 Master")
