@@ -1,8 +1,8 @@
 # mai-gen-videob50 DX.NET Extension
 
-为Nick-bit233/mai-gen-videob50项目开发的DX NET国际服（理论上支持日服）兼容拓展插件。
+为[Nick-bit233/mai-gen-videob50](https://github.com/Nick-bit233/mai-gen-videob50)项目开发的DX NET国际服（理论上支持日服）兼容拓展插件。原README从[此处](#mai-gen-videob50)开始。
 
-Extension for supporting DX NET International Ver. of repository 'Nick-bit233/mai-gen-videob50'.
+Extension for supporting DX NET International Ver. of repository 'Nick-bit233/mai-gen-videob50'. Original README starts from [here](#mai-gen-videob50).
 
 ## 简易使用说明
 
@@ -33,6 +33,10 @@ Extension for supporting DX NET International Ver. of repository 'Nick-bit233/ma
 - [ ] 歌曲列表文件的自动更新同步；
 
 - [ ] 优化B50的获取方式，避免保存网页的复杂操作；
+
+## 引用
+
+[maimaiDX-songs](https://github.com/Becods/maimaiDX-songs) 更新更热的歌曲数据库
 
 本文件以下内容为 CST 2024 Dec 22 11:00 AM 时原仓库内README.md内容。
 
