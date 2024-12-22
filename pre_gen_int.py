@@ -4,6 +4,9 @@ from lxml import etree
 import os
 
 from pre_gen import merge_b50_data
+from utils.dxnet_extension import get_rate, ChartManager
+
+get_rate(100.5)
 
 def read_b50_from_html(b50_raw_file, username):
     try:
@@ -37,14 +40,17 @@ def read_b50_from_html(b50_raw_file, username):
         },
         "username": username
     }
+    manager = ChartManager()
     song_id_placeholder = 0 # Avoid same file names for downloaded videos
     for song in iterate_songs(html_tree, b35_screw):
         song_id_placeholder -= 1 # Remove after implemented dataset
         song_json = parse_html_to_json(song, song_id_placeholder)
+        song_json = manager.fill_json(song_json)
         b50_json["charts"]["sd"].append(song_json)
     for song in iterate_songs(html_tree, b15_screw):
         song_id_placeholder -= 1 # Remove after implemented dataset
         song_json = parse_html_to_json(song, song_id_placeholder)
+        song_json = manager.fill_json(song_json)
         b50_json["charts"]["dx"].append(song_json)
 
     # Write b50 JSON to raw file
@@ -92,8 +98,6 @@ def parse_html_to_json(song_div, song_id_placeholder):
     if level_div:
         level_text = level_div[0].text
         chart["level"] = level_text
-        # Default internal level as .0 or .6(+). Need external dataset to specify.
-        chart["ds"] = float(level_text.replace("+", ".6") if "+" in level_text else f"{level_text}.0")
 
     # Get song difficulty
     div_class = song_div.get("class", "")
@@ -118,37 +122,6 @@ def parse_html_to_json(song_div, song_id_placeholder):
     chart["rate"] = get_rate(chart["achievements"])
 
     return chart
-
-# Parse achievement to rate name
-def get_rate(achievement):
-    if achievement >= 100.5:
-        return "sssp"
-    elif achievement >= 100:
-        return "sss"
-    elif achievement >= 99.5:
-        return "ssp"
-    elif achievement >= 99:
-        return "ss"
-    elif achievement >= 98:
-        return "sp"
-    elif achievement >= 97:
-        return "s"
-    elif achievement >= 94:
-        return "aaa"
-    elif achievement >= 90:
-        return "aa"
-    elif achievement >= 80:
-        return "a"
-    elif achievement >= 75:
-        return "bbb"
-    elif achievement >= 70:
-        return "bb"
-    elif achievement >= 60:
-        return "b"
-    elif achievement >= 50:
-        return "c"
-    else:
-        return "d"
 
 def update_b50_data_int(b50_raw_file, b50_data_file, username):
     raw_data = read_b50_from_html(b50_raw_file, username) # Use different B50 source
