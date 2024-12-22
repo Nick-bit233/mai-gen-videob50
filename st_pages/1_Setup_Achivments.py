@@ -5,6 +5,7 @@ import subprocess
 import traceback
 from copy import deepcopy
 from pre_gen import update_b50_data, st_init_cache_pathes
+from pre_gen_int import update_b50_data_int
 from gene_images import generate_single_image, check_mask_waring
 from utils.PageUtils import *
 
@@ -86,13 +87,33 @@ if st.session_state.get('config_saved', False):
     else:
         replace_b50_data = True
 
-    if st.button("获取B50数据"):
+    if st.button("从水鱼获取B50数据"):
         with st.spinner("正在获取B50数据更新..."):
             update_info_placeholder = st.empty()  
             try:
                 if replace_b50_data:
                     b50_data = update_b50_data(b50_raw_file, b50_data_file, username)
                     st.success("已更新B50数据！")
+                    st.session_state.data_updated_step1 = True
+                else:
+                    b50_data = load_config(b50_data_file)
+                    st.success("已加载缓存的B50数据")
+                    st.session_state.data_updated_step1 = True
+                show_b50_dataframe(update_info_placeholder, username, b50_data)
+            except Exception as e:
+                st.session_state.data_updated_step1 = False
+                st.error(f"获取B50数据时发生错误: {e}")
+                st.error(traceback.format_exc())
+    
+    if st.button("从本地HTML读取B50"):
+        with st.spinner("正在读取HTML数据..."):
+            update_info_placeholder = st.empty()  
+            try:
+                if replace_b50_data:
+                    # Use different update function
+                    b50_data = update_b50_data_int(b50_raw_file, b50_data_file, username)
+                    # Keep remaining part the same
+                    st.success("已根据HTML文件更新B50数据！")
                     st.session_state.data_updated_step1 = True
                 else:
                     b50_data = load_config(b50_data_file)

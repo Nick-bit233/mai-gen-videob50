@@ -1,3 +1,45 @@
+# mai-gen-videob50 DX.NET Extension
+
+为[Nick-bit233/mai-gen-videob50](https://github.com/Nick-bit233/mai-gen-videob50)项目开发的DX NET国际服（理论上支持日服）兼容拓展插件。原README从[此处](#mai-gen-videob50)开始。
+
+Extension for supporting DX NET International Ver. of repository 'Nick-bit233/mai-gen-videob50'. Original README starts from [here](#mai-gen-videob50).
+
+## 简易使用说明
+
+1. 打开maimai DX NET并进入B50查看页面（[国际服链接](https://maimaidx-eng.com/maimai-mobile/home/ratingTargetMusic/)）。等待歌曲信息加载完毕后，右键浏览器保存当前网页，将其中`.html`后缀文件移动至软件根目录下（于本文件相同文件夹内）。
+
+- HTML文件的文件名大概率为`maimai DX NET－Music for DX RATING－.html`。如果保证同一路径下仅有一个HTML文件，则文件名不会影响程序的运行。
+
+- 浏览器可能保存了一些其他文件（如图片等），您可以放心的删除这些文件。
+
+1. 根据[原使用说明](#使用说明)的步骤继续使用。不同的是，在获取B50成绩时，请选择`从本地HTML读取B50`而非`从水鱼获取B50数据`。
+
+## 插件特性
+
+- 尽可能保留原仓库的.py文件，避免分支更新产生冲突
+
+- （目前）使用保存的Rating对象乐曲网页作为B50信息的读取源，替代国服使用的水鱼查分器获取B50.
+
+- 支持DX.NET国际服的网页信息解析。理论上支持日服，但是开发者没有日服账号无法测试。
+
+## 开发状态与计划
+
+- [x] 支持获取更多非国服乐曲的ID和定数；
+
+- [ ] 为本插件录制一个简单的介绍视频。
+
+- [ ] 改变成绩的获取来源，以获取DX score、FC等级、FS等级。
+
+- [ ] 歌曲列表文件的自动更新同步；
+
+- [ ] 优化B50的获取方式，避免保存网页的复杂操作；
+
+## 引用
+
+[maimaiDX-songs](https://github.com/Becods/maimaiDX-songs) 更新更热的歌曲数据库
+
+本文件以下内容为 CST 2024 Dec 22 11:00 AM 时原仓库内README.md内容。
+
 # mai-gen-videob50
 
 自动从流媒体上搜索并构建你的舞萌DX B50视频
