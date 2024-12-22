@@ -22,7 +22,7 @@ st.header("Step 1: 配置生成器参数和B50成绩数据")
 
 with st.container(border=True):
     # 配置输入
-    username = st.text_input("输入水鱼查分器用户名", value=username)
+    username = st.text_input("输入水鱼查分器用户名（国服查询）或一个您喜欢的用户名（国际服）", value=username)
 
     if st.button("确定"):
         if not username:
@@ -87,7 +87,7 @@ if st.session_state.get('config_saved', False):
     else:
         replace_b50_data = True
 
-    if st.button("从水鱼获取B50数据"):
+    if st.button("从水鱼获取B50数据（国服）"):
         with st.spinner("正在获取B50数据更新..."):
             update_info_placeholder = st.empty()  
             try:
@@ -105,7 +105,7 @@ if st.session_state.get('config_saved', False):
                 st.error(f"获取B50数据时发生错误: {e}")
                 st.error(traceback.format_exc())
     
-    if st.button("从本地HTML读取B50"):
+    if st.button("从本地HTML读取B50（国际服）"):
         with st.spinner("正在读取HTML数据..."):
             update_info_placeholder = st.empty()  
             try:

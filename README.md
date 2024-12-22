@@ -4,15 +4,26 @@
 
 Extension for supporting DX NET International Ver. of repository 'Nick-bit233/mai-gen-videob50'. Original README starts from [here](#mai-gen-videob50).
 
-## 简易使用说明
+## 导入国际服B50：省流版
 
-1. 打开maimai DX NET并进入B50查看页面（[国际服链接](https://maimaidx-eng.com/maimai-mobile/home/ratingTargetMusic/)）。等待歌曲信息加载完毕后，右键浏览器保存当前网页，将其中`.html`后缀文件移动至软件根目录下（于本文件相同文件夹内）。
+- 进入DX NET的Rating对象乐曲页面，保存HTML源代码于软件根目录；
+- 按照[通用使用说明](#使用说明)继续操作。在导入B50时选择`从本地HTML读取B50`。
 
-- HTML文件的文件名大概率为`maimai DX NET－Music for DX RATING－.html`。如果保证同一路径下仅有一个HTML文件，则文件名不会影响程序的运行。
+## （较为详细的）国际服导入B50手把手教学
 
-- 浏览器可能保存了一些其他文件（如图片等），您可以放心的删除这些文件。
+1. 打开maimai DX NET并进入B50查看页面（[国际服链接](https://maimaidx-eng.com/maimai-mobile/home/ratingTargetMusic/)）。
+   
+2. 等待歌曲信息加载完毕后，按`Ctrl + U` 或 右键>>点击`查看网页源代码`。浏览器会跳转或打开一个新的页面。
 
-1. 根据[原使用说明](#使用说明)的步骤继续使用。不同的是，在获取B50成绩时，请选择`从本地HTML读取B50`而非`从水鱼获取B50数据`。
+3. 在新的页面中，按`Ctrl + S` 或 右键>>点击`另存为`。根据弹窗指引保存一个`.html`文件。建议您将文件名改成`{用户名}.html`，并在后续填写配置文件（`global_config.yaml`）时于`USER_ID`处填写这个用户名。
+
+   - 保存的`.html`文件默认名可能为`view-source_https___maimaidx-eng.com_maimai-mobile_home_ratingTargetMusic_.html`。程序会优先寻找与您配置中用户名相同的`.html`文件，再尝试寻找这个名称的文件，最后则尝试读取第一个`.html`文件。
+
+   - 您也可以跳过第2步，直接按照第3步的操作保存一个`.html`文件，这种情况下的`.html`文件也可以使用。不过，浏览器可能保存了一些其他文件（如图片等），您可以放心的删除这些文件。
+
+4. 将刚刚保存的`.html`文件移动至软件根目录下（如果您正确放置文件，它应该与`st_app.py`等文件处于同一文件夹内）。
+
+5. 根据[原使用说明](#使用说明)的步骤继续使用。不同的是，在获取B50成绩时，请选择`从本地HTML读取B50`而非`从水鱼获取B50数据`。
 
 ## 插件特性
 
@@ -20,7 +31,7 @@ Extension for supporting DX NET International Ver. of repository 'Nick-bit233/ma
 
 - （目前）使用保存的Rating对象乐曲网页作为B50信息的读取源，替代国服使用的水鱼查分器获取B50.
 
-- 支持DX.NET国际服的网页信息解析。理论上支持日服，但是开发者没有日服账号无法测试。
+- 支持DX.NET国际服的网页信息解析。理论上支持日服，但是开发者没有日服账号无法测试或开发页面适配。
 
 ## 开发状态与计划
 
@@ -30,9 +41,7 @@ Extension for supporting DX NET International Ver. of repository 'Nick-bit233/ma
 
 - [ ] 改变成绩的获取来源，以获取DX score、FC等级、FS等级。
 
-- [ ] 歌曲列表文件的自动更新同步；
-
-- [ ] 优化B50的获取方式，避免保存网页的复杂操作；
+- [ ] 歌曲列表文件的自动更新同步。
 
 ## 引用
 
