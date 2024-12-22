@@ -1,22 +1,34 @@
+import glob
 import json
 from lxml import etree
 import os
 
 from pre_gen import merge_b50_data
 
-def read_b50_from_html(b50_raw_file):
-    with open(f"./maimai DX NET－Music for DX RATING－.html", 'r', encoding="utf-8") as f:
-        html_raw = f.read()
+def read_b50_from_html(b50_raw_file, username):
+    try:
+        with open("./maimai DX NET－Music for DX RATING－.html", 'r', encoding="utf-8") as f:
+            html_raw = f.read()
+            print("DX rating HTML file found.")
+    except FileNotFoundError:
+        # Try other html files
+        html_files = glob.glob("./*.html")
+        if html_files:
+            with open(html_files[0], 'r', encoding="utf-8") as f:
+                html_raw = f.read()
+                print(f"DX rating HTML file not found, trying to open {html_files[0]} instead.")
+        else:
+            raise Exception("Error: No HTML file found in root folder.")
+
     html_tree = etree.HTML(html_raw)
     # Locate B35 and B15
     b35_screw = html_tree.xpath('//div[text()="Songs for Rating(Others)"]')
     b15_screw = html_tree.xpath('//div[text()="Songs for Rating(New)"]')
     if not b35_screw:
-        print(f"Error: {B35_XPATH} not found. 请检查HTML文件是否正确保存！")
-        return
+        raise Exception(f"Error: {B35_XPATH} not found. 请检查HTML文件是否正确保存！")
     if not b15_screw:
-        print(f"Error: {B15_XPATH} not found. 请检查HTML文件是否正确保存！")
-        return
+        raise Exception(f"Error: {B15_XPATH} not found. 请检查HTML文件是否正确保存！")
+
     # Iterate songs and save as JSON
     b50_json = {
         "charts": {
@@ -139,7 +151,7 @@ def get_rate(achievement):
         return "d"
 
 def update_b50_data_int(b50_raw_file, b50_data_file, username):
-    raw_data = read_b50_from_html(b50_raw_file) # Use different B50 source
+    raw_data = read_b50_from_html(b50_raw_file, username) # Use different B50 source
     b35_data = raw_data['charts']['sd']
     b15_data = raw_data['charts']['dx']
 
