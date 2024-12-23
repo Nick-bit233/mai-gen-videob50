@@ -86,7 +86,7 @@ class ChartManager:
         
         # Extract info from matched json object
         if matched_song:
-            print(f"Info: song {chart_title} with chart type {chart_json["type"]} found and cached.")
+            print(f"Info: song {chart_title} with chart type {chart_json['type']} found and cached.")
             self.results.append(matched_song)
             if "id" in matched_song:
                 chart_json["song_id"] = matched_song["id"]
@@ -95,9 +95,10 @@ class ChartManager:
             chart_json["ds"] = matched_song["charts"][chart_level]["level"]
             chart_json["ra"] = int(chart_json["ds"] * chart_json["achievements"] * get_factor(chart_json["achievements"]))
         else:
-            print(f"Warning: song {chart_title} with chart type {chart_json["type"]} not found in dataset. Skip filling details.")
+            print(f"Warning: song {chart_title} with chart type {chart_json['type']} not found in dataset. Skip filling details.")
             # Default internal level as .0 or .6(+). Need external dataset to specify.
-            chart_json["ds"] = float(chart_json["level"].replace("+", ".6") if "+" in chart_json["level"] else f"{chart_json["level"]}.0")   
+            chart_level = chart_json["level"]
+            chart_json["ds"] = float(chart_level.replace("+", ".6") if "+" in chart_level else f"{chart_level}.0")   
 
         return chart_json
 

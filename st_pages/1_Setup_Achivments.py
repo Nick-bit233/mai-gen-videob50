@@ -81,7 +81,7 @@ if st.session_state.get('config_saved', False):
 
     if os.path.exists(b50_data_file):
         st.warning("检测到用户已缓存有B50数据，是否确认获取最新的数据？这将会覆盖当前已有数据。")
-        options = ["仍然使用缓存数据", "更新并替换当前数据"]
+        options = ["使用缓存数据（无视服务器）", "更新并替换当前数据"]
         replace_confirm = st.radio("请选择", options, index=0)
         replace_b50_data = replace_confirm == options[1]
     else:
@@ -122,7 +122,8 @@ if st.session_state.get('config_saved', False):
                 show_b50_dataframe(update_info_placeholder, username, b50_data)
             except Exception as e:
                 st.session_state.data_updated_step1 = False
-                st.error(f"获取B50数据时发生错误: {e}")
+                st.error(f"获取B50数据时发生错误, 请检查是否正确保存了国际服HTML数据文件！")
+                st.error(f"详细错误信息: {e}")
                 st.error(traceback.format_exc())
 
     if st.session_state.get('data_updated_step1', False):

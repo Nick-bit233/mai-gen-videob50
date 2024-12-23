@@ -41,9 +41,9 @@ def read_b50_from_html(b50_raw_file, username):
     b35_screw = html_tree.xpath('//div[text()="Songs for Rating(Others)"]')
     b15_screw = html_tree.xpath('//div[text()="Songs for Rating(New)"]')
     if not b35_screw:
-        raise Exception(f"Error: {B35_XPATH} not found. 请检查HTML文件是否正确保存！")
+        raise Exception(f"Error: B35 not found. 请检查HTML文件是否正确保存！")
     if not b15_screw:
-        raise Exception(f"Error: {B15_XPATH} not found. 请检查HTML文件是否正确保存！")
+        raise Exception(f"Error: B15 not found. 请检查HTML文件是否正确保存！")
 
     # Iterate songs and save as JSON
     b50_json = {
