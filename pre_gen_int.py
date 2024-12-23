@@ -16,7 +16,7 @@ def find_b50_html(username):
             return html_raw
 
     # 2. Check for the default HTML file name
-    default_html_file = "./view-source_https___maimaidx-eng.com_maimai-mobile_home_ratingTargetMusic_.html"
+    default_html_file = "./maimai DX NET－Music for DX RATING－.html"
     if os.path.exists(default_html_file):
         with open(default_html_file, 'r', encoding="utf-8") as f:
             html_raw = f.read()
@@ -41,9 +41,9 @@ def read_b50_from_html(b50_raw_file, username):
     b35_screw = html_tree.xpath('//div[text()="Songs for Rating(Others)"]')
     b15_screw = html_tree.xpath('//div[text()="Songs for Rating(New)"]')
     if not b35_screw:
-        raise Exception(f"Error: B35 not found. 请检查HTML文件是否正确保存！")
+        raise Exception(f"Error: B35 not found.")
     if not b15_screw:
-        raise Exception(f"Error: B15 not found. 请检查HTML文件是否正确保存！")
+        raise Exception(f"Error: B15 not found.")
 
     # Iterate songs and save as JSON
     b50_json = {
