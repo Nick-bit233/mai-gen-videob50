@@ -77,9 +77,10 @@ if st.button("开始生成视频"):
                                                     video_res=video_res, 
                                                     video_bitrate=v_bitrate_kbps)
                         write_container.write(f"【{i}/{len(config_clip_list)}】{output_info['info']}")
-            st.success("视频片段生成完成！请在弹出的文件夹窗口中查看")
-            # 打开书橱视频文件夹
-            subprocess.run(f"explorer {video_output_path}", shell=True)
+            st.success("视频片段生成结束！请在弹出的文件夹窗口中查看")
+            abs_path = os.path.abspath(video_output_path)
+            st.info(f"如果未能打开文件夹，可在此路径中查看生成视频：{abs_path}")
+            open_file_explorer(abs_path)
         except Exception as e:
             st.error(f"视频片段生成失败，错误详情: {traceback.print_exc()}")
 
@@ -98,9 +99,9 @@ if st.button("开始生成视频"):
                                                     video_trans_time=trans_time, 
                                                     full_last_clip=False)
                     st.write(f"【{output_info['info']}")
-            st.success("完整视频生成完成！请在弹出的文件夹窗口中查看")
-            # 打开书橱视频文件夹
-            subprocess.run(f"explorer {video_output_path}", shell=True)
+            st.success("完整视频生成结束！请在弹出的文件夹窗口中查看")
+            abs_path = os.path.abspath(video_output_path)
+            st.info(f"如果未能打开文件夹，可在此路径中查看生成视频：{abs_path}")
+            open_file_explorer(abs_path)
         except Exception as e:
             st.error(f"完整视频生成失败，错误详情: {traceback.print_exc()}")
-

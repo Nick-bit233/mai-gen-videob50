@@ -1,4 +1,6 @@
 import streamlit as st
+from utils.PageUtils import change_theme
+from utils.themes import THEME_COLORS
 
 st.title("Mai-gen Videob50 视频生成器")
 
@@ -19,3 +21,23 @@ st.write("单击下面的按钮开始")
 
 if st.button("开始使用"):
     st.switch_page("st_pages/1_Setup_Achivments.py")
+
+with st.container(border=True):
+    if 'theme' not in st.session_state:
+        st.session_state.theme = "Default"
+    @st.dialog("刷新主题")
+    def refresh_theme():
+        st.info("主题已更改，要刷新并应用主题吗？")
+        if st.button("刷新并应用", key=f"confirm_refresh_theme"):
+            st.toast("新主题已应用！")
+            st.rerun()
+        
+    options = ["Default", "Festival", "Buddies", "Prism"]
+    theme = st.segmented_control("更改页面主题",
+                                 options, 
+                                 default=st.session_state.theme,
+                                 selection_mode="single")
+    if st.button("确定"):
+        st.session_state.theme = theme
+        change_theme(THEME_COLORS.get(theme, None))
+        refresh_theme()

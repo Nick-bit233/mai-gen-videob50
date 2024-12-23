@@ -12,6 +12,9 @@ b50_datas/
 b50_images/
 videos/  
 
+# Streamlit config directory
+.streamlit/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
