@@ -20,7 +20,7 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 - [x] [水鱼查分器](https://www.diving-fish.com/maimaidx/prober/)：请注意在个人选项中关闭掩码，并允许公开获取你的B50数据。
 
-- [x] [国际服 / DX.NET](https://maimaidx-eng.com/maimai-mobile/home/ratingTargetMusic/)：点此查看[国际服数据获取插件使用教程](docs/DX_NET_Gudie.md)
+- [x] [国际服 DX NET](https://maimaidx-eng.com/maimai-mobile/home/ratingTargetMusic/)：点此查看[国际服数据获取插件使用教程](docs/DX_NET_Guide.md)
 
 - [ ] [落雪查分器](https://maimai.lxns.net/)（暂未支持）
 
