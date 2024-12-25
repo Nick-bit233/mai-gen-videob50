@@ -6,31 +6,44 @@ import os
 from pre_gen import merge_b50_data
 from utils.dxnet_extension import get_rate, ChartManager
 
-get_rate(100.5)
+def find_b50_html(username):
+    # 1. Check for the {username}.html
+    user_html_file = f"./{username}.html"
+    if os.path.exists(user_html_file):
+        with open(user_html_file, 'r', encoding="utf-8") as f:
+            html_raw = f.read()
+            print(f"Info: Found HTML file matching username: {user_html_file}")
+            return html_raw
+
+    # 2. Check for the default HTML file name
+    default_html_file = "./maimai DX NET－Music for DX RATING－.html"
+    if os.path.exists(default_html_file):
+        with open(default_html_file, 'r', encoding="utf-8") as f:
+            html_raw = f.read()
+            print(f"Info: Default DX rating HTML file found: {default_html_file}")
+            return html_raw
+
+    # 3. Try to find any other `.html` file
+    html_files = glob.glob("./*.html")
+    if html_files:
+        with open(html_files[0], 'r', encoding="utf-8") as f:
+            html_raw = f.read()
+            print(f"Warning: No specific HTML file found, using the first available file: {html_files[0]}")
+            return html_raw
+
+    # Raise an exception if no file is found
+    raise Exception("Error: No HTML file found in the root folder.")
 
 def read_b50_from_html(b50_raw_file, username):
-    try:
-        with open("./maimai DX NET－Music for DX RATING－.html", 'r', encoding="utf-8") as f:
-            html_raw = f.read()
-            print("DX rating HTML file found.")
-    except FileNotFoundError:
-        # Try other html files
-        html_files = glob.glob("./*.html")
-        if html_files:
-            with open(html_files[0], 'r', encoding="utf-8") as f:
-                html_raw = f.read()
-                print(f"DX rating HTML file not found, trying to open {html_files[0]} instead.")
-        else:
-            raise Exception("Error: No HTML file found in root folder.")
-
+    html_raw = find_b50_html(username)
     html_tree = etree.HTML(html_raw)
     # Locate B35 and B15
     b35_screw = html_tree.xpath('//div[text()="Songs for Rating(Others)"]')
     b15_screw = html_tree.xpath('//div[text()="Songs for Rating(New)"]')
     if not b35_screw:
-        raise Exception(f"Error: {B35_XPATH} not found. 请检查HTML文件是否正确保存！")
+        raise Exception(f"Error: B35 not found.")
     if not b15_screw:
-        raise Exception(f"Error: {B15_XPATH} not found. 请检查HTML文件是否正确保存！")
+        raise Exception(f"Error: B15 not found.")
 
     # Iterate songs and save as JSON
     b50_json = {
@@ -62,7 +75,7 @@ def iterate_songs(html_tree, div_screw):
     current_div = div_screw[0]
     while True:
         current_div = current_div.xpath('following-sibling::div[1]')[0]
-        if not current_div:
+        if len(current_div) == 0:
             break
         yield current_div
 

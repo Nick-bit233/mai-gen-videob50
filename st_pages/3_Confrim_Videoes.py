@@ -223,52 +223,5 @@ if b50_config:
     if st.button("进行下一步", disabled=not st.session_state.download_completed):
         st.switch_page("st_pages/4_Edit_Video_Content.py")
 
-    with st.container(border=True):
-        video_config_file = f"./b50_datas/video_configs_{G_config['USER_ID']}.json"
-        video_download_path = f"./videos/downloads"
-        st.warning("危险区域 Danger Zone")
-        st.write("如果因为手动更新b50等原因而需要检查和修改配置，点击下方按钮打开配置文件夹。")
-        if st.button("打开配置文件夹", key=f"open_folder_video_config"):
-            absolute_path = os.path.abspath(os.path.dirname(video_config_file))
-            open_file_explorer(absolute_path)
-        st.markdown(f"""其中，`b50_configs_{G_config['USER_ID']}_{downloader_type}.json` 是你当前使用平台的b50数据文件，
-                    `video_configs_{G_config['USER_ID']}.json` 是生成视频的配置文件
-                    """)
-        st.write("如果在使用过程中遇到不可逆的错误，请尝试删除已生成的配置文件和下载的视频，以重新开始。")
-        @st.dialog("删除配置确认")
-        def delete_video_config_dialog(file):
-            st.warning("确定要执行删除操作吗？此操作不可撤销！")
-            if st.button("确认删除", key=f"confirm_delete_video_config"):
-                try:
-                    os.remove(file)
-                    st.toast("文件已删除！")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"删除文件失败: 详细错误信息: {traceback.format_exc()}")
-
-        if os.path.exists(video_config_file):
-            if st.button("删除视频生成配置文件", key=f"delete_btn_video_config"):
-                delete_video_config_dialog(video_config_file)
-        else:
-            st.info("当前还没有创建视频生成配置文件")
-
-        @st.dialog("删除视频确认")
-        def delete_videoes_dialog(file_path):
-            st.warning("确定要执行删除操作吗？此操作不可撤销！")
-            if st.button("确认删除", key=f"confirm_delete_videoes"):
-                try:
-                    for file in os.listdir(file_path):
-                        os.remove(os.path.join(file_path, file))
-                    st.toast("所有已下载视频已清空！")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"删除视频失败: 详细错误信息: {traceback.format_exc()}")
-
-        if os.path.exists(video_download_path):
-            if st.button("删除所有已下载视频", key=f"delete_btn_videoes"):
-                delete_videoes_dialog(video_download_path)
-        else:
-            st.info("当前还没有下载任何视频")
-
 
 
