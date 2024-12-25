@@ -14,23 +14,32 @@ def show_b50_dataframe(info_placeholder, user_id, data):
         st.write(f"{user_id}的B50数据预览: ")
         st.dataframe(data, column_order=["clip_id", "title", "level_label", "level",  "ds", "achievements", "fc", "fs", "ra", "dxScore"])
 
-G_config = read_global_config()
-username = G_config.get('USER_ID', '')
-image_path = f"./b50_images/{username}"
-
 st.header("Step 1: 配置生成器参数和B50成绩数据")
 
+def check_username(input_username):
+    # 检查用户名是否包含非法字符
+    if any(char in input_username for char in ['/', '\\', ':', '*', '?', '"', '<', '>', '|']):
+        return remove_invalid_chars(input_username), input_username
+    else:
+        return input_username, input_username
+
+
 with st.container(border=True):
-    # 配置输入
-    username = st.text_input("输入水鱼查分器用户名（国服查询）或一个您喜欢的用户名（国际服）", value=username)
+    G_config = read_global_config()
+    raw_username = G_config.get('USER_ID_RAW', '')
+    input_username = st.text_input("输入水鱼查分器用户名（国服查询）或一个您喜欢的用户名（国际服）", value=raw_username)
 
     if st.button("确定"):
-        if not username:
+        if not input_username:
             st.error("用户名不能为空！")
             st.session_state.config_saved = False
-        else:   
+        else:  
+            # 输入的username可能作为文件路径，需要去除非法字符
+            # raw_username作为发送给查分器的用户名，除非用户名中包含非法字符，否则与username相同
+            username, raw_username = check_username(input_username)
             # 更新配置字典
             G_config['USER_ID'] = username
+            G_config['USER_ID_RAW'] = raw_username
             # 写入配置文件
             write_global_config(G_config)
             st.success("配置已保存！")
@@ -66,8 +75,7 @@ def st_generate_b50_images(placeholder, user_id):
                 image_name_index,
             )
 
-def update_b50(replace_b50_data, update_function, b50_raw_file, b50_data_file, username):
-    update_info_placeholder = st.empty()  
+def update_b50(placeholder, update_function, b50_raw_file, b50_data_file, username, replace_b50_data=False): 
     try:
         if replace_b50_data:
             b50_data = update_function(b50_raw_file, b50_data_file, username)
@@ -77,7 +85,7 @@ def update_b50(replace_b50_data, update_function, b50_raw_file, b50_data_file, u
             b50_data = load_config(b50_data_file)
             st.success("已加载缓存的B50数据")
             st.session_state.data_updated_step1 = True
-        show_b50_dataframe(update_info_placeholder, username, b50_data)
+        show_b50_dataframe(placeholder, username, b50_data)
     except Exception as e:
         st.session_state.data_updated_step1 = False
         st.error(f"获取B50数据时发生错误: {e}")
@@ -85,6 +93,10 @@ def update_b50(replace_b50_data, update_function, b50_raw_file, b50_data_file, u
 
 # 仅在配置已保存时显示"开始预生成"按钮
 if st.session_state.get('config_saved', False):
+    G_config = read_global_config()
+    username = G_config.get('USER_ID', '')
+    raw_username = G_config.get('USER_ID_RAW', '')
+    image_path = f"./b50_images/{username}"
 
     st_init_cache_pathes()
 
@@ -103,24 +115,39 @@ if st.session_state.get('config_saved', False):
         replace_b50_data = replace_confirm == options[1]
     else:
         replace_b50_data = True
+    
+    update_info_placeholder = st.empty()
 
     if st.button("从水鱼获取B50数据（国服）"):
         with st.spinner("正在获取B50数据更新..."):
-            update_b50(replace_b50_data, update_b50_data, b50_raw_file, b50_data_file, username)
-    
-    if st.button("从本地HTML读取B50（国际服）"):
-        with st.spinner("正在读取HTML数据..."):
-            update_b50(replace_b50_data, update_b50_data_int, b50_raw_file, b50_data_file, username)
+            update_b50(update_info_placeholder, update_b50_data, b50_raw_file, b50_data_file, raw_username, replace_b50_data=replace_b50_data)
 
-    if st.button("导入B50数据源代码（开发中，暂不可用）"):
-        # TODO: 按这个按钮之后绘制输入框和确认按钮；确认按钮把输入框内容写入{username}.html，然后调用update_b50
-        # 当前的写法似乎并不符合streamlit的逻辑，需要修改
-        html_input = st.text_input("请将复制的网页源代码粘贴到这里：")
+    @st.dialog("从HTML源码导入数据")
+    def input_html_data():
+        st.info("请将复制的网页源代码粘贴到下方输入栏：")
+        if os.path.exists(f"./{username}.html"):
+            st.info(f"注意，重复导入将会覆盖已有html数据文件：{username}.html")
+        html_input = st.text_area("html_input", height=600)
         if st.button("确认保存"):
             with open(f"./{username}.html", 'w', encoding="utf-8") as f:
-               f.write(user_input)
-            with st.spinner("正在读取HTML数据..."):
-                update_b50(True, update_b50_data_int, b50_raw_file, b50_data_file, username)
+               f.write(html_input)
+            st.toast("HTML数据已保存！")
+            st.rerun()
+
+    with st.container(border=True):
+        st.info("如您使用国际服数据，请先点击下方左侧按钮导入源代码，再使用下方右侧按钮读取数据。国服用户请跳过。")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("导入B50数据源代码"):
+                # 参考水鱼做法使用dialog框架
+                input_html_data()
+        
+        with col2:
+            if st.button("从本地HTML读取B50（国际服）"):
+                with st.spinner("正在读取HTML数据..."):
+                    update_b50(update_info_placeholder, update_b50_data_int, b50_raw_file, b50_data_file, username, replace_b50_data=replace_b50_data)
+
+
 
     if st.session_state.get('data_updated_step1', False):
         with st.container(border=True):

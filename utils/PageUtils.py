@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import yaml
 import subprocess
@@ -12,6 +13,10 @@ LEVEL_LABELS = {
     3: "MASTER",
     4: "Re:MASTER",
 }
+
+def remove_invalid_chars(text: str) -> str:
+    # 去除非法字符，使用re.sub
+    return re.sub(r'[\\/:*?"<>|]', '', text)
 
 def load_config(config_file):
     if os.path.exists(config_file):
