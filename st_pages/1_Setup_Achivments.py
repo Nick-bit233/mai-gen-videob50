@@ -66,6 +66,23 @@ def st_generate_b50_images(placeholder, user_id):
                 image_name_index,
             )
 
+def update_b50(replace_b50_data, update_function, b50_raw_file, b50_data_file, username):
+    update_info_placeholder = st.empty()  
+    try:
+        if replace_b50_data:
+            b50_data = update_function(b50_raw_file, b50_data_file, username)
+            st.success("已更新B50数据！")
+            st.session_state.data_updated_step1 = True
+        else:
+            b50_data = load_config(b50_data_file)
+            st.success("已加载缓存的B50数据")
+            st.session_state.data_updated_step1 = True
+        show_b50_dataframe(update_info_placeholder, username, b50_data)
+    except Exception as e:
+        st.session_state.data_updated_step1 = False
+        st.error(f"获取B50数据时发生错误: {e}")
+        st.error(traceback.format_exc())
+
 # 仅在配置已保存时显示"开始预生成"按钮
 if st.session_state.get('config_saved', False):
 
@@ -89,42 +106,21 @@ if st.session_state.get('config_saved', False):
 
     if st.button("从水鱼获取B50数据（国服）"):
         with st.spinner("正在获取B50数据更新..."):
-            update_info_placeholder = st.empty()  
-            try:
-                if replace_b50_data:
-                    b50_data = update_b50_data(b50_raw_file, b50_data_file, username)
-                    st.success("已更新B50数据！")
-                    st.session_state.data_updated_step1 = True
-                else:
-                    b50_data = load_config(b50_data_file)
-                    st.success("已加载缓存的B50数据")
-                    st.session_state.data_updated_step1 = True
-                show_b50_dataframe(update_info_placeholder, username, b50_data)
-            except Exception as e:
-                st.session_state.data_updated_step1 = False
-                st.error(f"获取B50数据时发生错误: {e}")
-                st.error(traceback.format_exc())
+            update_b50(replace_b50_data, update_b50_data, b50_raw_file, b50_data_file, username)
     
     if st.button("从本地HTML读取B50（国际服）"):
         with st.spinner("正在读取HTML数据..."):
-            update_info_placeholder = st.empty()  
-            try:
-                if replace_b50_data:
-                    # Use different update function
-                    b50_data = update_b50_data_int(b50_raw_file, b50_data_file, username)
-                    # Keep remaining part the same
-                    st.success("已根据HTML文件更新B50数据！")
-                    st.session_state.data_updated_step1 = True
-                else:
-                    b50_data = load_config(b50_data_file)
-                    st.success("已加载缓存的B50数据")
-                    st.session_state.data_updated_step1 = True
-                show_b50_dataframe(update_info_placeholder, username, b50_data)
-            except Exception as e:
-                st.session_state.data_updated_step1 = False
-                st.error(f"获取B50数据时发生错误, 请检查是否正确保存了国际服HTML数据文件！")
-                st.error(f"详细错误信息: {e}")
-                st.error(traceback.format_exc())
+            update_b50(replace_b50_data, update_b50_data_int, b50_raw_file, b50_data_file, username)
+
+    if st.button("导入B50数据源代码（开发中，暂不可用）"):
+        # TODO: 按这个按钮之后绘制输入框和确认按钮；确认按钮把输入框内容写入{username}.html，然后调用update_b50
+        # 当前的写法似乎并不符合streamlit的逻辑，需要修改
+        html_input = st.text_input("请将复制的网页源代码粘贴到这里：")
+        if st.button("确认保存"):
+            with open(f"./{username}.html", 'w', encoding="utf-8") as f:
+               f.write(user_input)
+            with st.spinner("正在读取HTML数据..."):
+                update_b50(True, update_b50_data_int, b50_raw_file, b50_data_file, username)
 
     if st.session_state.get('data_updated_step1', False):
         with st.container(border=True):

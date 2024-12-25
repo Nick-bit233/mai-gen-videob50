@@ -1,0 +1,1169 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+	<!-- Google Tag Manager -->
+	<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+	new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+	j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+	'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+	})(window,document,'script','dataLayer','GTM-5PWDSV');</script>
+	<!-- End Google Tag Manager -->
+	<!-- Google tag (gtag.js) -->
+	<script async src="https://www.googletagmanager.com/gtag/js?id=G-HMWCCH9Y0H"></script>
+	<script>
+		window.dataLayer = window.dataLayer || [];
+		function gtag(){dataLayer.push(arguments);}
+		gtag('js', new Date());
+
+		gtag('config', 'G-HMWCCH9Y0H');
+	</script>
+	<!-- End Google tag (gtag.js) -->
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=yes" />
+	<script>
+		var baseW = 768;
+		var iOSW = 0;
+		var ua = navigator.userAgent.toLowerCase();
+		var isiOS = (ua.indexOf("iphone") > -1) || (ua.indexOf("ipod") > -1) || (ua.indexOf("ipad") > -1);
+		if(isiOS){
+			iOSW = document.documentElement.clientWidth;
+		}
+		window.addEventListener("resize", updateMetaViewport, false);
+		window.addEventListener("orientationchange", updateMetaViewport, false);
+		var ev = document.createEvent("UIEvent");
+		ev.initEvent("resize", true, true)
+		window.dispatchEvent(ev);
+		function updateMetaViewport(){
+			var viewportContent;
+			var w = window.outerWidth;
+			if(isiOS){
+				w = iOSW;
+			}
+			if(w < baseW){
+				viewportContent = "width=480,initial-scale=" + w/480 + ",user-scalable=yes,shrink-to-fit=no";
+			}else{
+				viewportContent = "width=device-width,initial-scale=1.0,user-scalable=yes,shrink-to-fit=no";
+			}
+			document.querySelector("meta[name='viewport']").setAttribute("content", viewportContent);
+		}
+	</script>
+	<meta name="format-detection" content="telephone=no">
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+	<meta http-equiv="X-UA-Compatible" content="IE=EmulateIE8; IE=EmulateIE9" />
+	<meta http-equiv="Pragma" CONTENT="no-cache">
+	<meta http-equiv="Cache-Control" CONTENT="no-cache">
+	<meta http-equiv="Expires" CONTENT="-1">
+	<meta name="robots" content="INDEX, FOLLOW" />
+	<meta name="author" content="(C) SEGA">
+	<meta name="copyright" content="&copy;SEGA">
+	<meta name="description" content="This is an official website of 'maimai DX', the latest game in maimai series which created by SEGA Interactive Co., Ltd.">
+	<meta name="keywords" content="maimaiDXNET,maimaiDX,maimai deluxe,sega" />
+	<meta name="theme-color" content="#51bcf3">
+	<meta name="mkd" content="385603466b0b854e5e29221f55d39fa4">
+
+	<title>maimai DX NET－Music for DX RATING－</title>
+        <link rel="stylesheet" href="https://maimaidx-eng.com/maimai-mobile/css/common.css?ver=1.45?20230401" />
+	<link rel="apple-touch-icon-precomposed" href="https://maimaidx-eng.com/maimai-mobile/apple-touch-icon.png">
+	<link rel="icon" type="image/png" href="https://maimaidx-eng.com/maimai-mobile/apple-touch-icon.png">
+</head>
+<body oncontextmenu="return false;">
+	<!-- Google Tag Manager (noscript) -->
+	<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-5PWDSV"
+	height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+	<!-- End Google Tag Manager (noscript) -->
+	<div class="wrapper t_c">
+					<div class="spmenu_toggle"></div>
+			<nav class="spmenu_navigation" style="display:none">
+				<img src="https://maimaidx-eng.com/maimai-mobile/img/menu_title.png" class="w_320 m_t_20"/>
+				<div class="container p_10 f_0">
+					<div class="p_5">
+						<div class="d_ib col2"><a href="https://maimaidx-eng.com/maimai-mobile/home/"><img src="https://maimaidx-eng.com/maimai-mobile/img/menu_home.png" class="w_112"/></a></div>
+						<div class="d_ib col2"><a href="https://maimaidx-eng.com/maimai-mobile/playerData/"><img src="https://maimaidx-eng.com/maimai-mobile/img/menu_playerdata.png" class="w_112"/></a></div>
+					</div>
+					<div class="p_5">
+						<div class="d_ib col2"><a href="https://maimaidx-eng.com/maimai-mobile/friend/"><img src="https://maimaidx-eng.com/maimai-mobile/img/menu_friend.png" class="w_112"/></a></div>
+						<div class="d_ib col2"><a href="https://maimaidx-eng.com/maimai-mobile/shop/"><img src="https://maimaidx-eng.com/maimai-mobile/img/menu_shop.png" class="w_112"/></a></div>
+					</div>
+					<div class="p_5">
+						<div class="d_ib col2"><a href="https://maimaidx-eng.com/maimai-mobile/record/"><img src="https://maimaidx-eng.com/maimai-mobile/img/menu_record.png" class="w_112"/></a></div>
+						<div class="d_ib col2"><a href="https://maimaidx-eng.com/maimai-mobile/map/"><img src="https://maimaidx-eng.com/maimai-mobile/img/menu_map.png?ver=1.45" class="w_112"/></a></div>
+					</div>
+					<div class="p_5 p_b_10">
+						<div class="d_ib col2"><a href="https://maimaidx-eng.com/maimai-mobile/collection/"><img src="https://maimaidx-eng.com/maimai-mobile/img/menu_collection.png" class="w_112"/></a></div>
+						<div class="d_ib col2"><a href="https://maimaidx-eng.com/maimai-mobile/ranking/"><img src="https://maimaidx-eng.com/maimai-mobile/img/menu_ranking.png" class="w_112"/></a></div>
+					</div>
+				</div>
+			</nav>
+				<a href="https://maimaidx-eng.com/maimai-mobile/home/"><img src="https://maimaidx-eng.com/maimai-mobile/img/logo.png" class="logo p_5"/></a>
+					<a href="https://maimaidx-eng.com/maimai-mobile/home/userOption/" class="setting"><img src="https://maimaidx-eng.com/maimai-mobile/img/btn_setting.png" /></a>
+			</div>
+	<div class="wrapper main_wrapper t_c o_v">
+		<header class="f_0">
+				<div class="f_0">
+	<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 480 10" preserveAspectRatio="none" style="height:10px">
+		<path d="M0,10 v-5 q5,5 10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 v5 Z" fill="#7ed3ff"></path>
+	</svg>
+	<div class="menu">
+		<a href="https://maimaidx-eng.com/maimai-mobile/home/" class="d_ib col4 p_4"><img src="https://maimaidx-eng.com/maimai-mobile/img/menu_home_on.png?ver=1.45" class="w_112"/></a>
+		<a href="https://maimaidx-eng.com/maimai-mobile/playerData/" class="d_ib col4 p_4"><img src="https://maimaidx-eng.com/maimai-mobile/img/menu_playerdata.png?ver=1.45" class="w_112"/></a>
+		<a href="https://maimaidx-eng.com/maimai-mobile/friend/" class="d_ib col4 p_4"><img src="https://maimaidx-eng.com/maimai-mobile/img/menu_friend.png?ver=1.45" class="w_112"/></a>
+		<a href="https://maimaidx-eng.com/maimai-mobile/shop/" class="d_ib col4 p_4"><img src="https://maimaidx-eng.com/maimai-mobile/img/menu_shop.png?ver=1.45" class="w_112"/></a>
+	</div>
+	<div class="menu">
+		<a href="https://maimaidx-eng.com/maimai-mobile/record/" class="d_ib col4 p_4"><img src="https://maimaidx-eng.com/maimai-mobile/img/menu_record.png?ver=1.45" class="w_112"/></a>
+		<a href="https://maimaidx-eng.com/maimai-mobile/map/" class="d_ib col4 p_4"><img src="https://maimaidx-eng.com/maimai-mobile/img/menu_map.png?ver=1.45" class="w_112"/></a>
+		<a href="https://maimaidx-eng.com/maimai-mobile/collection/" class="d_ib col4 p_4"><img src="https://maimaidx-eng.com/maimai-mobile/img/menu_collection.png?ver=1.45" class="w_112"/></a>
+		<a href="https://maimaidx-eng.com/maimai-mobile/ranking/" class="d_ib col4 p_4"><img src="https://maimaidx-eng.com/maimai-mobile/img/menu_ranking.png?ver=1.45" class="w_112"/></a>
+	</div>
+	<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 480 10" preserveAspectRatio="none" style="height:10px">
+		<path d="M0,0 v5 q5,5 10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 v-5 Z" fill="#7ed3ff"></path>
+	</svg>
+</div>
+		</header>
+
+			<div class="m_t_5 m_b_10 t_l f_0">
+	<a href="https://maimaidx-eng.com/maimai-mobile/home/" class="p_r d_ib">
+		<img src="https://maimaidx-eng.com/maimai-mobile/img/menu_sub_home_home.png?ver=1.45" class="w_120"/>
+			</a>
+	<a href="https://maimaidx-eng.com/maimai-mobile/home/ratingTargetMusic/" class="p_r d_ib">
+		<img src="https://maimaidx-eng.com/maimai-mobile/img/menu_sub_home_rating.png?ver=1.45" class="w_120"/>
+		<img src="https://maimaidx-eng.com/maimai-mobile/img/icon_on.png" class="submenu_selected" />	</a>
+	<a href="https://maimaidx-eng.com/maimai-mobile/home/congratulations/" class="p_r d_ib">
+		<img src="https://maimaidx-eng.com/maimai-mobile/img/menu_sub_home_congratulations.png?ver=1.45" class="w_120"/>
+			</a>
+	<img src="https://maimaidx-eng.com/maimai-mobile/img/menu_sub_home.png" class="w_120"/>
+</div>
+
+<div class="container p_10 t_l f_13">You can check the songs that are used for your DX Rating calculation.</div>
+<img src="https://maimaidx-eng.com/maimai-mobile/img/title_playerdata.png" class="title m_10"/>
+<div class="see_through_block m_15 m_t_0 p_10 t_l f_0 p_r">
+	<div class="basic_block p_10 f_0">
+				<img loading="lazy" src="https://maimaidx-eng.com/maimai-mobile/img/Icon/4abd136d1f29a4c3.png" class="w_112 f_l"/>
+		<div class="p_l_10 f_l">
+		<div class="trophy_block trophy_Silver p_3 t_c f_0">
+			<div class="trophy_inner_block f_13">
+				<span>百合咲ミカの相棒</span>
+			</div>
+		</div>
+		<div class="m_b_5">
+			<div class="name_block f_l f_16">ＣａｅＲｕ１０ａ</div>
+			<div class="f_r t_r f_0">
+				<div class="p_r p_3">
+					<img src="https://maimaidx-eng.com/maimai-mobile/img/rating_base_rainbow.png?ver=1.45" class="h_30 f_r"/>
+					<div class="rating_block">15108</div>
+				</div>
+			</div>
+			<div class="clearfix"></div>
+		</div>
+		<img src="https://maimaidx-eng.com/maimai-mobile/img/line_01.png" class="user_data_block_line" />
+		<div class="clearfix"></div>
+		<img src="https://maimaidx-eng.com/maimai-mobile/img/course/course_rank_10hvsSHd90.png" class="h_35 f_l"/>
+		<img src="https://maimaidx-eng.com/maimai-mobile/img/class/class_rank_s_02LdzHISU6.png" class="p_l_10 h_35 f_l">
+		<div class="p_l_10 f_l f_14"><img src="https://maimaidx-eng.com/maimai-mobile/img/icon_star.png" class="h_30 m_3 v_m"/>×167</div>
+		</div>
+		<div class="clearfix"></div>
+	</div>
+</div>
+<div class="screw_block m_15 f_15 p_s">Songs for Rating(New)</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13+</div>
+			<div class="music_name_block t_l f_13 break">バカ通信</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.6286%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="6852b40c5ec04591c22269d05d9b0e0e94bed9561e8375084f5188317d732a20b0ec37c9f8fefda7294b25adc50bc79fc349d45a619b0fde1e4b2c7f853bb35eSsILjVFVB0rdUQKSUjtL1u8DlM88XaqM8gorFJoEpko=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13+</div>
+			<div class="music_name_block t_l f_13 break">Lunatic Vibes</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.4999%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="359f2af16475cc05268868a7557c7be8543ce11e4bd6ff4ed96d575951f6d799aa362c640b6fcbb55c4e09fc2f735bbe755648c010a164673ee5134c9f18c7dcOxLz3mV3VxFZAsl+HVtXK8pJD0ogjFb9enRqORTnOrw=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13+</div>
+			<div class="music_name_block t_l f_13 break">エスオーエス</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.8308%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="1ad06c46c76d0912acbc699fe6f6b2a47f3aca1f5518a666ed7fdb61e460e7392b21037738564b7f828c3bcf6e8a4ca00b02616148089bcc6ac09a97ab5b8bc79nnDUgpi5AOipb7KW9mi/SftAtKD8E8vSk1qFRzgOhQ=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13</div>
+			<div class="music_name_block t_l f_13 break">Cider P@rty</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.5037%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="0ab4f39a226ddc5d1197f062cfcfad395142385e7c4ab1a978fd008a8dfdd814097d4a6d4ea1d9738e107d4c9e4194c63caf33674adbdc702870cb413648e0d8zimxbuv5GuEuNXm52dSWYsp189dkuvnDviimxDbh3Mk=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13+</div>
+			<div class="music_name_block t_l f_13 break">Edelweiss</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.3110%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="d4675a859c10eb5873adb78f8bb9ecf01100f0bcca33394bd4d21ff51d8aa0f101dd69b7a4b813112ca0e1b26bde0d6ea38ce71436160e1bf4930879bdecd1d5xHR39XLxz/hsVpR0E9qb4z5N5EAK6/7317s+0oWOlSc=" />
+		</form>
+	</div>
+			<div class="music_remaster_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_remaster.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13</div>
+			<div class="music_name_block t_l f_13 break">ラビットホール</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.6064%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="653cbf8d85045b69c85541972c5e9d7862c04b5829f57da60614dcf5cea63d32fe9e5044c2af53e8edcdaed2768af67d212df52d51f069ae05c38a45974b4939VOJ6vcbSzUKES9dztONEReoxzdfJbMM5REu5Jbyh3cg=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13</div>
+			<div class="music_name_block t_l f_13 break">Freak Out Hr.</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.5544%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="ac8ecd6eb6de10030f6f510b88c06c130b6993582bcc85d06c8a99634bdcceea42dda8b8a9c471a4a3668f01ae2c97e2993ca17360c4c9d74f80b0025b24d14ffXx9Pra0222vh4APfPYvyQOHadg1oMSXwTB/hdH0QU4=" />
+		</form>
+	</div>
+			<div class="music_remaster_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_remaster.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13+</div>
+			<div class="music_name_block t_l f_13 break">INTERNET YAMERO</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.0601%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="03c6b2564cc40a162f5d802162d27868a42432f8b7f9c089ed521e1a0a552609d696da38a9739cacaff9344e5f9fc63e808c206731fdaaf9256ab1367c68b96a3CsM8cXd2tpSD7h8Y620sTuU0aKKZeBWaeRYUQnZet8=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13+</div>
+			<div class="music_name_block t_l f_13 break">RE:INCARNATED DRAGNER</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.0290%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="f6ff03e89b44544c935dabbb1bcc2f7506af33e68b0d9f961a82051abef3b23282eddbfd9136089d56cd26c50dfd3184a50c534258770dde3956bbd355a55a141IYRD9ZCQXWzBTovuw1eRYMZcY06dNRyqxzHu1qLqJ4=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13+</div>
+			<div class="music_name_block t_l f_13 break">DUAL ROZES</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.4516%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="98808926c9f1157451e58638f7e6d07ccfa2c9b1cdf62f5bd2b6ce2fc63d1bf2e9bc8cbf56a0988c1122800d48fe847e2bb376206e52bf4f6bd1a1d24b8bd7a8lEIuUC40Acv+K/W72VHQ/ANBRNihOTdPACt1qIfYgbI=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13+</div>
+			<div class="music_name_block t_l f_13 break">New York Back Raise</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.2668%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="b36ede79d4840fd8d3ca0a7adde660e376f0f33bc640099a51e603a3e2b1e3cac271111019958ab86f61b93aa9a78f5364188f3285404fc055a634fac8815caa+IWHc7hFHlZL0LVPyHpXnYbmnu1VvZgVochg2X+TAN4=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13+</div>
+			<div class="music_name_block t_l f_13 break">新人類</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.0563%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="f678cf6479eb22007928881a8ee194331fee6e9acb78c7afae4dc673f758c7dd3a64eb699844c34b2e04a090ac718cad45d55970a6fc3f58727849ce24c81f8cEnca4zNjCEgBx/jYZPXFvAHCTx8LS27kraQVwYemiFY=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">14</div>
+			<div class="music_name_block t_l f_13 break">ouroboros -twin stroke of the end-</div>
+			<div class="music_score_block w_120 t_r f_r f_12">99.0047%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="e5fc56bb179453fb84390b9d3f294013bb1481cad5fac3f5a4de44d3c90f210ede581154ef6665edbbdb2b4ac50fa656f6dd4750ff3c3f01a98088b07ce184b79rQwUK0Uz9oZ2hQ/LOL2y4LaUi5BcpUaalewCZ8Ciqc=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">14</div>
+			<div class="music_name_block t_l f_13 break">DEVOTION</div>
+			<div class="music_score_block w_120 t_r f_r f_12">99.3109%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="e499bf7959036eb3d3188d2402b68174eee411252eaf972d5785a042a3f9ceec461cc11cd2ee1fcf67e4146e72967d5d652fcc76b8409f34672ec1a64447144eXBb9uSzdf90DvEhn8Z1RqT8sSg7kBjOWCFu3CgdWJpk=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13</div>
+			<div class="music_name_block t_l f_13 break">のじゃロリック</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.6280%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="b8e5d48f277b05c5f1c380a80173a834c0723824df269ebcd9baec2f312b1dc716839e0624429509e367bc299113915bc673d7b02bbb9d07776f3ca25056eed1FpMluFGmScX3TgoEdkHPpVdp2IVnBUzAF2xr2E8jhQA=" />
+		</form>
+	</div>
+<div class="screw_block m_15 f_15 p_s">Songs for Rating(Others)</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">14</div>
+			<div class="music_name_block t_l f_13 break">ULTRA SYNERGY MATRIX</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.5029%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="7d6ec1d718f290872c00f3b97ea9e503cbf592c8872f5c4155488639341bc9b3b637e6ef19c608e56f0f49d8df6b62ceacd9eb3516c9a0dd3ab42b77f899270dDeSJAGmOEghSJiJ9Wi07H9044owuSyMy8tU7CuVLoVk=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_standard.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13+</div>
+			<div class="music_name_block t_l f_13 break">少女幻葬戦慄曲 ～ Necro Fantasia</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.5250%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="eec4cae63bb5fef769039d8d79f9fb4c9a5139f8e71dffee2ccb09e0af8f62490514b270d6b5759e40d3b55a3659c043226a876efa02293a3ecadeb1f3d45d56U9sGF0ilLyT12AYFluUiANL+b+R+LDQi9VD2OPqVpkY=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_standard.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13+</div>
+			<div class="music_name_block t_l f_13 break">Doll Judgment</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.5510%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="72e82354a2c0ab7b2524f0fa1aeb5b9d8ead4e292717f99e0f02e20fdb0c6ab3d6a63a0693bfe8a0894a07683efde8fd9b41275d22b44b428d2d4fffe16e464fC1MvfVZcTwqGw0Qb1nfaHpZWFm5KZxkZDsIjVp50VPk=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13+</div>
+			<div class="music_name_block t_l f_13 break">リスペク風神</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.7802%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="0db8d11c4293cf103ea5d79b96a1bb1e90d3a67cc619c589fe6c232796f30b22af5b61ac4c1ce90f89d32d3fff30587e0b6000c4399960c0ad4667f17e69bd72mUs2j/fKlKp5D6OkotnG4TzoJ95h4GW0sCUWuFmi8EI=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13+</div>
+			<div class="music_name_block t_l f_13 break">魔ジョ狩リ</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.5955%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="6f939b9db43fabd9f01146cb0b7f33fdc0048f489baf58e56b1402abf56f3dadbc301612b44f677cf709505a9ff95bc8e901d1c99758313c868939b5ae7f53aawxBvY9Jt6CllObpfMU9NBTdNgYSWfj+cUnIUzpwjGTw=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_standard.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13+</div>
+			<div class="music_name_block t_l f_13 break">光線チューニング</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.5295%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="084415579cfcd71822d5c3a04cbd122419da1eaed199dbae7ca0533e740686569a32dfaf97533b7d5475a1f5fa62715251251dcc03181b2a8215c6934c8cdf3dSHTt1QHQpuFIjKF3rSK/wWrwbwqA/xabvvSmBuAoTec=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">14</div>
+			<div class="music_name_block t_l f_13 break">BULK UP (GAME EXCLUSIVE EDIT)</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.3018%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="977e2d034e1f09a6780d18df6dc33011c9c6e099cbb3fcb6848400fa6d57b13b0cbdf096748ac89961c9c9c0f39685f392cad81ab046bfeb6ccac3f94f520369mriY+Q4rGMcZ739WoHm5e+vQKmLa/47tWKlRhsaM8EQ=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13+</div>
+			<div class="music_name_block t_l f_13 break">Irresistible</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.6753%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="1103cee276e17c4e4f707966e25623e4b14fd46e6b36b9f5d149840ff834707ffaa95583d49b46a0eba7640a1b6339160e50c5235dc1f111a9fc537c7a06e217mHteFW2e4LodZlss3p754R1iimIa67OS3zRaxmOx/30=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13+</div>
+			<div class="music_name_block t_l f_13 break">コンティニュー！ feat. 藍月なくる</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.6150%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="6b88f9c9904d61ea2c5a9bfc41652aa82215454a2f7cfe2bf7f75f7cab806152780f0fac6e9eccd4a32f113ad3a01ab3892f48a6879f5b27338eaa604d594ebdnMjlSg59iw1IaygaBS0sZv7pafl9478tPXbTkUsaLUo=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">14</div>
+			<div class="music_name_block t_l f_13 break">The Great Banquet</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.0605%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="f78b36d9cb61edd86d43e4ea9bf0f47dba0361d8a66dff920d9cf19f933123281da6f6f4385b538b4ad1c6d099430bebff50babac9999bb720a0c5d28fcf4307zz1bw131/cUt8N3jbO8m0HQGLPbMv2H3O2RErBvOrjA=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13</div>
+			<div class="music_name_block t_l f_13 break">ナイト・オブ・ナイツ</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.7797%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="1247ef661bb4982c1df40f8d7f150b705fd10002063f21ad88469d56be77fc7b7ec12ff074ded420661a532b60f115abad081ece4c11384494c035756fe2188fLcHJkeTCYi1Xk+5yHoIvh6yNiwUcbvwL0LFO1fHDWKI=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13</div>
+			<div class="music_name_block t_l f_13 break">Transcend Lights</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.7584%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="4e9fb764d863ad2dec96ce899a499d22229f082cd00955474691815d86a73da5743146026c3f6971fbeb8507d8b6c2e1a0fd7b9ebbf5c6bc237762e7bae6db6cGW1oHKcPixQ9fk6tW+/WxWR2Df0SBoKEYl+mcS4KOIQ=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13</div>
+			<div class="music_name_block t_l f_13 break">INTERNET OVERDOSE</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.6942%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="c84cfab55191298894bdd7eefcf5dd24ac9d7383f45d9ba68f29ad20414acf9a3a171638254ccd26d306a0030a296d4f900017d921f90b5e8c6c025499c84f9eI+DKgLZpzqcJCel58ECaI1TeXQC4sVPLj8WK1TaLueM=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13</div>
+			<div class="music_name_block t_l f_13 break">Mystic Parade</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.5977%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="08ef3613fda0d6c5915b1bd2b7159ab288d481c5e2e46f311921b8410d0c28c28ac3f08301d1428ddac3f299b639f5e0ef3457dd5696316db198505545d4ad18ZPLw6/NRkeeJvLd6JYzBwvQuMZpgmdIfe5jFqMiXPTQ=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">14</div>
+			<div class="music_name_block t_l f_13 break">Destiny Runner</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.1763%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="308ba7e9b75969d8a9850c41f0e7c4daa2c385073105a8dc4e7fbf938d895676eca92608d5a9751dc06ac1411c32d76a6efbd0ed4e77d98f84fc8ebdb0e1fc28Y0Sdg0S2kXfc4LsPiR+2FgswPyJLY5b1UXuEGIHjZPM=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_standard.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">14</div>
+			<div class="music_name_block t_l f_13 break">FFT</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.1306%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="5491211d756bb3a68fd840fb6336606f3688502528de3ff43f95434c521346ce3cc43c4ca98ed758f49c0dd81120bf2283c4effe6047fd664fcc802e60ab2708RsE6ZLgr9i449xA0N1aLmYiqMnWdjKj3uMfLpguMdXY=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">14</div>
+			<div class="music_name_block t_l f_13 break">VSpook!</div>
+			<div class="music_score_block w_120 t_r f_r f_12">99.6061%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="6978ac11d85a691f8bbc8e5ffd481dd03dab8541dff9d66b23477e294d7cca0cb907b555cdabacfcca6db24ed429e0e74a4a2ae31e5c0389f84c7c2e711d1010lnWT6QZ7fuyE5vVDAUAMwDFt0zL/Mq4istE6CjjJ1q4=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">14</div>
+			<div class="music_name_block t_l f_13 break">Trick tear</div>
+			<div class="music_score_block w_120 t_r f_r f_12">99.5169%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="e86999b6b267b0b9447ea2c09787eaf23179c50a082a510e95e775fbdeef20e998432de4bcfe062813d80224248159e2e9d55a8e35d1557ed2243f185742f09avk752VZVX2+cmfFhDsehvGSt1la675+5sbgjjh1uDb8=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13</div>
+			<div class="music_name_block t_l f_13 break">ヒトガタ</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.7634%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="fa2b7ad1b76f64e1925b673bb2626d2bc0211b8dda7c8fb5969dc6400e208a1790fb934b616890f737bb66ed4a086017c3c83e5347e8cdd6299c812313e91bec5LFvbDwYIb0bLj7ZJJQa/WCVTbqWfR9SVySyBC18uH0=" />
+		</form>
+	</div>
+			<div class="music_remaster_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_remaster.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13</div>
+			<div class="music_name_block t_l f_13 break">ヴァンパイア</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.6844%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="6f78ae80f14135c2834adaa3cbe7cbe0e60c432439b5094f8c147d109f68aa175f6cc94509e697c7364e46673a837aee5d0850f398e3c9f28dada827c1b503b3FfDjOCqr/E/hHP5LQooj22xFWmKm0rettlHJx2S+dQw=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13</div>
+			<div class="music_name_block t_l f_13 break">with U</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.6561%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="060ffdc3e4f755a6c0b3973fc6a57bb1cb6c50639a60537abc9665004bdad80d5047fd829fb1785098099de9df157fe4c06222990f866bdb9776a478838bd14a6xip77YEZFag+dXZVwDp5acamEzld8qKdYEtFq8KISo=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_standard.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13</div>
+			<div class="music_name_block t_l f_13 break">ウミユリ海底譚</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.6451%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="46e7bc1b6a0d3e222ac688035cfa16562844f9e7ddfa58c4b1070e12c58603804ee0542627b5fdd460542fa43e78079f1528ad63dff5a1c4e3e57323442590bcyvn/o0YrhCl1qbJJVReG+gpmpya+1xtOKb1GGuStnrE=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_standard.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13</div>
+			<div class="music_name_block t_l f_13 break">Windy Hill -Zone 1</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.6339%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="e64fed4ec5f637ca07645a4033aaac419b83d31290846e4f97b3d61273b5fade0467bb2f9b48615179067f2c681e36d340496a82b20a62eadba51727b3bd78cd52XsC6jrryzSkfenELtfbylDn015nhFvy8Gg/11oSCU=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13</div>
+			<div class="music_name_block t_l f_13 break">ケロ⑨destiny</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.5660%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="1cd20f4f82691574787da539596dd4cf714c6f4b7676e858dff8ddb578d878c100476a7953feb23375fe6bfa08cd315eb5bad96774bbc3c4ed0618aa3f90eb60mhj635GJrDPHyYecxdy06Mpt2ito+qPyB12AUdId+0U=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13</div>
+			<div class="music_name_block t_l f_13 break">Grip &amp; Break down !!</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.5608%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="de63a571f362268fa4027967eda3fa5e39ebfc6b40e479c4f508439012c663b3bed5da4d11d74fac5a5f819df32b5ec4654814b910fee6e12aa4bad2f0c03a1ebQoKTQRAdA3eeI8k6EredfQ4LAzT+X28buiaT67/wPg=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13</div>
+			<div class="music_name_block t_l f_13 break">Falling</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.5536%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="463238870a3ec322d2acdb95f3204eb5e1df77223461b8cc13bd594077c6242163147ac27ec9d44e4876dc25646aae19adb49dc32fecd5664bdfa41520988a97q0oQVIStxtDsvLKcfyV+20SYY1lAT7bHjXny5v82rCU=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_standard.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13</div>
+			<div class="music_name_block t_l f_13 break">フィクサー</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.5496%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="a52a5781ba341aa3bedfdc7812718ea00d89beb5a76b273a44d85a0291094824ff1062125648bf1a075f038b9d8f1bd373b769bbd8e1dcdcd0b4589810f3cc71hrhhWdYNgIXTvAyyaB3HINV8GJmReLbUpYYU3cuBuC8=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_standard.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13</div>
+			<div class="music_name_block t_l f_13 break">蒼空に舞え、墨染の桜</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.5344%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="bd44f82766b6a5506cd56d753867cef6e4c565bc2381844fe38c1d632ce7739091f21dda1aebab287c03694ee6f2af02b2a0a8fabc399dbb1c2929e540881ad9rpgcDFDmr19FitKIV7Le8nYeblmFqJpKYKU6Z9caF/M=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13+</div>
+			<div class="music_name_block t_l f_13 break">Last Samurai</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.4219%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="67af937872b7d3040e41ac030b3aaedb19746cb35e464a85df7135b626ae18e2a68139477c25e320aeb13c21c1ecace79fc9bd6c1a56c8ee021780c8f530d171JBEh4EXJG9Ji5MsCgrroonYNPfbGcP0hQnSyYODHcV8=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">14</div>
+			<div class="music_name_block t_l f_13 break">Cthugha</div>
+			<div class="music_score_block w_120 t_r f_r f_12">99.9272%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="f12c04242fa8913a5fc565de3ddbbf391ff3efc16082d83c9cad04bf1297727b572c23b1805a8fd2dfa381cc7a072cf41f6f7cc5944811f964e8458463b96382YcNlToFxmPQncSRLRCpYI/jijMROVeDtrh9Joy6baM0=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13+</div>
+			<div class="music_name_block t_l f_13 break">Strange Bar</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.2011%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="399634b9506db485fa352077f95bdd9b1339b6c12957fca19532a975e49e36406444b7511f1fdc981eed6c467731fa34e79402cd997c0636c9cd9e9bf4ee7443U/I8o1OkZo2KB4GmZAUeQQDTOz0oj2+EjEuNJxtTP6A=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13+</div>
+			<div class="music_name_block t_l f_13 break">[X]</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.0610%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="63b3a0aec05ac56e1937990a02d54d445a6fe8321a9899868ce63afa52e7636447f7be9670571e9732eb74e578129d342c0e03fa7962e9e6bf4c456d96d07c8957YFkgAr0nRwXMx7DqeuldbqEUwKkg5EhZ01JvDs8FA=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">14</div>
+			<div class="music_name_block t_l f_13 break">Party☆People☆Princess</div>
+			<div class="music_score_block w_120 t_r f_r f_12">99.6728%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="61aafe0282786b7fea231034910cf9deb54d38d9075f0ade0e63e1c2e07e8ea9b129decabfa73550c33e9a6420d514687735a3ffac20efe68d6dbff15c5d0f81AtRIJhkhfOzm9fs18gGRJcl4EaOJV3hZWiJD080hpm0=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">14</div>
+			<div class="music_name_block t_l f_13 break">Falsum Atlantis.</div>
+			<div class="music_score_block w_120 t_r f_r f_12">99.4757%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="72bf124329b57b1c85ff5e28be42a4968c4f3d38a060c3a92f795b02c7d7c46b65af8abca07e3e3d119d8aca80c23bf083a89a55f19c2ae4dc5927799db82e9bF+Zbe2GhAQpMDdXMF0beAMJ7hcQL7A54K/+bvu46hNA=" />
+		</form>
+	</div>
+				<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13</div>
+			<div class="music_name_block t_l f_13 break">三妖精SAY YA!!!</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.8136%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="251272bf3b5a49150b1a14080d1d57a8e73e154805afdbcdc672a7f4313fd742baa2b7ac659f3a2b89e6d172624f283ad597ae6799ff1676cd75cb428291bc38Xl+Bf4fzpn0gZoG1smui539NabYfzOuXa6JBY9u9p0c=" />
+		</form>
+	</div>
+<div class="screw_block m_15 f_15 p_s">Songs for Rating Selection(New)</div>
+					<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13+</div>
+			<div class="music_name_block t_l f_13 break">壱雫空</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.3007%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="79e1b6dbf9e72b15879004be06f1788aef0ba3949495b0146ddc86eb7d7b3a47a640385801fa78081aaae92e058f372af8bb3ab031e262680c69665ea9397cfb+24dn26ISKhsAF6DD0XPldlmdenBRm7pk8n5cVTnq10=" />
+		</form>
+	</div>
+						<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13+</div>
+			<div class="music_name_block t_l f_13 break">サイバーサンダーサイダー</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.2153%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="c7253bf31da85fa522365e2748facf5f6b9553f659ce47a1ec20bd96c6f3f29f52ae7654d68f2b1d18d7f6885804da840b2744ca542bc12f5e67a5a403dc2dc9FfdFx9uVA35n3j+n8UQ+aMdiu2yAxC6G6nSchqg6kgM=" />
+		</form>
+	</div>
+						<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">14</div>
+			<div class="music_name_block t_l f_13 break">勦滅</div>
+			<div class="music_score_block w_120 t_r f_r f_12">99.1660%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="a1f3db53b70ebd3cf578b2c21a58b84a6d001d07f51a9ee879697fa6b5c550fb561fe5d09ab439aa238f5befc21090cc99166b58c3b52a905fcef58c518a39bfQ9w+oDKqBNp+95KRagYU6KVd/anqBAwvqu0hCvna3l0=" />
+		</form>
+	</div>
+						<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13</div>
+			<div class="music_name_block t_l f_13 break">VOLT</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.3575%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="eeb434e5f057d298bd63bb2a04e89f96b01d9e9af1241ca999168169544272cdbae86468e882e164651eefcbbb26fae2b8f2564402f20ebecdb7f75cf2ecb6adkhsLhsavfvRqBsbSsookAdzGCufOxox5elV2elILJVo=" />
+		</form>
+	</div>
+						<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">14</div>
+			<div class="music_name_block t_l f_13 break">INFiNiTE ENERZY -Overdoze-</div>
+			<div class="music_score_block w_120 t_r f_r f_12">99.3108%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="a13c295b29723abcf728712887f795bb1ea7cef5cf757ec2884b4eb54b62871e9784a843b6092009aa6f60f6a8b1fd9f2e32a3024857dfe737e91e1de179b809CckLg3Fwfk5rIJp4Y987rKW9fPWiAW7dBNxob11rTGM=" />
+		</form>
+	</div>
+						<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13</div>
+			<div class="music_name_block t_l f_13 break">Shining Ray ～僕らの絆～</div>
+			<div class="music_score_block w_120 t_r f_r f_12">100.2878%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="ad668b4a431f5b4275b8410ac65d39c6593c97bc97f0d4c3f8dee54751f0b875563e0f778d219621412bf0ae58b73c8365b1e7646b2e58cb57c50e56ba225074sruP69/SbWONPsgYHT8CmxLG/t52OFxwxW30XIXJAr4=" />
+		</form>
+	</div>
+						<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">14</div>
+			<div class="music_name_block t_l f_13 break">MarbleBlue.</div>
+			<div class="music_score_block w_120 t_r f_r f_12">98.7783%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="eb951629e1b8d2aa9117a30543877c68bd32cddc54aba0fa31eca2acb6d5f82b739839c2e5068b011746629cc5ce2278a66ca1dc4a01ddf9c813f3e622855032E5KFYfx7aV9B2aQ8eYKqhZJrR0lt7rvFI6klakq8mho=" />
+		</form>
+	</div>
+						<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">14</div>
+			<div class="music_name_block t_l f_13 break">QuiQ</div>
+			<div class="music_score_block w_120 t_r f_r f_12">98.5523%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="8ada368937d998dd51db4ad84a73fa25b30ca653066fdefeca437e3181e331f9c8a3411d6cb6b68331450775dca08438fe578a61f5c4ca27d2ba5027536d9f4aaOrqVKwTPt4Goy3btUk1ZtacK1jX+V8POLptBO+WEZk=" />
+		</form>
+	</div>
+						<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">14</div>
+			<div class="music_name_block t_l f_13 break">Bloody Trail</div>
+			<div class="music_score_block w_120 t_r f_r f_12">98.0161%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="b00bce598ba932773ef92c7c74b4a7656457c898eea6809660c89db13626b4b56e4713132409aa9af593c86425ca1ea79c20b68c4548d0b3ba4e4ef0737d5649ht9CKuVMr0mlKLoKtev+ifJT+KQ4HkkC6DLneblW7DU=" />
+		</form>
+	</div>
+						<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+		<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+			<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+							<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+						<div class="clearfix"></div>
+			<div class="music_lv_block f_r t_c f_14">13+</div>
+			<div class="music_name_block t_l f_13 break">Beginning together!</div>
+			<div class="music_score_block w_120 t_r f_r f_12">99.5614%</div>
+			<div class="clearfix"></div>
+			<input type="hidden" name="idx" value="714afa6b9feeda763f474e954e295c6ce2cc598a0679c4118053c5e413ebab10e50e2aa9d43afa82bfa4ce1340c98e86f0867dec6331a1557447a7dc250375b5YQUwqTGrJrLg3lb2pg/g5JY9j0Mz0s/VwTd4yz+pTZ0=" />
+		</form>
+	</div>
+	<div class="screw_block m_15 f_15 p_s">Songs for Rating Selection(Others)</div>
+								<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+			<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+				<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+									<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+								<div class="clearfix"></div>
+				<div class="music_lv_block f_r t_c f_14">13+</div>
+				<div class="music_name_block t_l f_13 break">Alice&#039;s Suitcase</div>
+				<div class="music_score_block w_120 t_r f_r f_12">100.4740%</div>
+				<div class="clearfix"></div>
+				<input type="hidden" name="idx" value="6794cbcf1f255865f33dd0faa0f7c7c0be366c2718ae8e0b1ea6b87d3c7420631b0bdb92c1f4a7173a8812c7fe12b2ba57c571bdcec1de63de448c61d6ba2232dYs2HtWPtHbp5ArkQfGfCXtKFtewlA6KEW4gyyD6zlc=" />
+			</form>
+		</div>
+									<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+			<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+				<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+									<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+								<div class="clearfix"></div>
+				<div class="music_lv_block f_r t_c f_14">13+</div>
+				<div class="music_name_block t_l f_13 break">You Mean the World to Me</div>
+				<div class="music_score_block w_120 t_r f_r f_12">100.4494%</div>
+				<div class="clearfix"></div>
+				<input type="hidden" name="idx" value="1bdc659459dfae34a7582e8fe8a25ba9993b4e786a9e1a8cf8d6437a76e669330aebdc2f9255797a3caec620bac3bddc2e9c04faa5d5d1d5063d6e18bf8dc82dbVtXE6ewCs6XUcjFL3mvML9UCiR0aPXYlDMxU3hkaZ4=" />
+			</form>
+		</div>
+									<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+			<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+				<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+									<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+								<div class="clearfix"></div>
+				<div class="music_lv_block f_r t_c f_14">14</div>
+				<div class="music_name_block t_l f_13 break">Raven Emperor</div>
+				<div class="music_score_block w_120 t_r f_r f_12">99.3875%</div>
+				<div class="clearfix"></div>
+				<input type="hidden" name="idx" value="3260224bb38ee844dd49d89f31dcc0ecda9b25b5fcfded19fe84b24b89653b8068ffdf15601dcd86016776b794de1ba0e2f1bbc4ffd449dc039ffdde23060a6eg59BvEZXzLpIj9Nm4aZSiQW5FfUQYx6pLChDNhcDrnM=" />
+			</form>
+		</div>
+									<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+			<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+				<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+									<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+								<div class="clearfix"></div>
+				<div class="music_lv_block f_r t_c f_14">13+</div>
+				<div class="music_name_block t_l f_13 break">Final Step!</div>
+				<div class="music_score_block w_120 t_r f_r f_12">100.2998%</div>
+				<div class="clearfix"></div>
+				<input type="hidden" name="idx" value="9ec216803265c4b025bcfbb7db8bf0789b5d87643fcef892775749c76f12197bad270547ba462bbcef91809533622b06d1d732784b11e65d7aa29a39143081b9LOtJyzUBoLCSDI1rJwjCC4sKjD0CXzlDcJJp5YwxL7A=" />
+			</form>
+		</div>
+									<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+			<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+				<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+									<img src="https://maimaidx-eng.com/maimai-mobile/img/music_standard.png" class="music_kind_icon f_r"/>
+								<div class="clearfix"></div>
+				<div class="music_lv_block f_r t_c f_14">13+</div>
+				<div class="music_name_block t_l f_13 break">My First Phone</div>
+				<div class="music_score_block w_120 t_r f_r f_12">100.2949%</div>
+				<div class="clearfix"></div>
+				<input type="hidden" name="idx" value="c046c2827420ebbc7da8e72b810acbb4e2855d47c161e4894294be43868de943808ea9f447df87b101f077b788f3500426b696566cb99954bda60bce0fd0c24aJP/TaouAyXRPg92KL2DC8J5Nw5knIuH7Nbk5XKWNjWU=" />
+			</form>
+		</div>
+									<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+			<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+				<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+									<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+								<div class="clearfix"></div>
+				<div class="music_lv_block f_r t_c f_14">13+</div>
+				<div class="music_name_block t_l f_13 break">enchanted wanderer</div>
+				<div class="music_score_block w_120 t_r f_r f_12">100.1916%</div>
+				<div class="clearfix"></div>
+				<input type="hidden" name="idx" value="1eb8abb080b1914bd8b0c3f904af7ddcf99ac12c17ed24d4bc12dc2bbe0e5ed52f88b863e7b5e532890f8d56ba6d961bf85e8357c851f38eddce5ea063558f36xDqM414CbgKqgfRY1srOmPiqeg8nQKxfC7bHtz7Y41g=" />
+			</form>
+		</div>
+									<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+			<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+				<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+									<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+								<div class="clearfix"></div>
+				<div class="music_lv_block f_r t_c f_14">13+</div>
+				<div class="music_name_block t_l f_13 break">Lost Desire</div>
+				<div class="music_score_block w_120 t_r f_r f_12">100.1153%</div>
+				<div class="clearfix"></div>
+				<input type="hidden" name="idx" value="6ed197deab7a8820e85ca2e08e32aabb916c852931e606d6c8022b8b1f1c1a9ce6765369ce6991029c80e51c551521e203821361568594a21baee920e6d302bbPiYzX4c9AqSSRK0X1B7A//qG0PFq/dybLFX+369UD28=" />
+			</form>
+		</div>
+									<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+			<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+				<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+									<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+								<div class="clearfix"></div>
+				<div class="music_lv_block f_r t_c f_14">13+</div>
+				<div class="music_name_block t_l f_13 break">ピュグマリオンの咒文</div>
+				<div class="music_score_block w_120 t_r f_r f_12">100.0660%</div>
+				<div class="clearfix"></div>
+				<input type="hidden" name="idx" value="20226251834d23c639b7250af8f152a25dc0e0403d7c83889980245860cc1f62f0baaabef8b5a238a36eabcccc0a42a269c8fa9422792b0136d729af344f5daaaoWU765uKe2TNPks59UxLbruY3oXYN9yfuJOIVW6qU4=" />
+			</form>
+		</div>
+									<div class="music_master_score_back pointer w_450 m_15 p_3 f_0">
+			<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+				<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_master.png" class="h_20 f_l">
+									<img src="https://maimaidx-eng.com/maimai-mobile/img/music_dx.png" class="music_kind_icon f_r"/>
+								<div class="clearfix"></div>
+				<div class="music_lv_block f_r t_c f_14">13+</div>
+				<div class="music_name_block t_l f_13 break">『ウソテイ』 ～一回戦せりなvsしろなvsなずな～</div>
+				<div class="music_score_block w_120 t_r f_r f_12">100.4746%</div>
+				<div class="clearfix"></div>
+				<input type="hidden" name="idx" value="c4c3adfe524707709958e3c00e85010f46251ea8bf521e469ee02abfd405446ec2c99851ae417aa64dabae9649eaf966f94febc3cb668a3e9b023562c437755dTyb+sucdnj3b7EQmNuWHOCJjxFkKtj1SYzTbTSNdGpg=" />
+			</form>
+		</div>
+								<div class="music_remaster_score_back pointer w_450 m_15 p_3 f_0">
+			<form action="https://maimaidx-eng.com/maimai-mobile/record/musicDetail/" method="get" accept-charset="utf-8">
+				<img src="https://maimaidx-eng.com/maimai-mobile/img/diff_remaster.png" class="h_20 f_l">
+									<img src="https://maimaidx-eng.com/maimai-mobile/img/music_standard.png" class="music_kind_icon f_r"/>
+								<div class="clearfix"></div>
+				<div class="music_lv_block f_r t_c f_14">13+</div>
+				<div class="music_name_block t_l f_13 break">インビジブル</div>
+				<div class="music_score_block w_120 t_r f_r f_12">100.3847%</div>
+				<div class="clearfix"></div>
+				<input type="hidden" name="idx" value="9d8627372c843f8c3b2bc8459adc52f4fdc45781ffa0b2ec97ae17541b0e211ad9c721e3f17e5c7d97f57586e135aaa5d98a127faa45f2052476a5e0c9e09464v0/8t1jUht2mylYdMPyCF7nwOx7wR4S/Tcgq9x59buQ=" />
+			</form>
+		</div>
+	
+		<footer class="f_0">
+			<div class="footer_marquee">
+			<div class="footer w_480">
+				<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 480 50" preserveAspectRatio="none" style="height:50px">
+					<path d="M0,0 v25 q5,5 10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 t10,0 v-25 Z" fill="#7cbc29"></path>
+				</svg>
+				<div class="m_15 m_t_0 f_13">
+<!-- 2019/08/08 change -->
+																		<div class="m_5"><a href="https://maimaidx-eng.com/maimai-mobile/termsOfService/" target="_blank" class="white" rel="noopener">Terms of service</a></div>
+							<div class="m_5"><a href="https://maimaidx-eng.com/maimai-mobile/sitePolicy/" target="_blank" class="white" rel="noopener">Site Policy</a></div>
+																<div class="m_5"><a href="https://www.segafave.co.jp/en/privacy/" target="_blank" class="white" rel="noopener">Privacy Policy</a></div>
+				
+<!-- 2019/08/02 del -->
+				</div>
+				<img src="https://maimaidx-eng.com/maimai-mobile/img/line_02.png" class="w_430 m_b_10" />
+				<a href="https://maimai.sega.com" target="_blank" rel="noopener"><img src="https://maimaidx-eng.com/maimai-mobile/img/banner_maimai.png?ver=1.45" class="footer_banner w_450 m_b_10"/></a>
+				<a href="https://chunithm.sega.com/" target="_blank" rel="noopener"><img src="https://maimaidx-eng.com/maimai-mobile/img/banner_chuni.png?ver=1.45" class="footer_banner w_450"/></a>
+<!-- 2019/08/02 del -->
+				<a href="https://my-aime.net/" target="_blank" class="w_450 m_10 d_ib t_l footer_banner" rel="noopener">
+					<table>
+						<tr>
+							<td><img src="https://maimaidx-eng.com/maimai-mobile/img/banner_aime.png" ></td>
+							<td class="p_10 f_13">
+								Please register your Aime card <br/>
+								within Aime service website.
+							</td>
+						</tr>
+					</table>
+				</a>
+				<img src="https://maimaidx-eng.com/maimai-mobile/img/line_02.png" class="w_430 m_b_10" />
+				<a href="https://sega.jp" target="_blank" rel="noopener"><img src="https://maimaidx-eng.com/maimai-mobile/img/logo_sega.png" /></a>
+				<div class="f_15 p_5">© SEGA</div>
+							</div>
+		</footer>
+	</div>
+	<img id="page-top" src="https://maimaidx-eng.com/maimai-mobile/img/btn_page_top.png" class="pointer">
+	<img id="page-bottom" src="https://maimaidx-eng.com/maimai-mobile/img/btn_page_bottom.png" class="pointer">
+	<script src="https://maimaidx-eng.com/maimai-mobile/js/jquery-3.3.1.min.js"></script>
+	<script>
+		(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+		(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+		m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+		})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+
+		ga('create', 'UA-136087881-2', 'auto');
+		ga('send', 'pageview');
+
+		var scrollPoint = $('.scroll_point').length;
+		$('#page-top').click(function () {
+			if (scrollPoint > 0) {
+				var fromPos = Math.floor($(window).scrollTop());
+				var toPos   = 0;
+				$(".scroll_point").each(function() {
+					var targetPos = Math.floor($(this).offset().top);
+					if (location.pathname.split('/').pop() == "updateMusic") {
+						targetPos = targetPos - 284;
+					}
+					if (fromPos > targetPos) {
+						toPos = targetPos;
+					} else {
+						return false;
+					}
+				});
+				$('body,html').animate({scrollTop: toPos}, 500);
+			} else {
+				$('body,html').animate({scrollTop: 0}, 500);
+			}
+			return false;
+		});
+		$('#page-bottom').click(function () {
+			if (scrollPoint > 0) {
+				var fromPos = Math.floor($(window).scrollTop()) + 3;
+				var toPos   = Math.floor($(document).height());
+				$(".scroll_point").each(function() {
+					var targetPos = Math.floor($(this).offset().top);
+					if (location.pathname.split('/').pop() == "updateMusic") {
+						targetPos = targetPos - 284;
+					}
+					if (fromPos < targetPos) {
+						toPos = targetPos;
+						return false;
+					}
+				});
+				$('body,html').animate({scrollTop: toPos}, 500);
+			} else {
+				$('body,html').animate({scrollTop: $(document).height()}, 500);
+			}
+			return false;
+		});
+		function fadeOutPageBtn() {
+			$('#page-top').fadeOut(1500).animate({duration: 'slow', easing: 'linear'});
+			$('#page-bottom').fadeOut(1500).animate({duration: 'slow', easing: 'linear'});
+		}
+					var spmenu_toggle = $('.spmenu_toggle');
+			var spmenu_navigation = $('.spmenu_navigation');
+			spmenu_toggle.click(function() {
+				$(this).toggleClass('active');
+				if ($(this).hasClass('active')) {
+					spmenu_navigation.addClass('active');
+				} else {
+					spmenu_navigation.removeClass('active');
+				}
+			});
+			spmenu_navigation.click(function() {
+				spmenu_toggle.removeClass('active');
+				$(this).removeClass('active');
+			});
+				var timeLimit = 3*1000;
+		var timerId = setTimeout(fadeOutPageBtn, timeLimit);
+		$(window).scroll(function() {
+			if (!spmenu_navigation.is(':visible')) spmenu_navigation.css('display', 'block');
+			if (!$('#page-top').is(':visible')) $('#page-top').fadeIn();
+			if (!$('#page-bottom').is(':visible')) $('#page-bottom').fadeIn();
+			clearTimeout(timerId);
+			timerId = setTimeout(fadeOutPageBtn, timeLimit);
+							var visible = spmenu_toggle.is(':visible');
+				if ($(this).scrollTop() > 250) {
+					if (!visible)
+						spmenu_toggle.fadeIn().animate({'right': '5px'}, {duration: 500, queue: false});
+				} else {
+					if (visible) {
+						spmenu_toggle.fadeOut().animate({'right': '-100%'}, {duration: 500, queue: false});
+						if (spmenu_toggle.hasClass('active')) {
+							spmenu_toggle.removeClass('active');
+							spmenu_navigation.removeClass('active');
+						}
+					}
+				}
+					});
+	</script>
+	<script src="https://maimaidx-eng.com/maimai-mobile/js/jquery.marquee.js"></script>
+<script>
+$(function() {
+	// 許容幅
+	var widthMax = 258;
+	$('.trophy_inner_block').each(function() {
+		var span = $(this).children('span');
+		var textWidth = span.innerWidth();
+		if (textWidth > widthMax) {
+			$(span).marquee();
+		}
+	});
+});
+</script>
+<script>
+$('div.pointer').click(function(){
+	var form = $(this).children('form');
+	if (form.length > 0) {
+		form.submit();
+		return true;
+	} else {
+		return false;
+	}
+});
+</script>
+</body>
+</html>
