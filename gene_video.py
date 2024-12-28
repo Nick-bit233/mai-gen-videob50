@@ -1,6 +1,6 @@
 import os
 import numpy as np
-import json
+import subprocess
 from PIL import Image, ImageFilter
 from moviepy import VideoFileClip, ImageClip, TextClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip, concatenate_videoclips
 from moviepy import vfx, afx
@@ -386,7 +386,8 @@ def sort_video_files(files):
                 if 1 <= number <= 35:  # 只处理1-35的编号
                     return (0, number)
         except ValueError:
-            pass
+            print(f"Error: 无法解析视频文件名: {filename}")
+            return None
         return None  
     
     # 过滤并排序文件
@@ -501,3 +502,55 @@ def get_combined_ending_clip(ending_clips, combined_start_time, trans_time):
     ])
     
     return combined_clip
+
+
+def combine_full_video_pure_ffmpeg(video_clip_path, resolution, trans_time=1):
+    video_files = [f for f in os.listdir(video_clip_path) if f.endswith(".mp4")]
+    sorted_files = sort_video_files(video_files)
+    # TODO:处理intro和ending片段
+    
+    if not sorted_files:
+        raise ValueError("Error: 没有有效的视频片段文件！")
+
+    # 准备ffmpeg复杂过滤器命令
+    filter_complex = []
+    inputs = []
+    
+    # 为每个视频文件添加输入
+    for i, file in enumerate(sorted_files):
+        inputs.extend(['-i', os.path.join(video_clip_path, file)])
+    
+    # 构建过滤器复杂命令
+    for i in range(len(sorted_files) - 1):
+        if i == 0:
+            # 第一个转场
+            filter_complex.append(f'[{i}:v][{i+1}:v]xfade=transition=fade:duration={trans_time}:offset={trans_time}[v{i}];')
+            filter_complex.append(f'[{i}:a][{i+1}:a]acrossfade=d={trans_time}[a{i}];')
+        else:
+            # 后续转场
+            filter_complex.append(f'[v{i-1}][{i+1}:v]xfade=transition=fade:duration={trans_time}:offset={trans_time}[v{i}];')
+            filter_complex.append(f'[a{i-1}][{i+1}:a]acrossfade=d={trans_time}[a{i}];')
+
+    # 构建完整的ffmpeg命令
+    output_path = os.path.join(video_clip_path, "final_output.mp4")
+    ffmpeg_cmd = ['ffmpeg', '-y']
+    ffmpeg_cmd.extend(inputs)
+    ffmpeg_cmd.extend([
+        '-filter_complex',
+        ''.join(filter_complex) + f'[v{len(sorted_files)-2}][a{len(sorted_files)-2}]',
+        '-map', f'[v{len(sorted_files)-2}]',
+        '-map', f'[a{len(sorted_files)-2}]',
+        '-c:v', 'libx264',
+        '-c:a', 'aac',
+        output_path
+    ])
+    
+    # 执行ffmpeg命令
+    try:
+        subprocess.run(ffmpeg_cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"FFmpeg命令执行失败: {e}")
+        print(f"完整命令: {' '.join(ffmpeg_cmd)}")
+        raise
+
+    return output_path
