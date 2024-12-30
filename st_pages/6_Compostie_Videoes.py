@@ -2,6 +2,7 @@ import streamlit as st
 import subprocess
 import traceback
 from main_gen import generate_complete_video, generate_one_video_clip
+from gene_video import combine_full_video_direct, combine_full_video_ffmpeg_concat_gl
 from utils.PageUtils import *
 
 st.header("Step 5: 视频生成")
@@ -105,3 +106,29 @@ if st.button("开始生成视频"):
             open_file_explorer(abs_path)
         except Exception as e:
             st.error(f"完整视频生成失败，错误详情: {traceback.print_exc()}")
+
+# 添加分割线
+st.divider()
+
+st.write("额外视频生成方案")
+st.warning("请注意，此区域的功能未经充分测试，不保证生成视频的效果或稳定性，请谨慎使用。")
+video_output_path = f"./videos/{G_config['USER_ID']}"
+video_res = (v_res_width, v_res_height)
+with st.container(border=True):
+    st.write("【Extra-1】先生成所有视频片段，再直接拼接为完整视频")
+    st.info("本方案会降低视频生成过程中的内存占用，并减少生成时间，但视频过渡的质量将显著下降。")
+    if st.button("直接拼接方式生成完整视频"):
+        combine_full_video_direct(video_output_path, video_res, trans_time)
+        st.success("已启动视频拼接任务，请在控制台窗口查看进度")
+
+with st.container(border=True):
+    st.write("【Extra-2】使用ffmpeg concat生成视频，允许自定义片段过渡效果")
+    st.warning("本功能要求先在本地环境中安装ffmpeg concat插件，请务必查看使用说明后进行！")
+    with st.container(border=True):
+        st.write("片段过渡效果")
+        trans_name = st.selectbox("选择过渡效果", options=["fade", "circleOpen", "crossWarp", "directionalWarp", "directionalWipe", "crossZoom", "dreamy", "squaresWire"], index=0)
+        if st.button("使用ffmpeg concat生成视频"):
+            combine_full_video_ffmpeg_concat_gl(video_output_path, video_res, trans_name, trans_time)
+            st.success("已启动视频拼接任务，请在控制台窗口查看进度")
+
+

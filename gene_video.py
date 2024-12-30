@@ -504,53 +504,104 @@ def get_combined_ending_clip(ending_clips, combined_start_time, trans_time):
     return combined_clip
 
 
-def combine_full_video_pure_ffmpeg(video_clip_path, resolution, trans_time=1):
+def combine_full_video_direct(video_clip_path, resolution, trans_time=1):
+    # TODO：先生成所有片段，再进行下面的操作
+    video_files = [f for f in os.listdir(video_clip_path) if f.endswith(".mp4")]
+    sorted_files = sort_video_files(video_files)
+    
+    if not sorted_files:
+        raise ValueError("Error: 没有有效的视频片段文件！")
+
+    # 创建临时目录存放 ts 文件
+    temp_dir = os.path.join(video_clip_path, "temp_ts")
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    try:
+        # 1. 创建MP4文件列表
+        mp4_list_file = os.path.join(video_clip_path, "mp4_files.txt")
+        with open(mp4_list_file, 'w', encoding='utf-8') as f:
+            for file in sorted_files:
+                # 使用正斜杠替换反斜杠，并使用相对路径
+                full_path = os.path.join(video_clip_path, file).replace('\\', '/')
+                f.write(f"file '{full_path}'\n")
+
+        # 2. 创建TS文件列表并转换视频
+        ts_list_file = os.path.join(video_clip_path, "ts_files.txt")
+        with open(ts_list_file, 'w', encoding='utf-8') as f:
+            for i, file in enumerate(sorted_files):
+                ts_name = f"{i:04d}.ts"
+                ts_path = os.path.join(temp_dir, ts_name)
+                
+                # 转换MP4为TS
+                cmd = [
+                    'ffmpeg', '-y',
+                    '-i', os.path.join(video_clip_path, file),
+                    '-c', 'copy',
+                    '-bsf:v', 'h264_mp4toannexb',
+                    '-f', 'mpegts',
+                    ts_path
+                ]
+                subprocess.run(cmd, check=True)
+                
+                # 写入TS文件相对路径，使用正斜杠
+                relative_ts_path = os.path.join('temp_ts', ts_name).replace('\\', '/')
+                f.write(f"file '{relative_ts_path}'\n")
+
+        # 3. 拼接TS文件并输出为MP4
+        output_path = os.path.join(video_clip_path, "final_output.mp4")
+        
+        # 切换到视频目录执行拼接命令
+        current_dir = os.getcwd()
+        os.chdir(video_clip_path)
+        
+        cmd = [
+            'ffmpeg', '-y',
+            '-f', 'concat',
+            '-safe', '0',
+            '-i', 'ts_files.txt',  # 使用相对路径
+            '-c', 'copy',
+            'final_output.mp4'  # 使用相对路径
+        ]
+        
+        subprocess.run(cmd, check=True)
+        os.chdir(current_dir)  # 恢复原始工作目录
+        print("视频拼接完成")
+        
+    finally:
+        # 清理临时文件
+        if os.path.exists(temp_dir):
+            for file in os.listdir(temp_dir):
+                os.remove(os.path.join(temp_dir, file))
+            os.rmdir(temp_dir)
+
+    return output_path
+
+
+def combine_full_video_ffmpeg_concat_gl(video_clip_path, resolution, trans_name="fade", trans_time=1):
     video_files = [f for f in os.listdir(video_clip_path) if f.endswith(".mp4")]
     sorted_files = sort_video_files(video_files)
     # TODO:处理intro和ending片段
     
     if not sorted_files:
         raise ValueError("Error: 没有有效的视频片段文件！")
-
-    # 准备ffmpeg复杂过滤器命令
-    filter_complex = []
-    inputs = []
     
-    # 为每个视频文件添加输入
-    for i, file in enumerate(sorted_files):
-        inputs.extend(['-i', os.path.join(video_clip_path, file)])
-    
-    # 构建过滤器复杂命令
-    for i in range(len(sorted_files) - 1):
-        if i == 0:
-            # 第一个转场
-            filter_complex.append(f'[{i}:v][{i+1}:v]xfade=transition=fade:duration={trans_time}:offset={trans_time}[v{i}];')
-            filter_complex.append(f'[{i}:a][{i+1}:a]acrossfade=d={trans_time}[a{i}];')
-        else:
-            # 后续转场
-            filter_complex.append(f'[v{i-1}][{i+1}:v]xfade=transition=fade:duration={trans_time}:offset={trans_time}[v{i}];')
-            filter_complex.append(f'[a{i-1}][{i+1}:a]acrossfade=d={trans_time}[a{i}];')
-
-    # 构建完整的ffmpeg命令
     output_path = os.path.join(video_clip_path, "final_output.mp4")
-    ffmpeg_cmd = ['ffmpeg', '-y']
-    ffmpeg_cmd.extend(inputs)
-    ffmpeg_cmd.extend([
-        '-filter_complex',
-        ''.join(filter_complex) + f'[v{len(sorted_files)-2}][a{len(sorted_files)-2}]',
-        '-map', f'[v{len(sorted_files)-2}]',
-        '-map', f'[a{len(sorted_files)-2}]',
-        '-c:v', 'libx264',
-        '-c:a', 'aac',
-        output_path
-    ])
     
-    # 执行ffmpeg命令
-    try:
-        subprocess.run(ffmpeg_cmd, check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"FFmpeg命令执行失败: {e}")
-        print(f"完整命令: {' '.join(ffmpeg_cmd)}")
-        raise
+    # 1. 创建MP4文件列表
+    mp4_list_file = os.path.join(video_clip_path, "mp4_files.txt")
+    with open(mp4_list_file, 'w', encoding='utf-8') as f:
+        for file in sorted_files:
+            # 使用正斜杠替换反斜杠，并使用相对路径
+            full_path = os.path.join(video_clip_path, file).replace('\\', '/')
+            f.write(f"file '{full_path}'\n")
+
+
+    # 2.使用nodejs脚本拼接视频
+    node_script_path = os.path.join(os.path.dirname(__file__), "external_scripts", "concat_videos_ffmpeg.js")
+
+    cmd = f'node {node_script_path} -o {output_path} -v {mp4_list_file} -t {trans_name} -d {int(trans_time * 1000)}'
+    print(f"执行命令: {cmd}")
+
+    os.system(cmd)
 
     return output_path
