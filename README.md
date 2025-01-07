@@ -8,7 +8,8 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 - 如果你具有基本的计算机和python知识，可以独立（或者GPT辅助）完成环境配置和脚本操作，请直接clone仓库代码，参考[使用说明](#使用说明（从源代码启动）)部分开始使用!
 
-- 如果你没有上述经验，请**从右侧Release页面下载最新的**打包版本，参考[【教程视频】](https://www.bilibili.com/video/BV1G2kBY5Edq)开始使用。 
+- 如果你没有上述经验，请**从右侧Release页面下载最新的**打包版本，参考[【教程视频】](https://www.bilibili.com/video/BV1G2kBY5Edq)开始使用。
+    - 请注意：**打包版本仅支持Windows10及以上操作系统**
     - 要启动应用，请双击Release包内的`start.bat`文件。
     - 首次启动时，如果没有立刻弹出浏览器窗口，请检查控制台，如果要求输入Email，请直接回车跳过即可。
     - 使用打包版本时，**无需执行使用说明的步骤，浏览器页面弹出后即可直接使用**。遇到问题请参考[常见问题](#常见问题)一节。
@@ -118,7 +119,7 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 - 出现`ModuleNotFoundError: No module named 'moviepy'`等报错
 
-    请检查你是否已经配置好3.8版本以上的python环境，并安装了`requirements.txt`中的所有依赖。
+    请检查你是否已经配置好3.10版本以上的python环境，并安装了`requirements.txt`中的所有依赖。
 
 - 出现类似如下的报错：
 
