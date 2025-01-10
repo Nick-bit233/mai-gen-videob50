@@ -4,6 +4,33 @@
 
 Auto search and generate your best 50 videoes of MaimaiDX
 
+## 快速开始
+
+- 如果你具有基本的计算机和python知识，可以独立（或者GPT辅助）完成环境配置和脚本操作，请直接clone仓库代码，参考[使用说明](#使用说明（从源代码启动）)部分开始使用!
+
+- 如果你没有上述经验，请**从右侧Release页面下载最新的**打包版本，参考[【教程视频】](https://www.bilibili.com/video/BV1G2kBY5Edq)开始使用。
+    - 请注意：**打包版本仅支持Windows10及以上操作系统**
+    - 要启动应用，请双击Release包内的`start.bat`文件。
+    - 首次启动时，如果没有立刻弹出浏览器窗口，请检查控制台，如果要求输入Email，请直接回车跳过即可。
+    - 使用打包版本时，**无需执行使用说明的步骤，浏览器页面弹出后即可直接使用**。遇到问题请参考[常见问题](#常见问题)一节。
+
+## 效果预览
+
+- 用户界面（支持主题换色）
+
+| ![alt text](md_res/page_fes.png) | ![alt text](md_res/page_bud.png) | ![alt text](md_res/page_pri.png) |
+|:---:|:---:|:---:|
+| FES | BUD | PRI |
+
+生成视频效果展示：[【舞萌2024/工具发布】还在手搓b50视频？我写了一个自动生成器！](https://www.bilibili.com/video/BV1bJi2YVEiE)
+
+使用教程视频：[【舞萌2024】新版B50视频生成器来啦！支持一键启动/站内下载/全面升级用户界面~](https://www.bilibili.com/video/BV1G2kBY5Edq)
+
+- 生成视频帧效果
+
+![alt text](md_res/image.png)
+
+
 ## 特性
 
 本工具的原理是：
@@ -42,33 +69,9 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 - [ ] （远期）支持中二B30视频生成
 
-生成视频效果展示：[【舞萌2024/工具发布】还在手搓b50视频？我写了一个自动生成器！](https://www.bilibili.com/video/BV1bJi2YVEiE)
+---
 
-使用教程视频：[【舞萌2024】新版B50视频生成器来啦！支持一键启动/站内下载/全面升级用户界面~](https://www.bilibili.com/video/BV1G2kBY5Edq)
-
-## 效果预览
-
-- 用户界面（支持主题换色）
-
-| ![alt text](md_res/page_fes.png) | ![alt text](md_res/page_bud.png) | ![alt text](md_res/page_pri.png) |
-|:---:|:---:|:---:|
-| FES | BUD | PRI |
-
-
-- 生成视频帧效果
-
-![alt text](md_res/image.png)
-
-## 快速开始
-
-- 如果你具有基本的计算机和python知识，可以独立（或者GPT辅助）完成环境配置和脚本操作，请直接clone仓库代码，参考下一节[【使用说明】](#使用说明)开始使用!
-
-- 如果你没有上述经验，请**从右侧Release页面下载最新的**打包版本，参考[【教程视频】](https://www.bilibili.com/video/BV1G2kBY5Edq)开始使用。
-    - 要启动streamlit app，请双击Release包内的`start.bat`文件
-    - 首次启动控制台，可能要求输入Email，请直接回车跳过即可
-
-
-## 使用说明
+## 使用说明（从源代码启动）
 
 1. 安装python环境和依赖，推荐使用 `conda`。注意，python版本需要3.10以上。
 
@@ -116,7 +119,7 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 - 出现`ModuleNotFoundError: No module named 'moviepy'`等报错
 
-    请检查你是否已经配置好3.8版本以上的python环境，并安装了`requirements.txt`中的所有依赖。
+    请检查你是否已经配置好3.10版本以上的python环境，并安装了`requirements.txt`中的所有依赖。
 
 - 出现类似如下的报错：
 
