@@ -123,7 +123,10 @@ with st.container(border=True):
             st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
         with st.spinner("正在拼接视频……"):
             combine_full_video_direct(video_output_path)
-        st.success("所有任务已退出")
+        st.success("所有任务已退出，请查看视频生成结果")
+        abs_path = os.path.abspath(video_output_path)
+        st.info(f"如果未能打开文件夹，可在此路径中查看生成视频：{abs_path}")
+        open_file_explorer(abs_path)
 
 with st.container(border=True):
     st.write("【更多过渡效果】使用ffmpeg concat生成视频，允许自定义片段过渡效果")
@@ -152,6 +155,10 @@ with st.container(border=True):
                 st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
             with st.spinner("正在拼接视频……"):
                 combine_full_video_ffmpeg_concat_gl(video_output_path, video_res, trans_name, trans_time)
-                st.success("已启动视频拼接任务，请在控制台窗口查看进度")
+                st.info("已启动视频拼接任务，请在控制台窗口查看进度……")
+            st.success("所有任务已退出，请查看视频生成结果")
+            abs_path = os.path.abspath(video_output_path)
+            st.info(f"如果未能打开文件夹，可在此路径中查看生成视频：{abs_path}")
+            open_file_explorer(abs_path)
 
 
