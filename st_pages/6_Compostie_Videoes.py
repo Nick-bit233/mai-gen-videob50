@@ -2,7 +2,7 @@ import streamlit as st
 import subprocess
 import traceback
 from main_gen import generate_complete_video, generate_one_video_clip
-from gene_video import combine_full_video_direct, combine_full_video_ffmpeg_concat_gl
+from gene_video import render_all_video_clips, combine_full_video_direct, combine_full_video_ffmpeg_concat_gl
 from utils.PageUtils import *
 
 st.header("Step 5: 视频生成")
@@ -10,6 +10,7 @@ st.header("Step 5: 视频生成")
 st.info("在执行视频生成前，请确保已经完成了4-1和4-2步骤，并且检查所有填写的配置无误。")
 
 G_config = read_global_config()
+FONT_PATH = "./font/SOURCEHANSANSSC-BOLD.OTF"
 
 st.write("视频生成相关设置")
 
@@ -19,11 +20,13 @@ _video_bitrate = 5000 # TODO：存储到配置文件中
 _trans_enable = G_config['VIDEO_TRANS_ENABLE']
 _trans_time = G_config['VIDEO_TRANS_TIME']
 
-options = ["仅生成每个视频片段（不包含片头片尾）", "生成完整视频"]
+options = ["仅生成每个视频片段", "生成完整视频"]
 with st.container(border=True):
     mode_str = st.radio("选择视频生成模式", 
             options=options, 
             index=_mode_index)
+    
+    force_render_clip = st.checkbox("生成视频片段时，强制覆盖已存在的视频文件", value=False)
 
 trans_config_placeholder = st.empty()
 with trans_config_placeholder.container(border=True):
@@ -44,7 +47,12 @@ with st.container(border=True):
 v_mode_index = options.index(mode_str)
 v_bitrate_kbps = f"{v_bitrate}k"
 
-if st.button("开始生成视频"):
+video_output_path = f"./videos/{G_config['USER_ID']}"
+if not os.path.exists(video_output_path):
+    os.makedirs(video_output_path)
+video_configs = load_config(f"./b50_datas/video_configs_{G_config['USER_ID']}.json")
+
+def save_video_render_config():
     # 保存配置
     G_config['ONLY_GENERATE_CLIPS'] = v_mode_index == 0
     G_config['VIDEO_RES'] = (v_res_width, v_res_height)
@@ -54,10 +62,8 @@ if st.button("开始生成视频"):
     write_global_config(G_config)
     st.toast("配置已保存！")
 
-    video_output_path = f"./videos/{G_config['USER_ID']}"
-    if not os.path.exists(video_output_path):
-        os.makedirs(video_output_path)
-    video_configs = load_config(f"./b50_datas/video_configs_{G_config['USER_ID']}.json")
+if st.button("开始生成视频"):
+    save_video_render_config()
     video_res = (v_res_width, v_res_height)
 
     placeholder = st.empty()
@@ -66,18 +72,10 @@ if st.button("开始生成视频"):
             with placeholder.container(border=True, height=560):
                 st.warning("生成过程中请不要手动跳转到其他页面，或刷新本页面，否则可能导致生成失败！")
                 with st.spinner("正在生成所有视频片段……"):
-                    progress_bar = st.progress(0)
-                    write_container = st.container(border=True, height=400)
-                    i = 0
-                    config_clip_list = video_configs['main']
-                    for config in config_clip_list:
-                        i += 1
-                        progress_bar.progress(i / len(config_clip_list), text=f"正在生成视频片段({i}/{len(config_clip_list)})")
-                        output_info = generate_one_video_clip(config=config, 
-                                                    video_output_path=video_output_path, 
-                                                    video_res=video_res, 
-                                                    video_bitrate=v_bitrate_kbps)
-                        write_container.write(f"【{i}/{len(config_clip_list)}】{output_info['info']}")
+                    render_all_video_clips(video_configs, video_output_path, video_res, v_bitrate_kbps, 
+                                        font_path=FONT_PATH, auto_add_transition=False, trans_time=trans_time,
+                                        force_render=force_render_clip)
+                    st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
             st.success("视频片段生成结束！请在弹出的文件夹窗口中查看")
             abs_path = os.path.abspath(video_output_path)
             st.info(f"如果未能打开文件夹，可在此路径中查看生成视频：{abs_path}")
@@ -110,25 +108,50 @@ if st.button("开始生成视频"):
 # 添加分割线
 st.divider()
 
-st.write("额外视频生成方案")
+st.write("其他视频生成方案")
 st.warning("请注意，此区域的功能未经充分测试，不保证生成视频的效果或稳定性，请谨慎使用。")
-video_output_path = f"./videos/{G_config['USER_ID']}"
-video_res = (v_res_width, v_res_height)
 with st.container(border=True):
-    st.write("【Extra-1】先生成所有视频片段，再直接拼接为完整视频")
-    st.info("本方案会降低视频生成过程中的内存占用，并减少生成时间，但视频过渡的质量将显著下降。")
+    st.write("【快速模式】先生成所有视频片段，再直接拼接为完整视频")
+    st.info("本方案会降低视频生成过程中的内存占用，并减少生成时间，但视频片段之间将只有黑屏过渡。")
     if st.button("直接拼接方式生成完整视频"):
-        combine_full_video_direct(video_output_path, video_res, trans_time)
-        st.success("已启动视频拼接任务，请在控制台窗口查看进度")
+        save_video_render_config()
+        video_res = (v_res_width, v_res_height)
+        with st.spinner("正在生成所有视频片段……"):
+            render_all_video_clips(video_configs, video_output_path, video_res, v_bitrate_kbps, 
+                                   font_path=FONT_PATH, auto_add_transition=trans_enable, trans_time=trans_time,
+                                   force_render=force_render_clip)
+            st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
+        with st.spinner("正在拼接视频……"):
+            combine_full_video_direct(video_output_path)
+        st.success("所有任务已退出")
 
 with st.container(border=True):
-    st.write("【Extra-2】使用ffmpeg concat生成视频，允许自定义片段过渡效果")
+    st.write("【更多过渡效果】使用ffmpeg concat生成视频，允许自定义片段过渡效果")
     st.warning("本功能要求先在本地环境中安装ffmpeg concat插件，请务必查看使用说明后进行！")
+    @st.dialog("ffmpeg-concat使用说明")
+    def delete_video_config_dialog(file):
+        ### 展示markdown文本
+        # read markdown file
+        with open(file, "r", encoding="utf-8") as f:
+            doc = f.read()
+        st.markdown(doc)
+
+    if st.button("查看ffmpeg concat使用说明", key=f"open_ffmpeg_concat_doc"):
+        delete_video_config_dialog("./docs/ffmpeg_concat_Guide.md")
+
     with st.container(border=True):
         st.write("片段过渡效果")
         trans_name = st.selectbox("选择过渡效果", options=["fade", "circleOpen", "crossWarp", "directionalWarp", "directionalWipe", "crossZoom", "dreamy", "squaresWire"], index=0)
         if st.button("使用ffmpeg concat生成视频"):
-            combine_full_video_ffmpeg_concat_gl(video_output_path, video_res, trans_name, trans_time)
-            st.success("已启动视频拼接任务，请在控制台窗口查看进度")
+            save_video_render_config()
+            video_res = (v_res_width, v_res_height)
+            with st.spinner("正在生成所有视频片段……"):
+                render_all_video_clips(video_configs, video_output_path, video_res, v_bitrate_kbps, 
+                                       font_path=FONT_PATH, auto_add_transition=False, trans_time=trans_time,
+                                       force_render=force_render_clip)
+                st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
+            with st.spinner("正在拼接视频……"):
+                combine_full_video_ffmpeg_concat_gl(video_output_path, video_res, trans_name, trans_time)
+                st.success("已启动视频拼接任务，请在控制台窗口查看进度")
 
 

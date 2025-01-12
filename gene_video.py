@@ -370,36 +370,20 @@ def create_full_video(resources, resolution, font_path, auto_add_transition=True
 
 def sort_video_files(files):
     """
-    对视频文件名进行排序，
-    排序规则：NewBest_15到NewBest_1，然后是PastBest_35到PastBest_1
+    对视频文件按照文件名开头的数字索引进行排序
+    例如: "0_xxx.mp4", "1_xxx.mp4", "2_xxx.mp4" 等
     """
     def get_sort_key(filename):
-        # 移除文件扩展名
-        name = os.path.splitext(filename)[0]
         try:
-            if name.startswith('NewBest_'):
-                number = int(name.replace('NewBest_', ''))
-                if 1 <= number <= 15:  # 只处理1-15的编号
-                    return (1, number)
-            elif name.startswith('PastBest_'):
-                number = int(name.replace('PastBest_', ''))
-                if 1 <= number <= 35:  # 只处理1-35的编号
-                    return (0, number)
-        except ValueError:
-            print(f"Error: 无法解析视频文件名: {filename}")
-            return None
-        return None  
+            # 获取文件名（不含扩展名）中第一个下划线前的数字
+            number = int(os.path.splitext(filename)[0].split('_')[0])
+            return number
+        except (ValueError, IndexError):
+            print(f"Error: 无法从文件名解析索引: {filename}")
+            return float('inf')  # 将无效文件排到最后
     
-    # 过滤并排序文件
-    valid_files = []
-    for file in files:
-        sort_key = get_sort_key(file)
-        if sort_key is not None:  # 只保留有效的文件
-            valid_files.append((file, sort_key))
-    
-    # 根据排序键排序并返回文件名列表
-    sorted_files = sorted(valid_files, key=lambda x: x[1], reverse=True)
-    return [f[0] for f in sorted_files]  # 只返回文件名列表
+    # 直接按照数字索引排序
+    return sorted(files, key=get_sort_key)
 
 
 def combine_full_video_from_existing_clips(video_clip_path, resolution, trans_time=1):
@@ -504,8 +488,61 @@ def get_combined_ending_clip(ending_clips, combined_start_time, trans_time):
     return combined_clip
 
 
-def combine_full_video_direct(video_clip_path, resolution, trans_time=1):
-    # TODO：先生成所有片段，再进行下面的操作
+def render_all_video_clips(resources, video_output_path, resolution, v_bitrate_kbps, font_path,
+                           auto_add_transition=True, trans_time=1, force_render=False):
+    vfile_prefix = 0
+
+    def modify_and_rend_clip(clip, config, prefix, auto_add_transition, trans_time):
+        output_file = os.path.join(video_output_path, f"{prefix}_{config['id']}.mp4")
+        
+        # 检查文件是否已经存在
+        if os.path.exists(output_file) and not force_render:
+            print(f"视频文件{output_file}已存在，跳过渲染。如果需要强制覆盖已存在的文件，请设置勾选force_render")
+            clip.close()
+            del clip
+            return
+        
+        clip = normalize_audio_volume(clip)
+        # 如果启用了自动添加转场效果，则在头尾加入淡入淡出
+        if auto_add_transition:
+            clip = clip.with_effects([
+                vfx.FadeIn(duration=trans_time),
+                vfx.FadeOut(duration=trans_time),
+                afx.AudioFadeIn(duration=trans_time),
+                afx.AudioFadeOut(duration=trans_time)
+            ])
+        # 直接渲染clip为视频文件
+        print(f"正在合成视频片段: {prefix}_{config['id']}.mp4")
+        clip.write_videofile(output_file, fps=30, threads=4, preset='ultrafast', bitrate=v_bitrate_kbps)
+        clip.close()
+        # 强制垃圾回收
+        del clip
+
+    if not 'main' in resources:
+        print("Error: 没有找到主视频片段的配置！请检查配置文件！")
+        return
+
+    if 'intro' in resources:
+        for clip_config in resources['intro']:
+            clip = create_info_segment(clip_config, resolution, font_path)
+            clip = modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time)
+            vfile_prefix += 1
+
+    for clip_config in resources['main']:
+        clip = create_video_segment(clip_config, resolution, font_path)
+        clip = modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time)
+
+        vfile_prefix += 1
+
+    if 'ending' in resources:
+        for clip_config in resources['ending']:
+            clip = create_info_segment(clip_config, resolution, font_path)
+            clip = modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time)
+            vfile_prefix += 1
+
+
+def combine_full_video_direct(video_clip_path):
+    print("[Info] --------------------开始拼接视频-------------------")
     video_files = [f for f in os.listdir(video_clip_path) if f.endswith(".mp4")]
     sorted_files = sort_video_files(video_files)
     
@@ -580,14 +617,13 @@ def combine_full_video_direct(video_clip_path, resolution, trans_time=1):
 def combine_full_video_ffmpeg_concat_gl(video_clip_path, resolution, trans_name="fade", trans_time=1):
     video_files = [f for f in os.listdir(video_clip_path) if f.endswith(".mp4")]
     sorted_files = sort_video_files(video_files)
-    # TODO:处理intro和ending片段
     
     if not sorted_files:
         raise ValueError("Error: 没有有效的视频片段文件！")
     
     output_path = os.path.join(video_clip_path, "final_output.mp4")
     
-    # 1. 创建MP4文件列表
+    # 创建MP4文件列表
     mp4_list_file = os.path.join(video_clip_path, "mp4_files.txt")
     with open(mp4_list_file, 'w', encoding='utf-8') as f:
         for file in sorted_files:
@@ -596,7 +632,7 @@ def combine_full_video_ffmpeg_concat_gl(video_clip_path, resolution, trans_name=
             f.write(f"file '{full_path}'\n")
 
 
-    # 2.使用nodejs脚本拼接视频
+    # 使用nodejs脚本拼接视频
     node_script_path = os.path.join(os.path.dirname(__file__), "external_scripts", "concat_videos_ffmpeg.js")
 
     cmd = f'node {node_script_path} -o {output_path} -v {mp4_list_file} -t {trans_name} -d {int(trans_time * 1000)}'
