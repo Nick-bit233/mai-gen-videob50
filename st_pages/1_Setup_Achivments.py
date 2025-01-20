@@ -8,6 +8,8 @@ from pre_gen import update_b50_data, st_init_cache_pathes
 from pre_gen_int import update_b50_data_int
 from gene_images import generate_single_image, check_mask_waring
 from utils.PageUtils import *
+from datetime import datetime
+from utils.PathUtils import *
 
 def show_b50_dataframe(info_placeholder, user_id, data):
     with info_placeholder.container(border=True):
@@ -75,21 +77,26 @@ def st_generate_b50_images(placeholder, user_id):
                 image_name_index,
             )
 
-def update_b50(placeholder, update_function, b50_raw_file, b50_data_file, username, replace_b50_data=False): 
+def update_b50(placeholder, update_function, username, timestamp=None, force_update=False):
     try:
-        if replace_b50_data:
-            b50_data = update_function(b50_raw_file, b50_data_file, username)
+        paths = get_data_paths(username, timestamp)
+        if force_update:
+            # Create new version directory
+            os.makedirs(os.path.dirname(paths['data_file']), exist_ok=True)
+            b50_data = update_function(paths['raw_file'], paths['data_file'], username)
             st.success("已更新B50数据！")
             st.session_state.data_updated_step1 = True
         else:
-            b50_data = load_config(b50_data_file)
-            st.success("已加载缓存的B50数据")
+            b50_data = load_config(paths['data_file'])
+            st.success("已加载历史B50数据")
             st.session_state.data_updated_step1 = True
         show_b50_dataframe(placeholder, username, b50_data)
+        return paths
     except Exception as e:
         st.session_state.data_updated_step1 = False
         st.error(f"获取B50数据时发生错误: {e}")
         st.error(traceback.format_exc())
+        return None
 
 # 仅在配置已保存时显示"开始预生成"按钮
 if st.session_state.get('config_saved', False):
@@ -100,27 +107,32 @@ if st.session_state.get('config_saved', False):
 
     st_init_cache_pathes()
 
-    b50_raw_file = f"./b50_datas/b50_raw_{username}.json"
-    b50_data_file = f"./b50_datas/b50_config_{username}.json"
-    config_output_file = f"./b50_datas/video_configs_{username}.json"
-    b50_data = None
-
-    if 'data_updated_step1' not in st.session_state:
-        st.session_state.data_updated_step1 = False
-
-    if os.path.exists(b50_data_file):
-        st.warning("检测到用户已缓存有B50数据，是否确认获取最新的数据？这将会覆盖当前已有数据。")
-        options = ["使用缓存数据（无视服务器）", "更新并替换当前数据"]
-        replace_confirm = st.radio("请选择", options, index=0)
-        replace_b50_data = replace_confirm == options[1]
+    versions = get_user_versions(username)
+    if versions:
+        st.info("检测到历史数据版本")
+        selected_version = st.selectbox(
+            "选择要加载的数据版本",
+            versions,
+            format_func=lambda x: f"版本 {x} ({datetime.strptime(x.split('_')[0], '%Y%m%d').strftime('%Y-%m-%d')})"
+        )
+        use_history = st.checkbox("使用选中的历史版本", value=True)
     else:
-        replace_b50_data = True
-    
+        use_history = False
+        selected_version = None
+
     update_info_placeholder = st.empty()
 
     if st.button("从水鱼获取B50数据（国服）"):
         with st.spinner("正在获取B50数据更新..."):
-            update_b50(update_info_placeholder, update_b50_data, b50_raw_file, b50_data_file, raw_username, replace_b50_data=replace_b50_data)
+            current_paths = update_b50(
+                update_info_placeholder,
+                update_b50_data,
+                raw_username,
+                selected_version if use_history else None,
+                force_update=not use_history
+            )
+            if current_paths:
+                st.session_state.current_paths = current_paths
 
     @st.dialog("从HTML源码导入数据")
     def input_html_data():
@@ -145,9 +157,15 @@ if st.session_state.get('config_saved', False):
         with col2:
             if st.button("从本地HTML读取B50（国际服）"):
                 with st.spinner("正在读取HTML数据..."):
-                    update_b50(update_info_placeholder, update_b50_data_int, b50_raw_file, b50_data_file, username, replace_b50_data=replace_b50_data)
-
-
+                    current_paths = update_b50(
+                        update_info_placeholder,
+                        update_b50_data_int,
+                        username,
+                        selected_version if use_history else None,
+                        force_update=not use_history
+                    )
+                    if current_paths:
+                        st.session_state.current_paths = current_paths
 
     if st.session_state.get('data_updated_step1', False):
         with st.container(border=True):
@@ -155,6 +173,8 @@ if st.session_state.get('config_saved', False):
             if st.button("生成成绩背景图片"):
                 generate_info_placeholder = st.empty()
                 try:
+                    image_path = f"./b50_images/{username}"
+                    os.makedirs(image_path, exist_ok=True)
                     st_generate_b50_images(generate_info_placeholder, username)
                     st.success("生成成绩背景图片完成！")
                 except Exception as e:
