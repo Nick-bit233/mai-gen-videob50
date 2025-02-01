@@ -108,7 +108,7 @@ class Utils:
 
     def ComboStatusLoader(self, ComboStatus: int = 0):
         match ComboStatus:
-            case _ if ComboStatus == '':
+            case _ if ComboStatus == '' or ComboStatus is None:
                 return Image.new('RGBA', (80, 80), (0, 0, 0, 0))
             case _ if ComboStatus == 'fc':
                 with Image.open("./images/ComboStatus/1.png") as _comboStatus:
@@ -125,7 +125,7 @@ class Utils:
 
     def SyncStatusLoader(self, SyncStatus: int = 0):
         match SyncStatus:
-            case _ if SyncStatus == '':
+            case _ if SyncStatus == '' or SyncStatus is None:
                 return Image.new('RGBA', (80, 80), (0, 0, 0, 0))
             case _ if SyncStatus == 'fs':
                 with Image.open("./images/SyncStatus/1.png") as _syncStatus:
