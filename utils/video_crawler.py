@@ -79,8 +79,11 @@ def remove_html_tags_and_invalid_chars(text: str) -> str:
     return text.strip()  # 去除首尾空白字符
 
 def convert_duration_to_seconds(duration: str) -> int:
-    minutes, seconds = map(int, duration.split(':'))
-    return minutes * 60 + seconds
+    try:
+        minutes, seconds = map(int, duration.split(':'))
+        return minutes * 60 + seconds
+    except:
+        return int(duration)
 
 def load_credential(credential_path):
     if not os.path.isfile(credential_path):
