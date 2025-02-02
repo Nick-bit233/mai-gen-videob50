@@ -182,3 +182,7 @@ cython_debug/
 # DX rating HTML files
 *.html
 *.json
+
+# debug and test resources
+test_html.txt
+test_dxrating.txt
