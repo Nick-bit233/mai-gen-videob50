@@ -151,7 +151,7 @@ if st.session_state.get('config_saved', False):
                     update_b50(update_info_placeholder, update_b50_data_int_html, b50_raw_file, b50_data_file, username, replace_b50_data=replace_b50_data)
 
         with col3:
-            if st.button("从本地JSON读取B50（国际服）"):
+            if st.button("从本地JSON读取B50（国际服/日服）"):
                 with st.spinner("正在读取JSON数据..."):
                     update_b50(update_info_placeholder, update_b50_data_int_json, b50_raw_file, b50_data_file, username, replace_b50_data=replace_b50_data)
 
