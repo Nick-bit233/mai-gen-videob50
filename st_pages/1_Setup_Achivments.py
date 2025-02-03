@@ -5,7 +5,7 @@ import subprocess
 import traceback
 from copy import deepcopy
 from pre_gen import update_b50_data, st_init_cache_pathes
-from pre_gen_int import update_b50_data_int
+from pre_gen_int import update_b50_data_int_html, update_b50_data_int_json
 from gene_images import generate_single_image, check_mask_waring
 from utils.PageUtils import *
 
@@ -123,29 +123,37 @@ if st.session_state.get('config_saved', False):
             update_b50(update_info_placeholder, update_b50_data, b50_raw_file, b50_data_file, raw_username, replace_b50_data=replace_b50_data)
 
     @st.dialog("从HTML源码导入数据")
-    def input_html_data():
+    def input_origin_data():
         st.info("请将复制的网页源代码粘贴到下方输入栏：")
-        if os.path.exists(f"./{username}.html"):
-            st.info(f"注意，重复导入将会覆盖已有html数据文件：{username}.html")
-        html_input = st.text_area("html_input", height=600)
+        if os.path.exists(f"./b50_datas/{username}.html"):
+            st.info(f"注意，重复导入HTML代码将会覆盖已有html数据文件：{username}.html")
+        if os.path.exists(f"./b50_datas/{username}.json"):
+            st.info(f"注意，重复导入dxrating.net数据将会覆盖已有数据文件：{username}.json")
+        data_input = st.text_area("数据输入区", height=600)
         if st.button("确认保存"):
-            with open(f"./{username}.html", 'w', encoding="utf-8") as f:
-               f.write(html_input)
-            st.toast("HTML数据已保存！")
+            file_type = "json" if data_input.startswith("[{") else "html"
+            with open(f"./b50_datas/{username}.{file_type}", 'w', encoding="utf-8") as f:
+               f.write(data_input)
+            st.toast(f"{file_type.upper()}数据已保存！")
             st.rerun()
 
     with st.container(border=True):
-        st.info("如您使用国际服数据，请先点击下方左侧按钮导入源代码，再使用下方右侧按钮读取数据。国服用户请跳过。")
-        col1, col2 = st.columns(2)
+        st.info("如使用国际服数据，请先点击下方左侧按钮导入源代码，再使用下方右侧按钮读取数据。国服用户请跳过。")
+        col1, col2, col3 = st.columns(3)
         with col1:
             if st.button("导入B50数据源代码"):
                 # 参考水鱼做法使用dialog框架
-                input_html_data()
+                input_origin_data()
         
         with col2:
             if st.button("从本地HTML读取B50（国际服）"):
                 with st.spinner("正在读取HTML数据..."):
-                    update_b50(update_info_placeholder, update_b50_data_int, b50_raw_file, b50_data_file, username, replace_b50_data=replace_b50_data)
+                    update_b50(update_info_placeholder, update_b50_data_int_html, b50_raw_file, b50_data_file, username, replace_b50_data=replace_b50_data)
+
+        with col3:
+            if st.button("从本地JSON读取B50（国际服/日服）"):
+                with st.spinner("正在读取JSON数据..."):
+                    update_b50(update_info_placeholder, update_b50_data_int_json, b50_raw_file, b50_data_file, username, replace_b50_data=replace_b50_data)
 
 
 
