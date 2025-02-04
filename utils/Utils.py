@@ -282,13 +282,16 @@ class Utils:
                 StarText = str(dx_stars)
                 TempImage = self.TextDraw(TempImage, StarText, TextCentralPosition)
 
-                # 游玩次数（暂无获取方式）
-                PlayCount = 0
+                # 游玩次数（暂无获取方式，b50data中若有手动填写即可显示）
+                if "playCount" in record_detail:
+                    PlayCount = record_detail["playCount"]
+                else:
+                    PlayCount = 0
                 if PlayCount >= 1:
                     with Image.open("./images/Playcount/PlayCountBase.png") as PlayCountBase:
                         TempImage.paste(PlayCountBase, (1170, 420), PlayCountBase)
                     TextCentralPosition = (1435, 458)
-                    PlayCountText = str(record_detail['playcount'])
+                    PlayCountText = str(PlayCount)
                     TempImage = self.TextDraw(TempImage, PlayCountText, TextCentralPosition)
 
                 Background = Image.alpha_composite(Background, TempImage)

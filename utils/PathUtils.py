@@ -21,6 +21,8 @@ def get_data_paths(username, timestamp=None):
         'config_yt': os.path.join(version_dir, "b50_config_youtube.json"),
         'config_bi': os.path.join(version_dir, "b50_config_bilibili.json"),
         'video_config': os.path.join(version_dir, "video_configs.json"),
+        'image_dir': os.path.join(version_dir, "images"),
+        'output_video_dir': os.path.join(version_dir, "videos"),
     }
 
 def get_user_versions(username):

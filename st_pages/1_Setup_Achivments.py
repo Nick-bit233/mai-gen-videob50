@@ -28,12 +28,18 @@ def count_rate(acc):
         return "aaa"
 
 @st.dialog("手动修改b50数据", width="large")
-def edit_b50_data(user_id, save_paths):
+def edit_b50_data(user_id, save_id):
+    save_paths = get_data_paths(user_id, save_id)
     datafile_path = save_paths['data_file']
     data = load_config(datafile_path)
-    save_id = os.path.basename(os.path.dirname(datafile_path))
-    st.write(f"【当前存档】用户名：{user_id}，存档时间：{save_id} ")
-    st.info("您可以在下方表格中修改本存档的b50数据，注意修改保存后将无法撤销！")
+    # get dx rating from raw data file
+    raw_datafile_path = save_paths['raw_file']
+    with open(raw_datafile_path, 'r', encoding='utf-8') as f:
+        raw_data = json.load(f)
+        dx_rating = raw_data.get("rating", 0)
+    st.write(f"【当前存档】用户名：{user_id}，存档时间：{save_id}， DX Rating：{dx_rating}")
+    st.warning("您可以在下方表格中修改本存档的b50数据，注意修改保存后将无法撤销！")
+    st.info("水鱼查分器不返回游玩次数数据，如需在视频中展示请手动填写游玩次数。")
     
     # json数据中添加游玩次数字段
     for item in data:
@@ -109,7 +115,7 @@ def edit_b50_data(user_id, save_paths):
         REVERSE_LEVEL_LABELS = {v: k for k, v in LEVEL_LABELS.items()}
         level_index = REVERSE_LEVEL_LABELS.get(record['level_label'].upper())
         record['level_index'] = level_index
-        print(f"level_label: {record['level_label']} | level_index: {record['level_index']}")
+        # print(f"level_label: {record['level_label']} | level_index: {record['level_index']}")
 
         # 计算level
         # 将record['ds']切分为整数部分和小数部分
@@ -118,11 +124,11 @@ def edit_b50_data(user_id, save_paths):
         ds_p = int(ds_p[0])
         plus = '+' if ds_p > 6 else ''
         record['level'] = f"{ds_l}{plus}"
-        print(f"ds: {record['ds']} | level: {record['level']}")
+        # print(f"ds: {record['ds']} | level: {record['level']}")
 
         # 计算rate
         record['rate'] = count_rate(record['achievements'])
-        print(f"achievements: {record['achievements']} | rate: {record['rate']}")
+        # print(f"achievements: {record['achievements']} | rate: {record['rate']}")
     col1, col2 = st.columns(2)
     with col1:
         if st.button("保存修改"):
@@ -135,15 +141,7 @@ def edit_b50_data(user_id, save_paths):
         if st.button("结束编辑并返回"):
             st.rerun()
 
-def show_b50_dataframe(info_placeholder, user_id, save_paths):
-    with info_placeholder.container(border=True):
-        datafile_path = save_paths['data_file']
-        b50_data = load_config(datafile_path)
-        save_id = os.path.basename(os.path.dirname(datafile_path))
-        st.write(f"【当前存档】用户名：{user_id}，存档时间：{save_id} ")
-        st.dataframe(b50_data, column_order=["clip_id", "title", "level_label", "level",  "ds", "achievements", "fc", "fs", "ra", "dxScore"])
-
-st.header("Step 1: 配置生成器参数和B50成绩数据")
+st.header("获取或管理B50成绩存档")
 
 def check_username(input_username):
     # 检查用户名是否包含非法字符
@@ -151,11 +149,22 @@ def check_username(input_username):
         return remove_invalid_chars(input_username), input_username
     else:
         return input_username, input_username
+    
+def read_raw_username(username):
+    raw_username_file = os.path.join(get_user_base_dir(username), "raw_username.txt")
+    if os.path.exists(raw_username_file):
+        with open(raw_username_file, 'r', encoding='utf-8') as f:
+            return f.read().strip()
+    else:
+        return username
 
+username = st.session_state.get("username", None)
+save_id = st.session_state.get('save_id', None)
 with st.container(border=True):
-    G_config = read_global_config()
-    raw_username = G_config.get('USER_ID_RAW', '')
-    input_username = st.text_input("输入水鱼查分器用户名（国服查询）或一个您喜欢的用户名（国际服）", value=raw_username)
+    input_username = st.text_input(
+        "输入水鱼查分器用户名（国服查询）或一个您喜欢的用户名（国际服）",
+        value=username if username else ""
+    )
 
     if st.button("确定"):
         if not input_username:
@@ -163,14 +172,18 @@ with st.container(border=True):
             st.session_state.config_saved = False
         else:  
             # 输入的username作为文件夹路径，需要去除非法字符
-            # raw_username为查分器返回的用户名，除非用户名中包含非法字符，否则与username相同
+            # raw_username为注册查分器使用的用户名，除非用户名中包含非法字符，否则与username相同
             username, raw_username = check_username(input_username)
-            # 更新配置字典
-            G_config['USER_ID'] = username
-            G_config['USER_ID_RAW'] = raw_username
-            # 写入配置文件
-            write_global_config(G_config)
-            st.success("配置已保存！")
+            root_save_dir = get_user_base_dir(username)
+            if not os.path.exists(root_save_dir):
+                os.makedirs(root_save_dir, exist_ok=True)
+            # 创建一个文本文件用于保存raw_username
+            raw_username_file = os.path.join(root_save_dir, "raw_username.txt")
+            if not os.path.exists(raw_username_file):
+                with open(raw_username_file, 'w', encoding='utf-8') as f:
+                    f.write(raw_username)
+            st.success("用户名已保存！")
+            st.session_state.username = username  # 保存用户名到session_state
             st.session_state.config_saved = True  # 添加状态标记
 
 def st_generate_b50_images(placeholder, user_id):
@@ -203,92 +216,103 @@ def st_generate_b50_images(placeholder, user_id):
                 image_name_index,
             )
 
-def load_history_saves(placeholder, username, timestamp=None):
-    try:
-        paths = get_data_paths(username, timestamp)
-        if os.path.exists(paths['data_file']):
-            # b50_data = load_config(paths['data_file'])
-            st.success("已加载历史配置")
-            st.session_state.data_updated_step1 = True
-            show_b50_dataframe(placeholder, username, paths)
-            return paths
-        else:
-            st.warning("未找到历史配置")
-            st.session_state.data_updated_step1 = False
-            return None
-    except Exception as e:
-        st.session_state.data_updated_step1 = False
-        st.error(f"获取配置时发生错误: {e}")
-        st.error(traceback.format_exc())
-        return None
-
-def update_b50(placeholder, update_function, username, save_paths):
+def update_b50(update_function, username, save_paths):
     try:
         # 新建存档文件夹
         os.makedirs(os.path.dirname(save_paths['raw_file']), exist_ok=True)
         b50_data = update_function(save_paths['raw_file'], save_paths['data_file'], username)
-        st.success("已更新B50数据！")
+        st.success(f"已获取用户{username}的最新B50数据！新的存档时间为：{os.path.dirname(save_paths['data_file'])}")
         st.session_state.data_updated_step1 = True
-        show_b50_dataframe(placeholder, username, save_paths)
+        return b50_data
     except Exception as e:
         st.session_state.data_updated_step1 = False
         st.error(f"获取B50数据时发生错误: {e}")
         st.error(traceback.format_exc())
+        return None
+
+def check_save_available(username, save_id):
+    if not save_id:
+        return False
+    save_paths = get_data_paths(username, save_id)
+    return os.path.exists(save_paths['data_file'])
+
+@st.dialog("从HTML源码导入数据", width="large")
+def input_html_data():
+    st.info("请将复制的网页源代码粘贴到下方输入栏：")
+    if os.path.exists(f"./{username}.html"):
+        st.info(f"注意，重复导入将会覆盖已有html数据文件：{username}.html")
+    html_input = st.text_area("html_input", height=600)
+    if st.button("确认保存"):
+        with open(f"./{username}.html", 'w', encoding="utf-8") as f:
+            f.write(html_input)
+            st.toast("HTML数据已保存！")
+            st.rerun()
+
+@st.dialog("删除存档确认")
+def delete_save_data(username, save_id):
+    version_dir = get_user_version_dir(username, save_id)
+    st.warning(f"是否确认删除存档：{username} - {save_id}？此操作将清除所有已生成的b50图片和视频文件，且不可撤销！")
+    if st.button("确认删除"):
+        # 迭代地删除文件夹version_dir下的所有文件和子文件夹
+        for root, dirs, files in os.walk(version_dir, topdown=False):
+            for name in files:
+                os.remove(os.path.join(root, name))
+            for name in dirs:
+                os.rmdir(os.path.join(root, name))
+        os.rmdir(version_dir)
+        st.toast(f"已删除存档！{username} - {save_id}")
+        st.rerun()
+    if st.button("取消"):
+        st.rerun()
 
 # 仅在配置已保存时显示"开始预生成"按钮
 if st.session_state.get('config_saved', False):
-    G_config = read_global_config()
-    username = G_config.get('USER_ID', '')
-    raw_username = G_config.get('USER_ID_RAW', '')
-    image_path = f"./b50_images/{username}"
+    raw_username = read_raw_username(username)
 
     st_init_cache_pathes()
 
     st.write("b50数据编辑")
-    update_info_placeholder = st.empty()
-    if st.button("手动修改当前存档的b50数据"):
-        save_paths = st.session_state.get('current_paths', None)
-        if save_paths:
-            edit_b50_data(username, save_paths)
+    if st.button("查看和修改当前存档的b50数据", key="edit_b50_data"):
+        save_id = st.session_state.get('save_id', None)
+        save_available = check_save_available(username, save_id)
+        if save_available:
+            edit_b50_data(username, save_id)
         else:
-            st.error("尚未读取b50数据，请先读取存档，或生成新存档！")
+            st.error("未找到b50数据，请先读取存档，或生成新存档！")
 
     st.write("b50存档读取")
     versions = get_user_versions(username)
     if versions:
         with st.container(border=True):
-            selected_version = st.selectbox(
-                "选择要加载的存档",
+            st.write(f"新获取的存档可能无法立刻显示在下拉栏中，单击任一其他存档即可进行刷新。")
+            selected_save_id = st.selectbox(
+                "选择存档",
                 versions,
                 format_func=lambda x: f"{username} - {x} ({datetime.strptime(x.split('_')[0], '%Y%m%d').strftime('%Y-%m-%d')})"
             )
-            if st.button("加载存档b50数据"):
-                if selected_version:
-                    print(selected_version)
-                    current_paths = load_history_saves(
-                        update_info_placeholder, 
-                        username, 
-                        selected_version
-                    )
-                    if current_paths:
-                        st.session_state.current_paths = current_paths
-                        st.session_state.data_loaded = True
-                else:
-                    st.error("未指定有效的存档路径！")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if st.button("加载存档b50数据"):
+                    if selected_save_id:
+                        print(selected_save_id)
+                        st.session_state.save_id = selected_save_id
+                        st.success(f"已加载存档！用户名：{username}，存档时间：{selected_save_id}，可使用上方按钮加载和修改数据。")
+                        st.session_state.data_updated_step1 = True                
+                    else:
+                        st.error("未指定有效的存档路径！")
+            with col2:
+                if st.button("打开存档文件夹"):
+                    version_dir = get_user_version_dir(username, selected_save_id)
+                    if os.path.exists(version_dir):
+                        absolute_path = os.path.abspath(version_dir)
+                    else:
+                        absolute_path = os.path.abspath(os.path.dirname(version_dir))
+                    open_file_explorer(absolute_path)
+            with col3:
+                if st.button("删除存档"):
+                    delete_save_data(username, selected_save_id)
     else:
-        st.warning(f"{username}还没有历史存档，请从下方获取最新的B50数据。")
-    
-    @st.dialog("从HTML源码导入数据")
-    def input_html_data():
-        st.info("请将复制的网页源代码粘贴到下方输入栏：")
-        if os.path.exists(f"./{username}.html"):
-            st.info(f"注意，重复导入将会覆盖已有html数据文件：{username}.html")
-        html_input = st.text_area("html_input", height=600)
-        if st.button("确认保存"):
-            with open(f"./{username}.html", 'w', encoding="utf-8") as f:
-                f.write(html_input)
-                st.toast("HTML数据已保存！")
-                st.rerun()
+        st.warning(f"{username}还没有历史存档，请从下方获取新的B50数据。")
 
     st.write(f"新建b50存档")
     with st.container(border=True):
@@ -296,63 +320,41 @@ if st.session_state.get('config_saved', False):
 
         if st.button("从水鱼获取B50数据（国服）"):
             current_paths = get_data_paths(username, timestamp=None)  # 获取新的存档路径
-            if current_paths:
+            save_id = os.path.basename(os.path.dirname(current_paths['data_file']))  # 从存档路径得到新存档的时间戳
+            if save_id:
                 print(current_paths)
-                st.session_state.current_paths = current_paths
+                st.session_state.save_id = save_id
                 with st.spinner("正在获取B50数据更新..."):
                     update_b50(
-                        update_info_placeholder,
                         update_b50_data,
                         raw_username,
                         current_paths,
                     )
-                st.session_state.data_loaded = True
         
         st.info("如您使用国际服数据，请先点击下方左侧按钮导入源代码，再使用下方右侧按钮读取数据。国服用户请忽略。")
         col1, col2 = st.columns(2)
         with col1:
             if st.button("导入B50数据源代码"):
-                # 参考水鱼做法使用dialog框架
                 input_html_data()
         
         with col2:
             if st.button("从本地HTML读取B50（国际服）"):
                 current_paths = get_data_paths(username, timestamp=None)  # 获取新的存档路径
-                if current_paths:
+                save_id = os.path.basename(os.path.dirname(current_paths['data_file']))  # 从存档路径得到新存档的时间戳
+                if save_id:
                     print(current_paths)
-                    st.session_state.current_paths = current_paths
+                    st.session_state.save_id = save_id
                     with st.spinner("正在读取HTML数据..."):
                         current_paths = update_b50(
-                            update_info_placeholder,
                             update_b50_data_int,
                             username,
                             current_paths
                         )
-                    st.session_state.data_loaded = True
 
     if st.session_state.get('data_updated_step1', False):
-        st.text("生成成绩背景图片")
-        with st.container(border=True):
-            st.write("确认你的B50数据无误后，请点击下面的按钮，生成成绩背景图片：")
-            if st.button("生成成绩背景图片"):
-                generate_info_placeholder = st.empty()
-                try:
-                    image_path = f"./b50_images/{username}"
-                    os.makedirs(image_path, exist_ok=True)
-                    st_generate_b50_images(generate_info_placeholder, username)
-                    st.success("生成成绩背景图片完成！")
-                except Exception as e:
-                    st.error(f"生成成绩背景图片时发生错误: {e}")
-                    st.error(traceback.format_exc())
-            if os.path.exists(image_path):
-                absolute_path = os.path.abspath(image_path)
-            else:
-                absolute_path = os.path.abspath(os.path.dirname(image_path))
-            if st.button("打开成绩图片文件夹", key=f"open_folder_{username}"):
-                open_file_explorer(absolute_path)
-            st.info("如果你已经生成过背景图片，且无需更新，可以跳过，请点击进行下一步按钮。")
-            if st.button("进行下一步"):
-                st.switch_page("st_pages/2_Search_For_Videoes.py")
+        st.write("确认你的B50数据无误后，请点击进行下一步按钮开始进行视频生成准备。")
+        if st.button("进行下一步"):
+            st.switch_page("st_pages/Generate_Pic_Resources.py")
 
 else:
-    st.warning("请先确定配置！")  # 如果未保存配置，给出提示
+    st.warning("请先确定用户名！")

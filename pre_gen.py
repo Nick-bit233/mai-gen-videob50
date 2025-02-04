@@ -308,7 +308,6 @@ def gene_resource_config(b50_data, images_path, videoes_path, ouput_file):
 def st_init_cache_pathes():
     cache_pathes = [
         f"./b50_datas",
-        f"./b50_images",
         f"./videos",
         f"./videos/downloads",
         f"./cred_datas"
