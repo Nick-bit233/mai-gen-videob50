@@ -51,7 +51,7 @@ current_paths = None
 data_loaded = False
 
 if not username:
-    st.error("请先回到第一页指定用户名！")
+    st.error("请先获取指定用户名的B50存档！")
     st.stop()
 
 if save_id:
@@ -77,7 +77,7 @@ with st.expander("更换B50存档"):
                 versions,
                 format_func=lambda x: f"{username} - {x} ({datetime.strptime(x.split('_')[0], '%Y%m%d').strftime('%Y-%m-%d')})"
             )
-            if st.button("使用此存档"):
+            if st.button("使用此存档（只需要点击一次！）"):
                 if selected_save_id:
                     st.session_state.save_id = selected_save_id
                     st.rerun()
