@@ -2,11 +2,60 @@ import streamlit as st
 import os
 import json
 import traceback
+from datetime import datetime
 from utils.PageUtils import *
+from utils.PathUtils import get_data_paths, get_user_versions
 
 st.header("Step 4-2: 片头/片尾内容编辑")
 
 G_config = read_global_config()
+
+### Savefile Management - Start ###
+if "username" in st.session_state:
+    st.session_state.username = st.session_state.username
+
+if "save_id" in st.session_state:
+    st.session_state.save_id = st.session_state.save_id
+
+username = st.session_state.get("username", None)
+save_id = st.session_state.get("save_id", None)
+current_paths = None
+data_loaded = False
+
+if not username:
+    st.error("请先获取指定用户名的B50存档！")
+    st.stop()
+
+if save_id:
+    # load save data
+    current_paths = get_data_paths(username, save_id)
+    data_loaded = True
+    with st.container(border=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("当前存档")
+        with col2:
+            st.write(f"用户名：{username}，存档时间：{save_id} ")
+else:
+    st.warning("未索引到存档，请先加载存档数据！")
+
+with st.expander("更换B50存档"):
+    st.info("如果要更换用户，请回到存档管理页面指定其他用户名。")
+    versions = get_user_versions(username)
+    if versions:
+        with st.container(border=True):
+            selected_save_id = st.selectbox(
+                "选择存档",
+                versions,
+                format_func=lambda x: f"{username} - {x} ({datetime.strptime(x.split('_')[0], '%Y%m%d').strftime('%Y-%m-%d')})"
+            )
+            if st.button("使用此存档（只需要点击一次！）"):
+                if selected_save_id:
+                    st.session_state.save_id = selected_save_id
+                    st.rerun()
+                else:
+                    st.error("无效的存档路径！")
+### Savefile Management - End ###
 
 def edit_context_widget(name, config):
     # 创建一个container来容纳所有组件
@@ -71,9 +120,15 @@ def edit_context_widget(name, config):
                 st.error(f"保存失败：{str(e)}")
                 st.error(traceback.format_exc())
 
-config = load_config(f"./b50_datas/video_configs_{G_config['USER_ID']}.json")
+# 读取存档的video config文件
+video_config_file = current_paths['video_config']
+if not os.path.exists(video_config_file):
+    st.error(f"未找到视频内容配置文件{video_config_file}，请检查前置步骤是否完成，以及B50存档的数据完整性！")
+    st.stop()
+config = load_config(video_config_file)
 if config:
     st.write("添加想要展示的文字内容，每一页最多可以展示约250字")
+    st.info("请注意：左右两侧填写完毕后，需要分别点击保存按钮方可生效！")
 
     # 分为两栏，左栏读取intro部分的配置，右栏读取outro部分的配置
     col1, col2 = st.columns(2)
@@ -84,7 +139,7 @@ if config:
         st.subheader("片尾配置")
         edit_context_widget("ending", config)
 
-    st.write("配置完毕后，请点击下面按钮进入视频生成步骤（请注意两边都要点击保存）")
+    st.write("配置完毕后，请点击下面按钮进入视频生成步骤")
     if st.button("进行下一步"):
         st.switch_page("st_pages/6_Compostie_Videoes.py")
 else:

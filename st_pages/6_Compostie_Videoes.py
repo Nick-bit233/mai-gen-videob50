@@ -1,9 +1,11 @@
 import streamlit as st
 import subprocess
 import traceback
+from datetime import datetime
+from utils.PageUtils import *
+from utils.PathUtils import get_data_paths, get_user_versions
 from main_gen import generate_complete_video, generate_one_video_clip
 from gene_video import render_all_video_clips, combine_full_video_direct, combine_full_video_ffmpeg_concat_gl
-from utils.PageUtils import *
 
 st.header("Step 5: 视频生成")
 
@@ -11,6 +13,53 @@ st.info("在执行视频生成前，请确保已经完成了4-1和4-2步骤，�
 
 G_config = read_global_config()
 FONT_PATH = "./font/SOURCEHANSANSSC-BOLD.OTF"
+
+### Savefile Management - Start ###
+if "username" in st.session_state:
+    st.session_state.username = st.session_state.username
+
+if "save_id" in st.session_state:
+    st.session_state.save_id = st.session_state.save_id
+
+username = st.session_state.get("username", None)
+save_id = st.session_state.get("save_id", None)
+current_paths = None
+data_loaded = False
+
+if not username:
+    st.error("请先获取指定用户名的B50存档！")
+    st.stop()
+
+if save_id:
+    # load save data
+    current_paths = get_data_paths(username, save_id)
+    data_loaded = True
+    with st.container(border=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("当前存档")
+        with col2:
+            st.write(f"用户名：{username}，存档时间：{save_id} ")
+else:
+    st.warning("未索引到存档，请先加载存档数据！")
+
+with st.expander("更换B50存档"):
+    st.info("如果要更换用户，请回到存档管理页面指定其他用户名。")
+    versions = get_user_versions(username)
+    if versions:
+        with st.container(border=True):
+            selected_save_id = st.selectbox(
+                "选择存档",
+                versions,
+                format_func=lambda x: f"{username} - {x} ({datetime.strptime(x.split('_')[0], '%Y%m%d').strftime('%Y-%m-%d')})"
+            )
+            if st.button("使用此存档（只需要点击一次！）"):
+                if selected_save_id:
+                    st.session_state.save_id = selected_save_id
+                    st.rerun()
+                else:
+                    st.error("无效的存档路径！")
+### Savefile Management - End ###
 
 st.write("视频生成相关设置")
 
@@ -47,10 +96,16 @@ with st.container(border=True):
 v_mode_index = options.index(mode_str)
 v_bitrate_kbps = f"{v_bitrate}k"
 
-video_output_path = f"./videos/{G_config['USER_ID']}"
+video_output_path = current_paths['output_video_dir']
 if not os.path.exists(video_output_path):
     os.makedirs(video_output_path)
-video_configs = load_config(f"./b50_datas/video_configs_{G_config['USER_ID']}.json")
+
+# 读取存档的video config文件
+video_config_file = current_paths['video_config']
+if not os.path.exists(video_config_file):
+    st.error(f"未找到视频内容配置文件{video_config_file}，请检查前置步骤是否完成，以及B50存档的数据完整性！")
+    st.stop()
+video_configs = load_config(video_config_file)
 
 def save_video_render_config():
     # 保存配置
@@ -76,10 +131,11 @@ if st.button("开始生成视频"):
                                         font_path=FONT_PATH, auto_add_transition=False, trans_time=trans_time,
                                         force_render=force_render_clip)
                     st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
-            st.success("视频片段生成结束！请在弹出的文件夹窗口中查看")
-            abs_path = os.path.abspath(video_output_path)
-            st.info(f"如果未能打开文件夹，可在此路径中查看生成视频：{abs_path}")
-            open_file_explorer(abs_path)
+            st.success("视频片段生成结束！点击下方按钮以打开视频所在文件夹")
+            if st.button("打开视频文件夹"):
+                abs_path = os.path.abspath(video_output_path)
+                open_file_explorer(abs_path)
+            st.info(f"如果打开文件夹失败，请在路径中寻找生成的视频：{abs_path}")
         except Exception as e:
             st.error(f"视频片段生成失败，错误详情: {traceback.print_exc()}")
 
@@ -98,10 +154,11 @@ if st.button("开始生成视频"):
                                                     video_trans_time=trans_time, 
                                                     full_last_clip=False)
                     st.write(f"【{output_info['info']}")
-            st.success("完整视频生成结束！请在弹出的文件夹窗口中查看")
-            abs_path = os.path.abspath(video_output_path)
-            st.info(f"如果未能打开文件夹，可在此路径中查看生成视频：{abs_path}")
-            open_file_explorer(abs_path)
+            st.success("完整视频生成结束！点击下方按钮以打开视频所在文件夹")
+            if st.button("打开视频文件夹"):
+                abs_path = os.path.abspath(video_output_path)
+                open_file_explorer(abs_path)
+            st.info(f"如果打开文件夹失败，请在路径中寻找生成的视频：{abs_path}")
         except Exception as e:
             st.error(f"完整视频生成失败，错误详情: {traceback.print_exc()}")
 
@@ -124,8 +181,11 @@ with st.container(border=True):
         with st.spinner("正在拼接视频……"):
             combine_full_video_direct(video_output_path)
         st.success("所有任务已退出，请查看视频生成结果")
-        abs_path = os.path.abspath(video_output_path)
-        st.info(f"如果未能打开文件夹，可在此路径中查看生成视频：{abs_path}")
+        if st.button("打开视频文件夹"):
+            abs_path = os.path.abspath(video_output_path)
+            open_file_explorer(abs_path)
+        st.info(f"如果打开文件夹失败，请在路径中寻找生成的视频：{abs_path}")
+
         open_file_explorer(abs_path)
 
 with st.container(border=True):
@@ -157,8 +217,9 @@ with st.container(border=True):
                 combine_full_video_ffmpeg_concat_gl(video_output_path, video_res, trans_name, trans_time)
                 st.info("已启动视频拼接任务，请在控制台窗口查看进度……")
             st.success("所有任务已退出，请查看视频生成结果")
-            abs_path = os.path.abspath(video_output_path)
-            st.info(f"如果未能打开文件夹，可在此路径中查看生成视频：{abs_path}")
-            open_file_explorer(abs_path)
+            if st.button("打开视频文件夹"):
+                abs_path = os.path.abspath(video_output_path)
+                open_file_explorer(abs_path)
+            st.info(f"如果打开文件夹失败，请在路径中寻找生成的视频：{abs_path}")
 
 

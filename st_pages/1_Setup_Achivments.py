@@ -53,16 +53,18 @@ def edit_b50_data(user_id, save_id):
                     "ds", "achievements", "fc", "fs", "ra", "dxScore", "playCount"],
         column_config={
             "clip_id": "编号",
-            "song_id": "歌曲ID",
+            "song_id": "曲ID",
             "title": "曲名",
             "type": st.column_config.SelectboxColumn(
-                "谱面类型",
+                "类型",
                 options=["SD", "DX"],
+                width=40,
                 required=True
             ),
             "level_label": st.column_config.SelectboxColumn(
-                "谱面难度",
+                "难度",
                 options=["Basic", "Advanced", "Expert", "Master", "Re:MASTER"],
+                width=60,
                 required=True
             ),
             "ds": st.column_config.NumberColumn(
@@ -70,6 +72,7 @@ def edit_b50_data(user_id, save_id):
                 min_value=1.0,
                 max_value=15.0,
                 format="%.1f",
+                width=60,
                 required=True
             ),
             "achievements": st.column_config.NumberColumn(
@@ -80,23 +83,27 @@ def edit_b50_data(user_id, save_id):
                 required=True
             ),
             "fc": st.column_config.SelectboxColumn(
-                "Combo标记",
+                "Fc标",
                 options=["", "fc", "fcp", "ap", "app"],
+                width=40,
                 required=False
             ),
             "fs": st.column_config.SelectboxColumn(
-                "Sync标记",
+                "Sync标",
                 options=["", "sync", "fs", "fsp", "fsd", "fsdp"],
+                width=40,
                 required=False
             ),
             "ra": st.column_config.NumberColumn(
-                "单曲Rating",
+                "单曲Ra",
                 format="%d",
+                width=75,
                 required=True
             ),
             "dxScore": st.column_config.NumberColumn(
                 "DX分数",
                 format="%d",
+                width=75,
                 required=True
             ),
             "playCount": st.column_config.NumberColumn(

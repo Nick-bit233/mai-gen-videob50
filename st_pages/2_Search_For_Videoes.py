@@ -23,6 +23,7 @@ _customer_po_token = G_config.get('CUSTOMER_PO_TOKEN', '')
 
 st.header("Step 2: 谱面确认视频搜索和抓取")
 
+### Savefile Management - Start ###
 if "username" in st.session_state:
     st.session_state.username = st.session_state.username
 
@@ -67,6 +68,7 @@ with st.expander("更换B50存档"):
                     st.rerun()
                 else:
                     st.error("无效的存档路径！")
+### Savefile Management - End ###
 
 st.write("视频抓取设置")
 

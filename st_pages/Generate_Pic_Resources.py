@@ -39,6 +39,7 @@ def st_generate_b50_images(placeholder, user_id, save_paths):
 
 st.title("Step 1: 生成B50成绩背景图片")
 
+### Savefile Management - Start ###
 if "username" in st.session_state:
     st.session_state.username = st.session_state.username
 
@@ -83,7 +84,7 @@ with st.expander("更换B50存档"):
                     st.rerun()
                 else:
                     st.error("无效的存档路径！")
-
+### Savefile Management - End ###
 
 if data_loaded:
     image_path = current_paths['image_dir']
