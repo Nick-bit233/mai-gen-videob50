@@ -144,8 +144,8 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
 
         # 显示选中视频的详细信息
         if selected_index is not None:
-            st.write("选中的视频详细信息:")
-            show_video_info(to_match_videos[selected_index])
+            with st.expander("查看选中视频的详细信息"):
+                show_video_info(to_match_videos[selected_index])
 
         if st.button("确定使用该信息", key=f"confirm_selected_match_{song['clip_id']}"):
             song['video_info_match'] = to_match_videos[selected_index]

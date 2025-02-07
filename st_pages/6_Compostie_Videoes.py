@@ -131,11 +131,7 @@ if st.button("开始生成视频"):
                                         font_path=FONT_PATH, auto_add_transition=False, trans_time=trans_time,
                                         force_render=force_render_clip)
                     st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
-            st.success("视频片段生成结束！点击下方按钮以打开视频所在文件夹")
-            if st.button("打开视频文件夹"):
-                abs_path = os.path.abspath(video_output_path)
-                open_file_explorer(abs_path)
-            st.info(f"如果打开文件夹失败，请在路径中寻找生成的视频：{abs_path}")
+            st.success("视频片段生成结束！点击下方按钮打开视频所在文件夹")
         except Exception as e:
             st.error(f"视频片段生成失败，错误详情: {traceback.print_exc()}")
 
@@ -146,7 +142,7 @@ if st.button("开始生成视频"):
                 st.warning("生成过程中请不要手动跳转到其他页面，或刷新本页面，否则可能导致生成失败！")
                 with st.spinner("正在生成完整视频……"):
                     output_info = generate_complete_video(configs=video_configs, 
-                                                    username=G_config['USER_ID'],
+                                                    username=username,
                                                     video_output_path=video_output_path, 
                                                     video_res=video_res, 
                                                     video_bitrate=v_bitrate_kbps,
@@ -154,13 +150,14 @@ if st.button("开始生成视频"):
                                                     video_trans_time=trans_time, 
                                                     full_last_clip=False)
                     st.write(f"【{output_info['info']}")
-            st.success("完整视频生成结束！点击下方按钮以打开视频所在文件夹")
-            if st.button("打开视频文件夹"):
-                abs_path = os.path.abspath(video_output_path)
-                open_file_explorer(abs_path)
-            st.info(f"如果打开文件夹失败，请在路径中寻找生成的视频：{abs_path}")
+            st.success("完整视频生成结束！点击下方按钮打开视频所在文件夹")
         except Exception as e:
             st.error(f"完整视频生成失败，错误详情: {traceback.print_exc()}")
+
+abs_path = os.path.abspath(video_output_path)
+if st.button("打开视频输出文件夹"):
+    open_file_explorer(abs_path)
+st.write(f"如果打开文件夹失败，请在此路径中寻找生成的视频：{abs_path}")
 
 # 添加分割线
 st.divider()
@@ -180,13 +177,7 @@ with st.container(border=True):
             st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
         with st.spinner("正在拼接视频……"):
             combine_full_video_direct(video_output_path)
-        st.success("所有任务已退出，请查看视频生成结果")
-        if st.button("打开视频文件夹"):
-            abs_path = os.path.abspath(video_output_path)
-            open_file_explorer(abs_path)
-        st.info(f"如果打开文件夹失败，请在路径中寻找生成的视频：{abs_path}")
-
-        open_file_explorer(abs_path)
+        st.success("所有任务已退出，请从上方按钮打开文件夹查看视频生成结果")
 
 with st.container(border=True):
     st.write("【更多过渡效果】使用ffmpeg concat生成视频，允许自定义片段过渡效果")
@@ -216,10 +207,4 @@ with st.container(border=True):
             with st.spinner("正在拼接视频……"):
                 combine_full_video_ffmpeg_concat_gl(video_output_path, video_res, trans_name, trans_time)
                 st.info("已启动视频拼接任务，请在控制台窗口查看进度……")
-            st.success("所有任务已退出，请查看视频生成结果")
-            if st.button("打开视频文件夹"):
-                abs_path = os.path.abspath(video_output_path)
-                open_file_explorer(abs_path)
-            st.info(f"如果打开文件夹失败，请在路径中寻找生成的视频：{abs_path}")
-
-
+            st.success("所有任务已退出，请从上方按钮打开文件夹查看视频生成结果")

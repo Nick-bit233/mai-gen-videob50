@@ -267,7 +267,7 @@ with st.container(border=True):
     with st.container(border=True):
         st.error("危险区域 Danger Zone")
         st.write("如果本页面无法正常读取图片、视频或评论，请尝试使用下方按钮强制刷新配置。")
-        st.warning("警告：此操作将清空所有已填写的评论或时间配置，如有需要请自行备份配置文件！")
+        st.warning("警告：此操作将清空所有已填写的评论或时间配置，如有需要请自行备份video_config文件！")
         @st.dialog("删除配置确认")
         def delete_video_config_dialog(file):
             st.warning("确定要执行强制配置刷新操作吗？此操作不可撤销！")

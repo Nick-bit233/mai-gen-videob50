@@ -10,6 +10,69 @@ from pre_gen_int import update_b50_data_int
 from gene_images import generate_single_image, check_mask_waring
 from utils.PageUtils import *
 from utils.PathUtils import *
+import glob
+
+def convert_old_files(folder, username, save_paths):
+    """
+    遍历文件夹下的所有json文件，将文件名中包含用户名的旧文件名转换为不包含用户名的格式。
+    例如，将 "xxx_xxx_{username}_xxx.json" 重命名为 "xxx_xxx_xxx.json"。
+    """
+    files_to_rename = []
+    patterns = [
+        f"*_{username}_*.json",
+        f"{username}_*.json",
+        f"*_{username}.json"
+    ]
+    
+    for pattern in patterns:
+        files_to_rename.extend(glob.glob(os.path.join(folder, pattern)))
+    
+    files_to_rename = list(set(files_to_rename))  # 去重
+    if not files_to_rename:
+        print("未找到需要转换的文件。")
+
+    for old_filename in files_to_rename:
+        basename = os.path.basename(old_filename)
+        # 移除.json后缀
+        name_without_ext = os.path.splitext(basename)[0]
+        
+        # 直接替换文件名中的用户名部分
+        if name_without_ext.endswith(f"_{username}"):
+            new_name = name_without_ext[:-len(f"_{username}")]
+        elif name_without_ext.startswith(f"{username}_"):
+            new_name = name_without_ext[len(f"{username}_"):]
+        else:
+            new_name = name_without_ext.replace(f"_{username}_", "_")
+        
+        # 添加回.json后缀
+        new_name = f"{new_name}.json"
+        new_filename = os.path.join(folder, new_name)
+        
+        if new_filename != old_filename:
+            os.rename(old_filename, new_filename)
+            print(f"重命名完成: {basename} -> {new_name}")
+        else:
+            print(f"跳过文件: {basename} (无需修改)")
+    st.success("文件名转换完成！")
+
+    # 修改video_configs文件中的image path
+    video_config_file = save_paths['video_config']
+    print(video_config_file)
+    if not os.path.exists(video_config_file):
+        st.error("未找到video_config文件！请检查是否已将完整旧版数据文件复制到新的文件夹！")
+        return
+    try:
+        video_config = load_config(video_config_file)
+        main_clips = video_config['main']
+        for each in main_clips:
+            id = each['id']
+            __image_path = os.path.join(save_paths['image_dir'], id + ".png")
+            __image_path = os.path.normpath(__image_path)
+            each['main_image'] = __image_path
+        save_config(video_config_file, video_config)          
+        st.success("配置信息转换完成！")
+    except Exception as e:
+        st.error(f"转换video_config文件时发生错误: {e}")
 
 def count_rate(acc):
     if acc >= 100.5:
@@ -37,7 +100,7 @@ def edit_b50_data(user_id, save_id):
     with open(raw_datafile_path, 'r', encoding='utf-8') as f:
         raw_data = json.load(f)
         dx_rating = raw_data.get("rating", 0)
-    st.write(f"【当前存档】用户名：{user_id}，存档时间：{save_id}， DX Rating：{dx_rating}")
+    st.markdown(f'【当前存档信息】\n \n - 用户名：{user_id} \n \n - <p style="color: #00BFFF;">存档ID(时间戳)：{save_id}</p> \n \n - <p style="color: #ffc107;">DX Rating：{dx_rating}</p>', unsafe_allow_html=True)
     st.warning("您可以在下方表格中修改本存档的b50数据，注意修改保存后将无法撤销！")
     st.info("水鱼查分器不返回游玩次数数据，如需在视频中展示请手动填写游玩次数。")
     
@@ -329,7 +392,6 @@ if st.session_state.get('config_saved', False):
             current_paths = get_data_paths(username, timestamp=None)  # 获取新的存档路径
             save_id = os.path.basename(os.path.dirname(current_paths['data_file']))  # 从存档路径得到新存档的时间戳
             if save_id:
-                print(current_paths)
                 st.session_state.save_id = save_id
                 with st.spinner("正在获取B50数据更新..."):
                     update_b50(
@@ -349,7 +411,6 @@ if st.session_state.get('config_saved', False):
                 current_paths = get_data_paths(username, timestamp=None)  # 获取新的存档路径
                 save_id = os.path.basename(os.path.dirname(current_paths['data_file']))  # 从存档路径得到新存档的时间戳
                 if save_id:
-                    print(current_paths)
                     st.session_state.save_id = save_id
                     with st.spinner("正在读取HTML数据..."):
                         current_paths = update_b50(
@@ -363,5 +424,34 @@ if st.session_state.get('config_saved', False):
         if st.button("进行下一步"):
             st.switch_page("st_pages/Generate_Pic_Resources.py")
 
+    st.divider()
+
+    with st.expander("从旧版本（v0.3.4及以下）迁移存档"):
+        st.info("如果您之前使用过旧版本的B50视频生成器，按照顺序执行以下步骤以转移存档。")
+        
+        st.markdown("1. 点击下方按钮生成一份空白存档。")
+        if st.button("新建空白存档"):
+            current_paths = get_data_paths(username, timestamp=None)  # 获取新的存档路径
+            save_id = os.path.basename(os.path.dirname(current_paths['data_file']))  # 从存档路径得到新存档的时间戳
+            os.makedirs(os.path.dirname(current_paths['raw_file']), exist_ok=True)
+            st.session_state.save_id = save_id
+            st.success(f"已新建空白存档！用户名：{username}，存档时间：{save_id}。")
+
+        st.markdown(f"2. 点击下方按钮打开存档文件夹。请前往旧版本生成器的`b50_datas`目录，找到其中所有含有当前用户名`{username}`的`.json`文件，并将它们复制到新的存档目录中。")
+        version_dir = get_user_version_dir(username, st.session_state.save_id)
+        absolute_path = os.path.abspath(version_dir)
+        if st.button("打开存档文件夹", key="migrate_open_save_dir"):
+            open_file_explorer(absolute_path)
+
+        st.markdown("3. 复制完成后，点击下方按钮将旧版数据文件转换为新版本。")
+        if st.button("转换存档数据"):
+            current_paths = get_data_paths(username, st.session_state.save_id)
+            convert_old_files(version_dir, username, current_paths)
+        
+        st.markdown("4. 点击下方按钮打开视频下载目录。请前往旧版本生成器的`videos\downloads`目录，将已下载的视频文件复制到新的目录。如果还没有下载任何视频文件，可以跳过此步骤。")
+        if st.button("打开视频下载目录"):
+            open_file_explorer(os.path.abspath("./videos/downloads"))
+        
+        st.markdown("5. 完成上述步骤后，请回到页面上方，点击“查看和修改当前存档的b50数据”按钮，检查存档数据是否正常。**图片文件不会迁移，您仍需进入下一步重新生成图片文件**。如果您已经完成了下载视频的迁移，在图片生成后可以直接跳转第4步进行内容编辑。")
 else:
     st.warning("请先确定用户名！")
