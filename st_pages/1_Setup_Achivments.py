@@ -438,14 +438,18 @@ if st.session_state.get('config_saved', False):
             st.success(f"已新建空白存档！用户名：{username}，存档时间：{save_id}。")
 
         st.markdown(f"2. 点击下方按钮打开存档文件夹。请前往旧版本生成器的`b50_datas`目录，找到其中所有含有当前用户名`{username}`的`.json`文件，并将它们复制到新的存档目录中。")
-        version_dir = get_user_version_dir(username, st.session_state.save_id)
-        absolute_path = os.path.abspath(version_dir)
-        if st.button("打开存档文件夹", key="migrate_open_save_dir"):
+        save_loaded = check_save_available(username, st.session_state.get('save_id', None))
+        if not save_loaded:
+            st.warning("未加载任何存档，请先加载或新建空白存档！")
+        if st.button("打开存档文件夹", key="migrate_open_save_dir", disabled=not save_loaded):
+            version_dir = get_user_version_dir(username, st.session_state.save_id)
+            absolute_path = os.path.abspath(version_dir)
             open_file_explorer(absolute_path)
 
         st.markdown("3. 复制完成后，点击下方按钮将旧版数据文件转换为新版本。")
-        if st.button("转换存档数据"):
+        if st.button("转换存档数据", disabled=not save_loaded):
             current_paths = get_data_paths(username, st.session_state.save_id)
+            version_dir = get_user_version_dir(username, st.session_state.save_id)
             convert_old_files(version_dir, username, current_paths)
         
         st.markdown("4. 点击下方按钮打开视频下载目录。请前往旧版本生成器的`videos\downloads`目录，将已下载的视频文件复制到新的目录。如果还没有下载任何视频文件，可以跳过此步骤。")

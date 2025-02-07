@@ -57,6 +57,9 @@ with st.expander("更换B50存档"):
                     st.rerun()
                 else:
                     st.error("无效的存档路径！")
+    else:
+        st.warning("未找到任何存档，请先在存档管理页面获取存档！")
+        st.stop()
 ### Savefile Management - End ###
 
 def st_download_video(placeholder, dl_instance, G_config, b50_config):

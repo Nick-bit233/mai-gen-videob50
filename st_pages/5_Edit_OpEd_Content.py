@@ -111,7 +111,6 @@ if save_id:
         config = load_config(video_config_file)
         for name in ["intro", "ending"]:
             st.session_state[f"{name}_items"] = config[name]
-
 else:
     st.warning("未索引到存档，请先加载存档数据！")
 
@@ -131,6 +130,11 @@ with st.expander("更换B50存档"):
                     st.rerun()
                 else:
                     st.error("无效的存档路径！")
+    else:
+        st.warning("未找到任何存档，请先在存档管理页面获取存档！")
+        st.stop()
+if not save_id:
+    st.stop()
 ### Savefile Management - End ###
 
 if config:

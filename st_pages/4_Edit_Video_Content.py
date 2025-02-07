@@ -58,6 +58,11 @@ with st.expander("更换B50存档"):
                     st.rerun()
                 else:
                     st.error("无效的存档路径！")
+    else:
+        st.warning("未找到任何存档，请先在存档管理页面获取存档！")
+        st.stop()
+if not save_id:
+    st.stop()
 ### Savefile Management - End ###
 
 image_output_path = current_paths['image_dir']
