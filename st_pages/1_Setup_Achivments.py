@@ -10,6 +10,7 @@ from pre_gen_int import update_b50_data_int
 from gene_images import generate_single_image, check_mask_waring
 from utils.PageUtils import *
 from utils.PathUtils import *
+from utils.dxnet_extension import get_rate
 import glob
 
 def convert_old_files(folder, username, save_paths):
@@ -73,22 +74,6 @@ def convert_old_files(folder, username, save_paths):
         st.success("配置信息转换完成！")
     except Exception as e:
         st.error(f"转换video_config文件时发生错误: {e}")
-
-def count_rate(acc):
-    if acc >= 100.5:
-        return "sssp"
-    elif acc >= 100.0:
-        return "sss"
-    elif acc >= 99.5:
-        return "ssp"
-    elif acc >= 99.0:
-        return "ss"
-    elif acc >= 98.0:
-        return "sp"
-    elif acc >= 97.0:
-        return "s"
-    else:
-        return "aaa"
 
 @st.dialog("手动修改b50数据", width="large")
 def edit_b50_data(user_id, save_id):
@@ -197,7 +182,7 @@ def edit_b50_data(user_id, save_id):
         # print(f"ds: {record['ds']} | level: {record['level']}")
 
         # 计算rate
-        record['rate'] = count_rate(record['achievements'])
+        record['rate'] = get_rate(record['achievements'])
         # print(f"achievements: {record['achievements']} | rate: {record['rate']}")
     col1, col2 = st.columns(2)
     with col1:
