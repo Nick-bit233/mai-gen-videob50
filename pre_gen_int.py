@@ -11,7 +11,7 @@ from utils.dxnet_extension import get_rate, ChartManager
 ################################################
 
 def find_origin_b50(username, file_type = "html"):
-    DATA_ROOT = "./b50_datas"
+    DATA_ROOT = f"./b50_datas/{username}"
     # 1. Check for the {username}.html
     user_data_file = f"{DATA_ROOT}/{username}.{file_type}"
     if os.path.exists(user_data_file):
@@ -208,7 +208,7 @@ def parse_dxrating_json(song_json, song_id_placeholder):
 
     sheet_id_parts = song_json["sheetId"].split("__dxrt__")
     if len(sheet_id_parts) != 3:
-        print(f"Warning: can not resolve sheetId \"{song_json["sheetId"]}\" at position {-song_id_placeholder}")
+        print(f"Warning: can not resolve sheetId \"{song_json.get('sheetId')}\" at position {-song_id_placeholder}")
         return chart
     
     chart["title"] = sheet_id_parts[0]

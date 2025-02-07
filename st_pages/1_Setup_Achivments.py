@@ -241,48 +241,18 @@ with st.container(border=True):
             st.session_state.username = username  # 保存用户名到session_state
             st.session_state.config_saved = True  # 添加状态标记
 
-def st_generate_b50_images(placeholder, user_id):
-    b50_data_file = os.path.join(os.path.dirname(__file__), '..', 'b50_datas', f"b50_config_{user_id}.json")
-    # read b50_data
-    b50_data = load_config(b50_data_file)
-    # make folder for user's b50_images
-    os.makedirs(f"./b50_images/{user_id}", exist_ok=True)
-    with placeholder.container(border=True):
-        pb = st.progress(0, text="正在生成B50成绩背景图片...")
-        mask_check_cnt = 0
-        mask_warn = False
-        warned = False
-        for index, record_detail in enumerate(b50_data):
-            pb.progress((index + 1) / len(b50_data), text=f"正在生成B50成绩背景图片({index + 1}/{len(b50_data)})")
-            acc_string = f"{record_detail['achievements']:.4f}"
-            mask_check_cnt, mask_warn = check_mask_waring(acc_string, mask_check_cnt, mask_warn)
-            if mask_warn and not warned:
-                st.warning("检测到多个仅有一位小数精度的成绩，请尝试取消查分器设置的成绩掩码以获取精确成绩。特殊情况请忽略。")
-                warned = True
-            record_for_gene_image = deepcopy(record_detail)
-            record_for_gene_image['achievements'] = acc_string
-            prefix = "PastBest" if index < 35 else "NewBest"
-            image_name_index = index if index < 35 else index - 35
-            generate_single_image(
-                "./images/B50ViedoBase.png",
-                record_for_gene_image,
-                user_id,
-                prefix,
-                image_name_index,
-            )
-
 def update_b50(update_function, username, save_paths):
     try:
-        # 新建存档文件夹
-        os.makedirs(os.path.dirname(save_paths['raw_file']), exist_ok=True)
+        # 使用指定的方法读取B50数据
         b50_data = update_function(save_paths['raw_file'], save_paths['data_file'], username)
+
         st.success(f"已获取用户{username}的最新B50数据！新的存档时间为：{os.path.dirname(save_paths['data_file'])}")
         st.session_state.data_updated_step1 = True
         return b50_data
     except Exception as e:
         st.session_state.data_updated_step1 = False
         st.error(f"获取B50数据时发生错误: {e}")
-        st.error(traceback.format_exc())
+        st.expander("错误详情").write(traceback.format_exc())
         return None
 
 def check_save_available(username, save_id):
@@ -290,18 +260,6 @@ def check_save_available(username, save_id):
         return False
     save_paths = get_data_paths(username, save_id)
     return os.path.exists(save_paths['data_file'])
-
-@st.dialog("从HTML源码导入数据", width="large")
-def input_html_data():
-    st.info("请将复制的网页源代码粘贴到下方输入栏：")
-    if os.path.exists(f"./{username}.html"):
-        st.info(f"注意，重复导入将会覆盖已有html数据文件：{username}.html")
-    html_input = st.text_area("html_input", height=600)
-    if st.button("确认保存"):
-        with open(f"./{username}.html", 'w', encoding="utf-8") as f:
-            f.write(html_input)
-            st.toast("HTML数据已保存！")
-            st.rerun()
 
 @st.dialog("删除存档确认")
 def delete_save_data(username, save_id):
@@ -368,104 +326,122 @@ if st.session_state.get('config_saved', False):
                     delete_save_data(username, selected_save_id)
     else:
         st.warning(f"{username}还没有历史存档，请从下方获取新的B50数据。")
-    
-    replace_b50_data = True
-    update_info_placeholder = st.empty()
 
-    if st.button("从水鱼获取B50数据（国服）"):
-        with st.spinner("正在获取B50数据更新..."):
-            update_b50(update_info_placeholder, update_b50_data, b50_raw_file, b50_data_file, raw_username, replace_b50_data=replace_b50_data)
-
-    @st.dialog("从HTML源码导入数据")
+    @st.dialog("从HTML源码导入数据", width='large')
     def input_origin_data():
-        st.info("请将复制的网页源代码粘贴到下方输入栏：")
-        if os.path.exists(f"./b50_datas/{username}.html"):
-            st.info(f"注意，重复导入HTML代码将会覆盖已有html数据文件：{username}.html")
-        if os.path.exists(f"./b50_datas/{username}.json"):
-            st.info(f"注意，重复导入dxrating.net数据将会覆盖已有数据文件：{username}.json")
+        st.write("请将复制的网页源代码粘贴到下方输入栏：")
+        st.info("系统将会自动根据您输入的代码格式识别数据源。本窗口关闭后，请根据输入的数据类型（html或json），选择下一步对应的按钮读取数据。")
+        
+        root_save_dir = get_user_base_dir(username) # html或json文件保存在用户根目录（不受存档版本控制）
+
+        if os.path.exists(os.path.join(root_save_dir, f"{username}.html")):
+            st.warning(f"注意，重复导入HTML代码将会覆盖已有html文件：{username}.html")
+        if os.path.exists(os.path.join(root_save_dir, f"{username}.json")):
+            st.warning(f"注意，重复导入dxrating.net数据将会覆盖已有json文件：{username}.json")
+
         data_input = st.text_area("数据输入区", height=600)
         if st.button("确认保存"):
             file_type = "json" if data_input.startswith("[{") else "html"
-            with open(f"./b50_datas/{username}.{file_type}", 'w', encoding="utf-8") as f:
+            dx_int_data_file = os.path.join(root_save_dir, f"{username}.{file_type}")
+            print(f"正在保存{file_type}数据到{dx_int_data_file}")
+            with open(dx_int_data_file, 'w', encoding="utf-8") as f:
                f.write(data_input)
-            st.toast(f"{file_type.upper()}数据已保存！")
-            st.rerun()
+            st.success(f"{file_type.upper()}数据已保存！")
+        if st.button("关闭窗口"):
+            st.rerun() 
 
     st.write(f"新建b50存档")
     with st.container(border=True):
-        st.info(f"使用下方的按钮，您将以用户名{raw_username}从查分器或HTML源码获取一份新的B50数据，系统将为您创建一份新的存档。")
+        st.info(f"从国服获取b50请使用下方按钮，您将以用户名{raw_username}从查分器获取一份新的B50数据，系统将自动为您创建一份新的存档。")
 
-        if st.button("从水鱼获取B50数据（国服）"):
+        if st.button("从水鱼获取b50数据（国服）"):
             current_paths = get_data_paths(username, timestamp=None)  # 获取新的存档路径
-            save_id = os.path.basename(os.path.dirname(current_paths['data_file']))  # 从存档路径得到新存档的时间戳
+            save_dir = os.path.dirname(current_paths['data_file'])
+            save_id = os.path.basename(save_dir)  # 从存档路径得到新存档的时间戳
             if save_id:
+                os.makedirs(save_dir, exist_ok=True) # 新建存档文件夹
                 st.session_state.save_id = save_id
-                with st.spinner("正在获取B50数据更新..."):
+                with st.spinner("正在获取b50数据更新..."):
                     update_b50(
                         update_b50_data,
                         raw_username,
                         current_paths,
                     )
-        
-#         st.info("如您使用国际服数据，请先点击下方左侧按钮导入源代码，再使用下方右侧按钮读取数据。国服用户请忽略。")
-#         col1, col2 = st.columns(2)
-#         with col1:
-#             if st.button("导入B50数据源代码"):
-#                 input_html_data()
-        
-#         with col2:
-#             if st.button("从本地HTML读取B50（国际服）"):
-#                 current_paths = get_data_paths(username, timestamp=None)  # 获取新的存档路径
-#                 save_id = os.path.basename(os.path.dirname(current_paths['data_file']))  # 从存档路径得到新存档的时间戳
-#                 if save_id:
-#                     st.session_state.save_id = save_id
-#                     with st.spinner("正在读取HTML数据..."):
-#                         current_paths = update_b50(
-#                             update_b50_data_int,
-#                             username,
-#                             current_paths
-#                         )
 
-        st.info("如使用国际服数据，请先点击下方左侧按钮导入源代码，再使用下方右侧按钮读取数据。国服用户请跳过。")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            if st.button("导入B50数据源代码"):
-                # 参考水鱼做法使用dialog框架
+        st.info("如使用国际服数据，请按照下列顺序操作。国服用户请忽略。")
+
+        st.markdown("1. 如果您还没有过任何外服存档，请点击下方按钮生成一份空白存档。")
+        if st.button("新建空白存档", key="dx_int_create_new_save"):
+            current_paths = get_data_paths(username, timestamp=None)  # 获取新的存档路径
+            save_dir = os.path.dirname(current_paths['data_file'])
+            save_id = os.path.basename(save_dir)  # 从存档路径得到新存档的时间戳
+            os.makedirs(save_dir, exist_ok=True) # 新建存档文件夹
+            st.session_state.save_id = save_id
+            st.success(f"已新建空白存档！用户名：{username}，存档时间：{save_id}")
+
+        st.write("如果已有存档，需要更新外服存档数据，请在上方加载本地存档后，执行下面两步：")
+        
+        st.markdown("2. 导入b50源代码")
+        if st.button("从源代码导入b50"):
+            save_id = st.session_state.get('save_id', None)
+            if not save_id:
+                st.error("请先新建存档，或加载已有存档！")
+            else:
                 input_origin_data()
-        
-        with col2:
-            if st.button("从本地HTML读取B50（国际服）"):
-                with st.spinner("正在读取HTML数据..."):
-                    update_b50(update_info_placeholder, update_b50_data_int_html, b50_raw_file, b50_data_file, username, replace_b50_data=replace_b50_data)
 
-        with col3:
-            if st.button("从本地JSON读取B50（国际服/日服）"):
+        st.markdown("3. 根据导入的数据类型，选择下方按钮读取数据（二选一，重复导入将会覆盖当前存档）")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("从本地HTML读取b50（国际服）"):
+                with st.spinner("正在读取HTML数据..."):
+                    save_id = st.session_state.get('save_id', None)
+                    if not save_id:
+                        st.error("请先新建存档，或加载已有存档！")
+                    else:
+                        current_paths = get_data_paths(username, save_id)  # 获取当前存档路径
+                        update_b50(
+                            update_b50_data_int_html,
+                            username,
+                            current_paths)
+
+        with col2:
+            if st.button("从本地JSON读取b50（国际服/日服）"):
                 with st.spinner("正在读取JSON数据..."):
-                    update_b50(update_info_placeholder, update_b50_data_int_json, b50_raw_file, b50_data_file, username, replace_b50_data=replace_b50_data)
+                    save_id = st.session_state.get('save_id', None)
+                    if not save_id:
+                        st.error("请先新建存档，或加载已有存档！")
+                    else:
+                        current_paths = get_data_paths(username, save_id)  # 获取当前存档路径
+                        update_b50(
+                            update_b50_data_int_json, 
+                            username,
+                            current_paths)
 
 
     if st.session_state.get('data_updated_step1', False):
-        st.write("确认你的B50数据无误后，请点击进行下一步按钮开始进行视频生成准备。")
+        st.write("确认你的b50数据无误后，请点击进行下一步按钮开始进行视频生成准备。")
         if st.button("进行下一步"):
             st.switch_page("st_pages/Generate_Pic_Resources.py")
 
     st.divider()
 
     with st.expander("从旧版本（v0.3.4及以下）迁移存档"):
-        st.info("如果您之前使用过旧版本的B50视频生成器，按照顺序执行以下步骤以转移存档。")
+        save_loaded = st.session_state.get('migrate_save_loaded', False)
+        st.info("如果您之前使用过旧版本的b50视频生成器，按照顺序执行以下步骤以转移存档。")
         
         st.markdown("1. 点击下方按钮生成一份空白存档。")
-        if st.button("新建空白存档"):
+        if st.button("新建空白存档", key="migrate_create_new_save"):
             current_paths = get_data_paths(username, timestamp=None)  # 获取新的存档路径
             save_id = os.path.basename(os.path.dirname(current_paths['data_file']))  # 从存档路径得到新存档的时间戳
             os.makedirs(os.path.dirname(current_paths['raw_file']), exist_ok=True)
             st.session_state.save_id = save_id
-            st.success(f"已新建空白存档！用户名：{username}，存档时间：{save_id}。")
+            st.session_state.migrate_save_loaded = True
+            st.rerun()
 
         st.markdown(f"2. 点击下方按钮打开存档文件夹。请前往旧版本生成器的`b50_datas`目录，找到其中所有含有当前用户名`{username}`的`.json`文件，并将它们复制到新的存档目录中。")
-        save_loaded = check_save_available(username, st.session_state.get('save_id', None))
-        if not save_loaded:
-            st.warning("未加载任何存档，请先加载或新建空白存档！")
+        if save_loaded:
+            st.success(f"已加载新建空白存档！用户名：{username}，存档时间：{save_id}")
+
         if st.button("打开存档文件夹", key="migrate_open_save_dir", disabled=not save_loaded):
             version_dir = get_user_version_dir(username, st.session_state.save_id)
             absolute_path = os.path.abspath(version_dir)
@@ -476,6 +452,7 @@ if st.session_state.get('config_saved', False):
             current_paths = get_data_paths(username, st.session_state.save_id)
             version_dir = get_user_version_dir(username, st.session_state.save_id)
             convert_old_files(version_dir, username, current_paths)
+            st.session_state.data_updated_step1 = True
         
         st.markdown("4. 点击下方按钮打开视频下载目录。请前往旧版本生成器的`videos\downloads`目录，将已下载的视频文件复制到新的目录。如果还没有下载任何视频文件，可以跳过此步骤。")
         if st.button("打开视频下载目录"):
