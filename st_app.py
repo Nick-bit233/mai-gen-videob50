@@ -4,8 +4,12 @@ homepage = st.Page("st_pages/0_homepage.py",
                 title="首页",
                 icon=":material/home:")
 setup = st.Page("st_pages/1_Setup_Achivments.py",
-                title="1. 获取B50成绩",
+                title="获取和管理B50数据",
                 icon=":material/leaderboard:")
+img_gen = st.Page("st_pages/Generate_Pic_Resources.py",
+                title="1. 生成B50成绩图片",
+                icon=":material/photo_library:")
+
 search = st.Page("st_pages/2_Search_For_Videoes.py",
                 title="2. 搜索谱面确认视频信息",
                 icon=":material/video_search:")
@@ -24,8 +28,8 @@ composite = st.Page("st_pages/6_Compostie_Videoes.py",
 
 pg = st.navigation(
     {
-        "Home": [homepage],
-        "Pre-generation": [setup, search, download],
+        "Home": [homepage, setup],
+        "Pre-generation": [img_gen, search, download],
         "Edit-video": [edit_comment, edit_intro_ending],
         "Run-generation": [composite]
     }

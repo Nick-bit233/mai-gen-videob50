@@ -5,12 +5,13 @@ import shutil
 import random
 import traceback
 import streamlit as st
+from datetime import datetime
 from utils.PageUtils import load_config, save_config, read_global_config, write_global_config
+from utils.PathUtils import get_data_paths, get_user_versions
 from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
 from pre_gen import merge_b50_data, search_one_video
 
 G_config = read_global_config()
-username = G_config.get('USER_ID', '')
 _downloader = G_config.get('DOWNLOADER', 'bilibili')
 _use_proxy = G_config.get('USE_PROXY', False)
 _proxy_address = G_config.get('PROXY_ADDRESS', '127.0.0.1:7890')
@@ -22,7 +23,57 @@ _customer_po_token = G_config.get('CUSTOMER_PO_TOKEN', '')
 
 st.header("Step 2: 谱面确认视频搜索和抓取")
 
-st.write("请先确认视频抓取设置")
+### Savefile Management - Start ###
+if "username" in st.session_state:
+    st.session_state.username = st.session_state.username
+
+if "save_id" in st.session_state:
+    st.session_state.save_id = st.session_state.save_id
+
+username = st.session_state.get("username", None)
+save_id = st.session_state.get("save_id", None)
+current_paths = None
+data_loaded = False
+
+if not username:
+    st.error("请先获取指定用户名的B50存档！")
+    st.stop()
+
+if save_id:
+    # load save data
+    current_paths = get_data_paths(username, save_id)
+    data_loaded = True
+    with st.container(border=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("当前存档")
+        with col2:
+            st.write(f"用户名：{username}，存档时间：{save_id} ")
+else:
+    st.warning("未索引到存档，请先加载存档数据！")
+
+with st.expander("更换B50存档"):
+    st.info("如果要更换用户，请回到存档管理页面指定其他用户名。")
+    versions = get_user_versions(username)
+    if versions:
+        with st.container(border=True):
+            selected_save_id = st.selectbox(
+                "选择存档",
+                versions,
+                format_func=lambda x: f"{username} - {x} ({datetime.strptime(x.split('_')[0], '%Y%m%d').strftime('%Y-%m-%d')})"
+            )
+            if st.button("使用此存档（只需要点击一次！）"):
+                if selected_save_id:
+                    st.session_state.save_id = selected_save_id
+                    st.rerun()
+                else:
+                    st.error("无效的存档路径！")
+    else:
+        st.warning("未找到任何存档，请先在存档管理页面获取存档！")
+        st.stop()
+### Savefile Management - End ###
+
+st.write("视频抓取设置")
 
 # 选择下载器
 default_index = ["bilibili", "youtube"].index(_downloader)
@@ -135,12 +186,15 @@ def st_init_downloader():
     return dl_instance
 
 # b50 config文件位置
-b50_data_file = os.path.join(os.path.dirname(__file__), '..', 'b50_datas', f"b50_config_{username}.json")
-# 根据下载器类型，生成对应的b50_config副本
-b50_config_file = os.path.join(os.path.dirname(__file__), '..', 'b50_datas', f"b50_config_{username}_{downloader}.json")
+b50_data_file = current_paths['data_file']
+# 根据下载器类型的b50_config副本
+if downloader == "youtube":
+    b50_config_file = current_paths['config_yt']
+elif downloader == "bilibili":
+    b50_config_file = current_paths['config_bi']
 
 if not os.path.exists(b50_data_file):
-    st.error("未找到b50数据文件，请先进行第一步！")
+    st.error("未找到b50数据文件，请检查B50存档的数据完整性！")
     st.stop()
 
 if not os.path.exists(b50_config_file):

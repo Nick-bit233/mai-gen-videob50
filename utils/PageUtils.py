@@ -11,7 +11,7 @@ LEVEL_LABELS = {
     1: "ADVANCED",
     2: "EXPERT",
     3: "MASTER",
-    4: "Re:MASTER",
+    4: "RE:MASTER",
 }
 
 def remove_invalid_chars(text: str) -> str:
