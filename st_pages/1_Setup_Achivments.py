@@ -6,7 +6,7 @@ import traceback
 from copy import deepcopy
 from datetime import datetime
 from pre_gen import update_b50_data, st_init_cache_pathes
-from pre_gen_int import update_b50_data_int
+from pre_gen_int import update_b50_data_int_html, update_b50_data_int_json
 from gene_images import generate_single_image, check_mask_waring
 from utils.PageUtils import *
 from utils.PathUtils import *
@@ -368,6 +368,28 @@ if st.session_state.get('config_saved', False):
                     delete_save_data(username, selected_save_id)
     else:
         st.warning(f"{username}还没有历史存档，请从下方获取新的B50数据。")
+    
+    replace_b50_data = True
+    update_info_placeholder = st.empty()
+
+    if st.button("从水鱼获取B50数据（国服）"):
+        with st.spinner("正在获取B50数据更新..."):
+            update_b50(update_info_placeholder, update_b50_data, b50_raw_file, b50_data_file, raw_username, replace_b50_data=replace_b50_data)
+
+    @st.dialog("从HTML源码导入数据")
+    def input_origin_data():
+        st.info("请将复制的网页源代码粘贴到下方输入栏：")
+        if os.path.exists(f"./b50_datas/{username}.html"):
+            st.info(f"注意，重复导入HTML代码将会覆盖已有html数据文件：{username}.html")
+        if os.path.exists(f"./b50_datas/{username}.json"):
+            st.info(f"注意，重复导入dxrating.net数据将会覆盖已有数据文件：{username}.json")
+        data_input = st.text_area("数据输入区", height=600)
+        if st.button("确认保存"):
+            file_type = "json" if data_input.startswith("[{") else "html"
+            with open(f"./b50_datas/{username}.{file_type}", 'w', encoding="utf-8") as f:
+               f.write(data_input)
+            st.toast(f"{file_type.upper()}数据已保存！")
+            st.rerun()
 
     st.write(f"新建b50存档")
     with st.container(border=True):
@@ -385,24 +407,42 @@ if st.session_state.get('config_saved', False):
                         current_paths,
                     )
         
-        st.info("如您使用国际服数据，请先点击下方左侧按钮导入源代码，再使用下方右侧按钮读取数据。国服用户请忽略。")
-        col1, col2 = st.columns(2)
+#         st.info("如您使用国际服数据，请先点击下方左侧按钮导入源代码，再使用下方右侧按钮读取数据。国服用户请忽略。")
+#         col1, col2 = st.columns(2)
+#         with col1:
+#             if st.button("导入B50数据源代码"):
+#                 input_html_data()
+        
+#         with col2:
+#             if st.button("从本地HTML读取B50（国际服）"):
+#                 current_paths = get_data_paths(username, timestamp=None)  # 获取新的存档路径
+#                 save_id = os.path.basename(os.path.dirname(current_paths['data_file']))  # 从存档路径得到新存档的时间戳
+#                 if save_id:
+#                     st.session_state.save_id = save_id
+#                     with st.spinner("正在读取HTML数据..."):
+#                         current_paths = update_b50(
+#                             update_b50_data_int,
+#                             username,
+#                             current_paths
+#                         )
+
+        st.info("如使用国际服数据，请先点击下方左侧按钮导入源代码，再使用下方右侧按钮读取数据。国服用户请跳过。")
+        col1, col2, col3 = st.columns(3)
         with col1:
             if st.button("导入B50数据源代码"):
-                input_html_data()
+                # 参考水鱼做法使用dialog框架
+                input_origin_data()
         
         with col2:
             if st.button("从本地HTML读取B50（国际服）"):
-                current_paths = get_data_paths(username, timestamp=None)  # 获取新的存档路径
-                save_id = os.path.basename(os.path.dirname(current_paths['data_file']))  # 从存档路径得到新存档的时间戳
-                if save_id:
-                    st.session_state.save_id = save_id
-                    with st.spinner("正在读取HTML数据..."):
-                        current_paths = update_b50(
-                            update_b50_data_int,
-                            username,
-                            current_paths
-                        )
+                with st.spinner("正在读取HTML数据..."):
+                    update_b50(update_info_placeholder, update_b50_data_int_html, b50_raw_file, b50_data_file, username, replace_b50_data=replace_b50_data)
+
+        with col3:
+            if st.button("从本地JSON读取B50（国际服/日服）"):
+                with st.spinner("正在读取JSON数据..."):
+                    update_b50(update_info_placeholder, update_b50_data_int_json, b50_raw_file, b50_data_file, username, replace_b50_data=replace_b50_data)
+
 
     if st.session_state.get('data_updated_step1', False):
         st.write("确认你的B50数据无误后，请点击进行下一步按钮开始进行视频生成准备。")
