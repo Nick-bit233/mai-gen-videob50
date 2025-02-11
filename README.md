@@ -49,9 +49,11 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 - [x] [国际服Maimai DX NET](https://maimaidx-eng.com/maimai-mobile/home/ratingTargetMusic/)
 
-- [x] [DXrating查分器](https://dxrating.net/rating)：支持国服/日服/国际服
+- [x] [日服Maimai DX NET](https://maimaidx.jp/maimai-mobile/home/ratingTargetMusic/) (缺乏测试样本)
 
-    （国际服/DXrating导入数据需要通过下载网页或导出源码，点此查看[国际服数据获取插件使用教程](docs/DX_NET_Guide.md)）
+- [x] [DXrating](https://dxrating.net/rating)：支持国服/国际服/日服
+
+    （国际服/日服官网以及DXrating网站导入数据需要通过下载网页或导出源码，点此查看[国际服/日服数据获取插件使用教程](docs/DX_NET_Guide.md)）
 
 - [ ] [落雪查分器](https://maimai.lxns.net/)（暂未支持）
 
@@ -113,7 +115,7 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 - 如果你使用youtube源且使用代理下载，你可能会遇到风控情况，此时请额外按照youtube的 po token生成相关依赖，具体请参考：[使用自定义OAuth或PO Token](docs/UseTokenGuide.md)
 
-- 如果你使用国际服，或具有DXrating查分器账号，在使用前请参考：[导入国际服B50数据](docs/DX_NET_Gudie.md)完成前置数据获取步骤。
+- 如果你使用国际服/日服，或使用DXrating网站作为B50数据源，在使用前请参考：[导入国际服/日服B50数据](docs/DX_NET_Guide.md)完成前置数据获取步骤。
 
 ---
 
@@ -184,7 +186,11 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
     如果登陆账号后仍出现此问题，目前没有较好的解决办法，请考虑等待24h后再试。
 
-- 手动输入视频BV号或ID进行搜索时出现红色报错
+- 下载视频期间未报错，但是没有视频文件：
+  
+    - 请检查ffmpeg环境是否正确配置。
+
+- 手动输入视频BV号或ID进行搜索时出现红色报错：
 
     - 请尝试删除输入框开头的BV字母。
 
@@ -327,9 +333,11 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
         - `videos`文件夹，存储输出的视频
     
-    - 如果用户通过国际服导入数据，输入的html或json源码不会保存在存档内，而是作为缓存保存在`./b50_datas/{user}`文件夹下，新的原始数据会覆盖这些文件，但存档内的数据保持不变（除非用户手动修改或覆盖）
+    - 如果用户以复制源码方式导入数据，输入的html或json源码不会保存在存档内，而是作为缓存保存在`./b50_datas/{user}`文件夹下，新的原始数据会覆盖这些文件，但存档内的数据保持不变（除非用户手动修改或覆盖）
 
 - 在`./videos/downloads`文件夹下可以找到所有已下载的谱面确认视频，命名格式为`{song_id}-{level_index}-{type}.mp4`。其中，`song_id`为曲目的ID，`level_index`为难度，`type`为谱面类型，例如`834-4-SD.mp4`。
+    
+    - 您可能会见到具有负数`song_id`的视频文件，这是由于数据库缺少一些较新曲目id导致的，在单次使用时一般不会产生问题。在多次使用时，这可能导致视频索引错误，请删除对应的视频文件已解决这样的问题。
 
 `video_config.json`的详细格式解释：
 

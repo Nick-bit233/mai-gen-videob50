@@ -88,6 +88,8 @@ def edit_b50_data(user_id, save_id):
     st.markdown(f'【当前存档信息】\n \n - 用户名：{user_id} \n \n - <p style="color: #00BFFF;">存档ID(时间戳)：{save_id}</p> \n \n - <p style="color: #ffc107;">DX Rating：{dx_rating}</p>', unsafe_allow_html=True)
     st.warning("您可以在下方表格中修改本存档的b50数据，注意修改保存后将无法撤销！")
     st.info("水鱼查分器不返回游玩次数数据，如需在视频中展示请手动填写游玩次数。")
+    st.info("通过导入HTML/JSON获取时：1. 数据不包括FC状态/FS状态/DX分数，如有需求请手动填写；2. 定数信息为本地缓存的日服数据库读取，与国服/国际服不符是正常现象。")
+    st.info("本页面自动补全数据时，认为'X.6'定数属于'X'等级而不是'X+'等级，这会在DX2025更新后统一修改。")
     
     # json数据中添加游玩次数字段
     for item in data:
@@ -217,7 +219,7 @@ username = st.session_state.get("username", None)
 save_id = st.session_state.get('save_id', None)
 with st.container(border=True):
     input_username = st.text_input(
-        "输入水鱼查分器用户名（国服查询）或一个您喜欢的用户名（国际服）",
+        "输入水鱼查分器用户名（国服查询）或一个您喜欢的用户名（其他数据源）",
         value=username if username else ""
     )
 
@@ -368,7 +370,7 @@ if st.session_state.get('config_saved', False):
                         current_paths,
                     )
 
-        st.info("如使用国际服数据，请按照下列顺序操作。国服用户请忽略。")
+        st.info("如使用国际服/日服数据，请按照下列顺序操作。国服用户请忽略。")
 
         st.markdown("1. 如果您还没有过任何外服存档，请点击下方按钮生成一份空白存档。")
         if st.button("新建空白存档", key="dx_int_create_new_save"):
@@ -392,7 +394,7 @@ if st.session_state.get('config_saved', False):
         st.markdown("3. 根据导入的数据类型，选择下方按钮读取数据（二选一，重复导入将会覆盖当前存档）")
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("从本地HTML读取b50（国际服）"):
+            if st.button("从本地HTML读取b50"):
                 with st.spinner("正在读取HTML数据..."):
                     save_id = st.session_state.get('save_id', None)
                     if not save_id:
@@ -405,7 +407,7 @@ if st.session_state.get('config_saved', False):
                             current_paths)
 
         with col2:
-            if st.button("从本地JSON读取b50（国际服/日服）"):
+            if st.button("从本地JSON读取b50"):
                 with st.spinner("正在读取JSON数据..."):
                     save_id = st.session_state.get('save_id', None)
                     if not save_id:
