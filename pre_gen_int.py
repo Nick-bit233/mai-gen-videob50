@@ -48,7 +48,7 @@ def find_origin_b50(username, file_type = "html"):
                 return json_raw
 
     # Raise an exception if no file is found
-    raise Exception(f"Error: No {file_type.upper()} file found in the root folder.")
+    raise Exception(f"Error: No {file_type.upper()} file found in the user's folder.")
 
 ################################################
 # Read B50 from DX NET raw HTML
@@ -58,12 +58,22 @@ def read_b50_from_html(b50_raw_file, username):
     html_raw = find_origin_b50(username, "html")
     html_tree = etree.HTML(html_raw)
     # Locate B35 and B15
-    b35_screw = html_tree.xpath('//div[text()="Songs for Rating(Others)"]')
-    b15_screw = html_tree.xpath('//div[text()="Songs for Rating(New)"]')
-    if not b35_screw:
-        raise Exception(f"Error: B35 not found.")
-    if not b15_screw:
-        raise Exception(f"Error: B15 not found.")
+    # b35_div_names = [
+    #     "Songs for Rating(Others)",
+    #     "日服B35名称占位符"
+    # ]
+    # b15_div_names = [
+    #     "Songs for Rating(New)",
+    #     "日服B15名称占位符"
+    # ]
+    # b35_screw = locate_html_screw(html_tree, b35_div_names)
+    # b15_screw = locate_html_screw(html_tree, b15_div_names)
+    html_screws = html_tree.xpath('//div[@class="screw_block m_15 f_15 p_s"]')
+    print(html_screws)
+    if not html_screws:
+        raise Exception("Error: B35/B15 screw not found. Please check HTML input!")
+    b35_screw = html_screws[1]
+    b15_screw = html_screws[0]
 
     # Iterate songs and save as JSON
     b50_json = {
@@ -71,6 +81,7 @@ def read_b50_from_html(b50_raw_file, username):
             "dx": [],
             "sd": []
         },
+        "rating": -1,
         "username": username
     }
     manager = ChartManager()
@@ -91,8 +102,16 @@ def read_b50_from_html(b50_raw_file, username):
         json.dump(b50_json, f, ensure_ascii = False, indent = 4)
     return b50_json
 
+def locate_html_screw(html_tree, div_names):
+    for name in div_names:
+        screw = html_tree.xpath(f'//div[text()="{name}"]')
+        if screw:
+            return screw[0]
+    raise Exception(f"Error: HTML screw (type = \"{div_names[0]}\") not found.")
+
+
 def iterate_songs(html_tree, div_screw):
-    current_div = div_screw[0]
+    current_div = div_screw
     while True:
         current_div = current_div.xpath('following-sibling::div[1]')[0]
         if len(current_div) == 0:
@@ -165,6 +184,7 @@ def read_dxrating_json(b50_raw_file, username):
             "dx": [],
             "sd": []
         },
+        "rating": -1,
         "username": username
     }
     manager = ChartManager()
