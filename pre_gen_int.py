@@ -6,36 +6,56 @@ import os
 from pre_gen import merge_b50_data
 from utils.dxnet_extension import get_rate, ChartManager
 
-def find_b50_html(username):
+################################################
+# Origin B50 data file finders
+################################################
+
+def find_origin_b50(username, file_type = "html"):
+    DATA_ROOT = f"./b50_datas/{username}"
     # 1. Check for the {username}.html
-    user_html_file = f"./{username}.html"
-    if os.path.exists(user_html_file):
-        with open(user_html_file, 'r', encoding="utf-8") as f:
-            html_raw = f.read()
-            print(f"Info: Found HTML file matching username: {user_html_file}")
-            return html_raw
+    user_data_file = f"{DATA_ROOT}/{username}.{file_type}"
+    if os.path.exists(user_data_file):
+        with open(user_data_file, 'r', encoding="utf-8") as f:
+            if file_type == "html":
+                b50_origin = f.read()
+            elif file_type == "json":
+                b50_origin = json.load(f)
+            print(f"Info: Found {file_type.upper()} file matching username: {user_data_file}")
+            return b50_origin
 
     # 2. Check for the default HTML file name
-    default_html_file = "./maimai DX NET－Music for DX RATING－.html"
-    if os.path.exists(default_html_file):
-        with open(default_html_file, 'r', encoding="utf-8") as f:
-            html_raw = f.read()
-            print(f"Info: Default DX rating HTML file found: {default_html_file}")
-            return html_raw
+    if file_type == "html":
+        default_html_file = f"{DATA_ROOT}/maimai DX NET－Music for DX RATING－.html"
+        if os.path.exists(default_html_file):
+            with open(default_html_file, 'r', encoding="utf-8") as f:
+                html_raw = f.read()
+                print(f"Info: Default DX rating HTML file found: {default_html_file}")
+                return html_raw
 
-    # 3. Try to find any other `.html` file
-    html_files = glob.glob("./*.html")
-    if html_files:
-        with open(html_files[0], 'r', encoding="utf-8") as f:
-            html_raw = f.read()
-            print(f"Warning: No specific HTML file found, using the first available file: {html_files[0]}")
-            return html_raw
+    # 3. Try to find any other `.html` or dxrating-export file
+        html_files = glob.glob(f"{DATA_ROOT}/*.html")
+        if html_files:
+            with open(html_files[0], 'r', encoding="utf-8") as f:
+                html_raw = f.read()
+                print(f"Warning: No specific HTML file found, using the first available file: {html_files[0]}")
+                return html_raw
+    elif file_type == "json":
+        json_files = glob.glob(f"{DATA_ROOT}/dxrating.export-*.json")
+        if json_files:
+            with open(json_files[-1], 'r', encoding="utf-8") as f:
+                json_raw = f.read()
+                print(f"Warning: No specific JSON file found, using the last available file: {json_files[-1]}")
+                return json_raw
 
     # Raise an exception if no file is found
-    raise Exception("Error: No HTML file found in the root folder.")
+    raise Exception(f"Error: No {file_type.upper()} file found in the root folder.")
+
+################################################
+# Read B50 from DX NET raw HTML
+################################################
 
 def read_b50_from_html(b50_raw_file, username):
-    html_raw = find_b50_html(username)
+    html_raw = find_origin_b50(username, "html")
     html_tree = etree.HTML(html_raw)
     # Locate B35 and B15
     b35_screw = html_tree.xpath('//div[text()="Songs for Rating(Others)"]')
@@ -90,9 +110,9 @@ def parse_html_to_json(song_div, song_id_placeholder):
         "dxScore": 0,
         "fc": "",
         "fs": "",
-        "level": "",
+        "level": "0",
         "level_index": -1,
-        "level_label": "",
+        "level_label": "easy",
         "ra": 0,
         "rate": "",
         "song_id": song_id_placeholder,
@@ -131,13 +151,81 @@ def parse_html_to_json(song_div, song_id_placeholder):
         img_src = kind_icon_img[0].get("src", "")
         chart["type"] = "DX" if img_src.endswith("dx.png") else "SD"
 
-    # Parse rate
-    chart["rate"] = get_rate(chart["achievements"])
-
     return chart
 
-def update_b50_data_int(b50_raw_file, b50_data_file, username):
-    raw_data = read_b50_from_html(b50_raw_file, username) # Use different B50 source
+################################################
+# Read B50 from dxrating.net export
+################################################
+
+def read_dxrating_json(b50_raw_file, username):
+    dxrating_json = find_origin_b50(username, "json")
+    # Iterate songs and save as JSON
+    b50_json = {
+        "charts": {
+            "dx": [],
+            "sd": []
+        },
+        "username": username
+    }
+    manager = ChartManager()
+    song_id_placeholder = 0 # Avoid same file names for downloaded videos
+    for song in dxrating_json:
+        song_id_placeholder -= 1 # -1 ~ -35 = b35, -36 ~ -50 = b15, resume full b35
+        song_json = parse_dxrating_json(song, song_id_placeholder)
+        song_json = manager.fill_json(song_json)
+        if song_id_placeholder >= -35:
+            b50_json["charts"]["sd"].append(song_json)
+        else:
+            b50_json["charts"]["dx"].append(song_json)
+
+    # Write b50 JSON to raw file
+    with open(b50_raw_file, 'w', encoding="utf-8") as f:
+        json.dump(b50_json, f, ensure_ascii = False, indent = 4)
+    return b50_json
+
+def parse_dxrating_json(song_json, song_id_placeholder):
+    LEVEL_DIV_LABEL = ["basic", "advanced", "expert", "master", "remaster"]
+    LEVEL_LABEL = ["Basic", "Advanced", "Expert", "Master", "Re:MASTER"]
+
+    # Initialise chart JSON
+    chart = {
+        "achievements": 0,
+        "ds": 0,
+        "dxScore": 0,
+        "fc": "",
+        "fs": "",
+        "level": "0",
+        "level_index": -1,
+        "level_label": "easy",
+        "ra": 0,
+        "rate": "",
+        "song_id": song_id_placeholder,
+        "title": "",
+        "type": "",
+    }
+
+    chart["achievements"] = song_json["achievementRate"]
+
+    sheet_id_parts = song_json["sheetId"].split("__dxrt__")
+    if len(sheet_id_parts) != 3:
+        print(f"Warning: can not resolve sheetId \"{song_json.get('sheetId')}\" at position {-song_id_placeholder}")
+        return chart
+    
+    chart["title"] = sheet_id_parts[0]
+    chart["type"] = "DX" if sheet_id_parts[1] == "dx" else "SD"
+    for idx, level in enumerate(LEVEL_DIV_LABEL):
+        if sheet_id_parts[2] == level.lower():
+            chart["level_index"] = idx
+            chart["level_label"] = LEVEL_LABEL[idx]
+            break
+    return chart
+
+################################################
+# Update local cache files
+################################################
+
+def update_b50_data_int(b50_raw_file, b50_data_file, username, data_parser):
+    raw_data = data_parser(b50_raw_file, username)
     b35_data = raw_data['charts']['sd']
     b15_data = raw_data['charts']['dx']
 
@@ -170,3 +258,9 @@ def update_b50_data_int(b50_raw_file, b50_data_file, username):
     with open(b50_data_file, "w", encoding="utf-8") as f:
         json.dump(new_local_b50_data, f, ensure_ascii=False, indent=4)
     return new_local_b50_data
+
+def update_b50_data_int_html(b50_raw_file, b50_data_file, username):
+    return update_b50_data_int(b50_raw_file, b50_data_file, username, read_b50_from_html)
+
+def update_b50_data_int_json(b50_raw_file, b50_data_file, username):
+    return update_b50_data_int(b50_raw_file, b50_data_file, username, read_dxrating_json)

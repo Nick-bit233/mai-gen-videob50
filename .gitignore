@@ -176,5 +176,13 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
+# Streamlit config
+.streamlit/
+
 # DX rating HTML files
 *.html
+*.json
+
+# debug and test resources
+test_html.txt
+test_dxrating.txt

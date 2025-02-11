@@ -5,7 +5,7 @@ from utils.Utils import Utils
 from copy import deepcopy
 
 
-def generate_single_image(background_path, record_detail, user_id, prefix, index):
+def generate_single_image(background_path, record_detail, output_path, prefix, index):
     function = Utils()
     with Image.open(background_path) as background:
         # 生成并调整单个成绩图片
@@ -22,7 +22,8 @@ def generate_single_image(background_path, record_detail, user_id, prefix, index
         draw.text((940, 100), f"{prefix} {index + 1}", fill=(255, 255, 255), font=font)
         
         # 保存图片
-        background.save(f"./b50_images/{user_id}/{prefix}_{index + 1}.png")
+        background.save(os.path.join(output_path, f"{prefix}_{index + 1}.png"))
+        # background.save(f"./b50_images/{user_id}/{prefix}_{index + 1}.png")
 
 def check_mask_waring(acc_string, cnt, warned=False):
     if len(acc_string.split('.')[1]) >= 4 and acc_string.split('.')[1][-3:] == "000":

@@ -17,8 +17,6 @@ SEARCH_MAX_RESULTS: 3
 SEARCH_WAIT_TIME: !!python/tuple
 - 1
 - 5
-USER_ID: ''
-USER_ID_RAW: ''
 USE_ALL_CACHE: false
 USE_AUTO_PO_TOKEN: false
 USE_CUSTOM_PO_TOKEN: false

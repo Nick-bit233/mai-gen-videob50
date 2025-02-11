@@ -3,12 +3,64 @@ import random
 import traceback
 import os
 import streamlit as st
+from datetime import datetime
 from utils.PageUtils import *
+from utils.PathUtils import get_data_paths, get_user_versions
 from pre_gen import search_one_video, download_one_video
 
 G_config = read_global_config()
 
 st.header("Step 3: 视频信息检查和下载")
+
+### Savefile Management - Start ###
+if "username" in st.session_state:
+    st.session_state.username = st.session_state.username
+
+if "save_id" in st.session_state:
+    st.session_state.save_id = st.session_state.save_id
+
+username = st.session_state.get("username", None)
+save_id = st.session_state.get("save_id", None)
+current_paths = None
+data_loaded = False
+
+if not username:
+    st.error("请先获取指定用户名的B50存档！")
+    st.stop()
+
+if save_id:
+    # load save data
+    current_paths = get_data_paths(username, save_id)
+    data_loaded = True
+    with st.container(border=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("当前存档")
+        with col2:
+            st.write(f"用户名：{username}，存档时间：{save_id} ")
+else:
+    st.warning("未索引到存档，请先加载存档数据！")
+
+with st.expander("更换B50存档"):
+    st.info("如果要更换用户，请回到存档管理页面指定其他用户名。")
+    versions = get_user_versions(username)
+    if versions:
+        with st.container(border=True):
+            selected_save_id = st.selectbox(
+                "选择存档",
+                versions,
+                format_func=lambda x: f"{username} - {x} ({datetime.strptime(x.split('_')[0], '%Y%m%d').strftime('%Y-%m-%d')})"
+            )
+            if st.button("使用此存档（只需要点击一次！）"):
+                if selected_save_id:
+                    st.session_state.save_id = selected_save_id
+                    st.rerun()
+                else:
+                    st.error("无效的存档路径！")
+    else:
+        st.warning("未找到任何存档，请先在存档管理页面获取存档！")
+        st.stop()
+### Savefile Management - End ###
 
 def st_download_video(placeholder, dl_instance, G_config, b50_config):
     search_wait_time = G_config['SEARCH_WAIT_TIME']
@@ -95,8 +147,8 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
 
         # 显示选中视频的详细信息
         if selected_index is not None:
-            st.write("选中的视频详细信息:")
-            show_video_info(to_match_videos[selected_index])
+            with st.expander("查看选中视频的详细信息"):
+                show_video_info(to_match_videos[selected_index])
 
         if st.button("确定使用该信息", key=f"confirm_selected_match_{song['clip_id']}"):
             song['video_info_match'] = to_match_videos[selected_index]
@@ -116,7 +168,7 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
                                             key=f"search_replace_id_{song['clip_id']}",
                                             disabled=dl_instance is None or replace_id == "")
             if extra_search_button:
-                videos = dl_instance.search_video(replace_id)
+                videos = dl_instance.search_video(replace_id.replace("BV", ""))
                 if len(videos) == 0:
                     st.error("未找到有效的视频，请重试")
                 else:
@@ -138,7 +190,14 @@ else:
     st.error("未找到缓存的下载器，无法进行手动搜索和下载视频！请回到上一页先进行一次搜索！")
     st.stop()
 
-b50_config_file = os.path.join(os.path.dirname(__file__), '..', 'b50_datas', f"b50_config_{G_config['USER_ID']}_{downloader_type}.json")
+# 读取存档的b50 config文件
+if downloader_type == "youtube":
+    b50_config_file = current_paths['config_yt']
+elif downloader_type == "bilibili":
+    b50_config_file = current_paths['config_bi']
+if not os.path.exists(b50_config_file):
+    st.error(f"未找到配置文件{b50_config_file}，请检查B50存档的数据完整性！")
+    st.stop()
 b50_config = load_config(b50_config_file)
 
 if b50_config:
