@@ -53,6 +53,10 @@ def get_factor(achievement):
             return factor
     return 0
 
+# Compute DX rating for a single song
+def compute_rating(ds, score):
+    return int(ds * score * get_factor(score))
+
 def parse_level(ds):
     return f"{int(ds)}+" if int((ds * 10) % 10) >= 6 else str(int(ds))
 
@@ -99,7 +103,7 @@ class ChartManager:
                 print(f"Info: can't resolve ID for song {chart_title}.")
             ds = matched_song["charts"][chart_level_index]["level"]
             chart_json["ds"] = ds
-            chart_json["ra"] = int(chart_json["ds"] * chart_json["achievements"] * get_factor(chart_json["achievements"]))
+            chart_json["ra"] = compute_rating(chart_json["ds"], chart_json["achievements"])
             if chart_json["level"] == "0": # data from dxrating.net doesn't provide a level                    
                 chart_json["level"] = parse_level(ds)
         else:
