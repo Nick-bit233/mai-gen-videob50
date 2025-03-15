@@ -88,8 +88,8 @@ def edit_b50_data(user_id, save_id):
     st.markdown(f'【当前存档信息】\n \n - 用户名：{user_id} \n \n - <p style="color: #00BFFF;">存档ID(时间戳)：{save_id}</p> \n \n - <p style="color: #ffc107;">DX Rating：{dx_rating}</p>', unsafe_allow_html=True)
     st.warning("您可以在下方表格中修改本存档的b50数据，注意修改保存后将无法撤销！")
     st.info("水鱼查分器不返回游玩次数数据，如需在视频中展示请手动填写游玩次数。")
-    st.info("通过导入HTML/JSON获取时：1. 数据不包括FC状态/FS状态/DX分数，如有需求请手动填写；2. 定数信息为本地缓存的日服数据库读取，与国服/国际服不符是正常现象。")
-    st.info("本页面自动补全数据时，认为'X.6'定数属于'X'等级而不是'X+'等级，这会在DX2025更新后统一修改。")
+    st.info("通过导入HTML/JSON获取时：\n1. 数据不包括FC状态/FS状态/DX分数，如有需求请手动填写\n2. 定数信息为本地缓存的日服数据库读取，与国服/国际服不符是正常现象。\n3. 本地数据库可能过期，可能出现rating中带有'?'的乐曲。请手动检查定数和修改rating。")
+    # st.info("无论您的数据来源服务器，本页面自动补全数据时，认为'X.6'定数属于'X'等级而不是'X+'等级，这会在DX2025更新后统一修改。您也可以手动修改等级标示。")
     
     # json数据中添加游玩次数字段
     for item in data:
