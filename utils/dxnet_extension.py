@@ -110,17 +110,19 @@ class ChartManager:
             print(f"Warning: song {chart_title} with chart type {chart_json['type']} not found in dataset. Skip filling details.")
             # Default internal level as .0 or .6(+). Need extra dataset to specify.
             chart_level = chart_json["level"]
-            chart_json["ds"] = float(chart_level.replace("+", ".6") if "+" in chart_level else f"{chart_level}.0")   
+            chart_json["ds"] = float(chart_level.replace("+", ".6") if "+" in chart_level else f"{chart_level}.0")
+            chart_json["ra"] = str(compute_rating(chart_json["ds"], chart_json["achievements"])) + "?"
 
         return chart_json
 
     def find_song(self, chart_title, chart_type):
         # Search in cached results first to save time
+
         matched_song = next(
             (entry for entry in self.results if entry.get("name") == chart_title and entry.get("type") == chart_type),
             None
         )
-
+        
         if matched_song:
             print(f"Info: song {chart_title} with chart type {chart_type} found in cached results.")
         else:
@@ -128,7 +130,8 @@ class ChartManager:
                 (entry for entry in self.all_songs if entry.get("name") == chart_title and entry.get("type") == chart_type),
                 None
             )
-            self.results.append(matched_song)
+            if matched_song:
+                self.results.append(matched_song)
             # print(f"Info: song {chart_title} with chart type {chart_type} found and cached.")
         
         return matched_song
