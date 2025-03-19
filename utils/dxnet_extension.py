@@ -55,7 +55,7 @@ def get_factor(achievement):
 
 # Compute DX rating for a single song
 def compute_rating(ds, score):
-    return int(ds * score * get_factor(score))
+    return int(ds * max(score, 100.5) * get_factor(score))
 
 def parse_level(ds):
     return f"{int(ds)}+" if int((ds * 10) % 10) >= 6 else str(int(ds))
