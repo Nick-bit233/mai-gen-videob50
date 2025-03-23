@@ -114,7 +114,8 @@ def update_preview(preview_placeholder, config, current_index):
             else:
                 st.warning("谱面确认视频文件不存在，请检查下载步骤是否正常完成！")
 
-        item['text'] = st.text_area("心得体会评论", value=item.get('text', ''), key=f"text_{item['id']}",
+        st.subheader("编辑评论")
+        item['text'] = st.text_area("心得体会", value=item.get('text', ''), key=f"text_{item['id']}",
                                     placeholder="请填写b50评价")
 
         # 从文件中获取视频的时长
@@ -132,31 +133,55 @@ def update_preview(preview_placeholder, config, current_index):
                 start = end - 1
             return start, end
 
-        # 在使用select_slider之前，先获取有效的时间范围
+        # 获取有效的时间范围
         start_time, end_time = get_valid_time_range(config['main'][current_index])
-        # 然后再传入select_slider
-        start_time, end_time = st.select_slider(
-            "选择视频片段的起始和结束时间",
-            options=range(0, video_duration),
-            value=(start_time, end_time)
-        )
+        show_start_minutes = int(start_time // 60)
+        show_start_seconds = int(start_time % 60)
+        show_end_minutes = int(end_time // 60)
+        show_end_seconds = int(end_time % 60)
+        
+        scol1, scol2, scol3 = st.columns(3, vertical_alignment="bottom")
+        with scol1:
+            st.subheader("开始时间")
+        with scol2:
+            start_min = st.number_input("分钟", min_value=0, value=show_start_minutes, step=1, key=f"start_min_{item['id']}")
+        with scol3:
+            start_sec = st.number_input("秒", min_value=0, max_value=59, value=show_start_seconds, step=1, key=f"start_sec_{item['id']}")
+            
+        ecol1, ecol2, ecol3 = st.columns(3, vertical_alignment="bottom")
+        with ecol1:
+            st.subheader("结束时间")
+        with ecol2:
+            end_min = st.number_input("分钟", min_value=0, value=show_end_minutes, step=1, key=f"end_min_{item['id']}")
+        with ecol3:
+            end_sec = st.number_input("秒", min_value=0, max_value=59, value=show_end_seconds, step=1, key=f"end_sec_{item['id']}")
+
+        # 转换为总秒数
+        start_time = start_min * 60 + start_sec
+        end_time = end_min * 60 + end_sec
+
+        # 确保结束时间大于开始时间
+        if end_time <= start_time:
+            st.warning("结束时间必须大于开始时间")
+            end_time = start_time + 5
+
+        # 确保结束时间不超过视频时长
+        if end_time > video_duration:
+            st.warning(f"结束时间不能超过视频时长: {int(video_duration // 60)}分{int(video_duration % 60)}秒")
+            end_time = video_duration
+            start_time = end_time - 5
         
         # 计算总秒数并更新config
         item['start'] = start_time
         item['end'] = end_time
         item['duration'] = end_time - start_time
 
-        new_start_minutes = int(start_time // 60)
-        new_start_seconds = int(start_time % 60)
-        new_end_minutes = int(end_time // 60)
-        new_end_seconds = int(end_time % 60)
-
         time_col1, time_col2 = st.columns(2)
         with time_col1:
-            st.write(f"开始时间: {new_start_minutes:02d}:{new_start_seconds:02d}")
+            st.write(f"开始时间: {int(item['start'] // 60):02d}:{int(item['start'] % 60):02d}")
         with time_col2:
-            st.write(f"结束时间: {new_end_minutes:02d}:{new_end_seconds:02d}")
-        st.write(f"持续时间: {item['duration']}")
+            st.write(f"结束时间: {int(item['end'] // 60):02d}:{int(item['end'] % 60):02d}")
+        st.write(f"持续时间: {item['duration']}s")
 
 # 读取下载器配置
 if 'downloader_type' in st.session_state:
@@ -206,9 +231,8 @@ if video_config:
     update_preview(preview_placeholder, video_config, st.session_state.current_index)
 
     # 快速跳转组件的实现
-    def on_jump_to_clip():
-        target_index = video_ids.index(clip_selector)
-        # print(f"跳转到视频片段: {target_index}")
+    def on_jump_to_clip(target_index):
+        print(f"跳转到视频片段: {target_index}")
         if target_index != st.session_state.current_index:
             # 保存当前配置
             save_config(video_config_output_file, video_config)
@@ -227,30 +251,20 @@ if video_config:
             key="video_selector"  # 添加唯一的key
         )
         if st.button("确定"):
-            on_jump_to_clip()
+            on_jump_to_clip(video_ids.index(clip_selector))
 
     # 上一个和下一个按钮
     col1, col2, _ = st.columns([1, 1, 2])
     with col1:
         if st.button("上一个"):
             if st.session_state.current_index > 0:
-                # 保存当前配置
-                save_config(video_config_output_file, video_config)
-                st.toast("配置已保存！")
-                # 切换到上一个视频片段
-                st.session_state.current_index -= 1
-                update_preview(preview_placeholder, video_config, st.session_state.current_index)
+                on_jump_to_clip(st.session_state.current_index - 1)
             else:
                 st.toast("已经是第一个视频片段！")
     with col2:
         if st.button("下一个"):
             if st.session_state.current_index < len(video_ids) - 1:
-                # 保存当前配置
-                save_config(video_config_output_file, video_config)
-                st.toast("配置已保存！")
-                # 切换到下一个视频片段
-                st.session_state.current_index += 1
-                update_preview(preview_placeholder, video_config, st.session_state.current_index)
+                on_jump_to_clip(st.session_state.current_index + 1)
             else:
                 st.toast("已经是最后一个视频片段！")
     
