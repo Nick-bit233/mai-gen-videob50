@@ -4,7 +4,7 @@ from utils.themes import THEME_COLORS
 
 st.title("Mai-gen Videob50 视频生成器")
 
-st.write("当前版本: v0.4.0")
+st.write("当前版本: v0.4.1")
 
 st.markdown(
     """
