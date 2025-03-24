@@ -49,7 +49,7 @@ def get_video_duration(video_path):
             return clip.duration
     except Exception as e:
         print(f"Error getting video duration: {e}")
-        return 0
+        return -1
 
 def open_file_explorer(path):
     try:

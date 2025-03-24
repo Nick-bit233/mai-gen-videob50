@@ -122,6 +122,9 @@ def update_preview(preview_placeholder, config, current_index):
         video_path = item['video']
         if os.path.exists(video_path):
             video_duration = int(get_video_duration(video_path))
+            if video_duration <= 0:
+                st.error("获取视频总时长失败，请手动检查视频文件以填写时间。")
+                video_duration = DEFAULT_VIDEO_MAX_DURATION
         else:
             video_duration = DEFAULT_VIDEO_MAX_DURATION
 
@@ -169,7 +172,7 @@ def update_preview(preview_placeholder, config, current_index):
         if end_time > video_duration:
             st.warning(f"结束时间不能超过视频时长: {int(video_duration // 60)}分{int(video_duration % 60)}秒")
             end_time = video_duration
-            start_time = end_time - 5
+            start_time = end_time - 5 if end_time > 5 else 0
         
         # 计算总秒数并更新config
         item['start'] = start_time
