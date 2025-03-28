@@ -3,6 +3,7 @@ import os.path
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
+DATA_CONFIG_VERSION = "0.4"
 
 class Utils:
     def __init__(self, InputUserID: int = 0):
@@ -302,18 +303,46 @@ class Utils:
         return Background
 
 
-def get_b50_data_from_fish(username):
-    url = "https://www.diving-fish.com/api/maimaidxprober/query/player"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "username": username,
-        "b50": "1"
-    }
-
-    response = requests.post(url, headers=headers, json=payload)
+def get_data_from_fish(username, params=None):
+    """从水鱼获取数据"""
+    if params is None:
+        params = {}
+    type = params.get("type", "maimai")
+    query = params.get("query", "best")
+    # MAIMAI DX 的请求
+    if type == "maimai":
+        if query == "best":
+            url = "https://www.diving-fish.com/api/maimaidxprober/query/player"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "username": username,
+                "b50": "1"
+            }
+            response = requests.post(url, headers=headers, json=payload)
+        elif query == "all":
+            url = f"https://www.diving-fish.com/api/maimaidxprober/dev/player/records?username={username}"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                "Content-Type": "application/json",
+                "Developer-Token": "111", # TODO: replace with your developer token
+            }
+            response = requests.get(url, headers=headers)
+        elif query == "test_all":
+            url = "https://www.diving-fish.com/api/maimaidxprober/player/test_data"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                "Content-Type": "application/json"
+            }
+            response = requests.get(url, headers=headers)
+        else:
+            raise ValueError("Invalid filter type for MAIMAI DX")
+    elif type == "chuni":
+        raise NotImplementedError("Only MAIMAI DX is supported for now")
+    else:
+        raise ValueError("Invalid game data type for diving-fish.com")
 
     if response.status_code == 200:
         return response.json()

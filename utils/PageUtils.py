@@ -18,6 +18,13 @@ def remove_invalid_chars(text: str) -> str:
     # 去除非法字符，使用re.sub
     return re.sub(r'[\\/:*?"<>|]', '', text)
 
+def load_record_config(config_file):
+    if os.path.exists(config_file):
+        with open(config_file, 'r', encoding='utf-8') as f:
+            content = json.load(f)
+            return content.get("records", None)
+    return None
+
 def load_config(config_file):
     if os.path.exists(config_file):
         with open(config_file, 'r', encoding='utf-8') as f:

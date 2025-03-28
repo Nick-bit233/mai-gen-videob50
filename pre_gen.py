@@ -2,7 +2,7 @@ import json
 import os
 import random
 import time
-from utils.Utils import get_b50_data_from_fish
+from utils.Utils import get_data_from_fish, DATA_CONFIG_VERSION
 from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
 
 def merge_b50_data(new_b50_data, old_b50_data):
@@ -48,48 +48,111 @@ def merge_b50_data(new_b50_data, old_b50_data):
     return merged_b50_data, update_count
 
 
-def update_b50_data(b50_raw_file, b50_data_file, username):
-    try:
-        fish_data = get_b50_data_from_fish(username)
-    except json.JSONDecodeError:
-        print("Error: 读取 JSON 文件时发生错误，请检查数据格式。")
-        return None 
-    if 'error' in fish_data:
-        raise Exception(f"Error: 从水鱼获得B50数据失败。错误信息：{fish_data['error']}")
-    
-    charts_data = fish_data['charts']
-    # user_rating = fish_data['rating']
-    # user_dan = fish_data['additional_rating']
-    b35_data = charts_data['sd']
-    b15_data = charts_data['dx']
+def fetch_user_gamedata(raw_file_path, data_file_path, username, params, source="fish"):
+    # params = {
+    #     "type": maimai / chuni / ...,
+    #     "query": all / best /
+    #     "filiter": {
+    #         "tag": "ap",
+    #         "top": 50,
+    #     },
+    #}
+    if source == "fish":
+        try:
+            fish_data = get_data_from_fish(username, params)
+        except json.JSONDecodeError:
+            print("Error: 读取 JSON 文件时发生错误，请检查数据格式。")
+            return None 
+        if 'error' in fish_data:
+            raise Exception(f"Error: 从水鱼获得B50数据失败。错误信息：{fish_data['error']}")
+        
+        # 缓存，写入b50_raw_file
+        with open(raw_file_path, "w", encoding="utf-8") as f:
+            json.dump(fish_data, f, ensure_ascii=False, indent=4)
+        
+        # 生成数据文件
+        generate_data_file_from_fish(fish_data, data_file_path, params)
 
-    # 缓存，写入b50_raw_file
-    with open(b50_raw_file, "w", encoding="utf-8") as f:
-        json.dump(fish_data, f, ensure_ascii=False, indent=4)
 
-    for i in range(len(b35_data)):
-        song = b35_data[i]
-        song['clip_id'] = f"PastBest_{i + 1}"
+def generate_data_file_from_fish(fish_data, data_file_path, params):
+    type = params.get("type", "maimai")
+    query = params.get("query", "best")
+    filiter = params.get("filiter", None)
+    if type == "maimai":
+        if query == "best":
+            # 解析fish b50数据   
+            charts_data = fish_data['charts']
+            b35_data = charts_data['sd']
+            b15_data = charts_data['dx']
 
-    for i in range(len(b15_data)):
-        song = b15_data[i]
-        song['clip_id'] = f"NewBest_{i + 1}"
-    
-    # 合并b35_data和b15_data到同一列表
-    b50_data = b35_data + b15_data
-    new_local_b50_data = []
-    # 检查是否已有b50_data_file
-    if os.path.exists(b50_data_file):
-        with open(b50_data_file, "r", encoding="utf-8") as f:
-            local_b50_data = json.load(f)
-            new_local_b50_data, _ = merge_b50_data(b50_data, local_b50_data)
+            for i in range(len(b35_data)):
+                song = b35_data[i]
+                song['clip_id'] = f"PastBest_{i + 1}"
+
+            for i in range(len(b15_data)):
+                song = b15_data[i]
+                song['clip_id'] = f"NewBest_{i + 1}"
+            
+            # 合并b35_data和b15_data到同一列表
+            b50_data = b35_data + b15_data
+            config_content = {
+                "version": DATA_CONFIG_VERSION,
+                "type": type,
+                "sub_type": "b50",
+                "username": fish_data['username'],
+                "rating": fish_data['rating'],
+                "length_of_content": len(b50_data),
+                "records": b50_data,
+            }
+        else:
+            if not filiter:
+                raise ValueError("Error: 查询类型为all时，必须提供filiter参数。")
+            else:
+                tag = filiter.get("tag", None)
+                top_len = filiter.get("top", 50)
+                if tag == "ap":
+                    data_list = filit_maimai_ap_data(fish_data, top_len)
+                    if len(data_list) < top_len:
+                        print(f"Warning: 仅找到{len(data_list)}条AP数据，生成实际数据长度小于top_len={top_len}的配置。")
+                    config_content = {
+                        "version": DATA_CONFIG_VERSION,
+                        "type": type,
+                        "sub_type": tag,
+                        "username": fish_data['username'],
+                        "rating": fish_data['rating'],
+                        "length_of_content": len(data_list),
+                        "records": data_list,
+                    }
+                else:
+                    raise ValueError("Error: 目前仅支持tag为ap的查询类型。")
+                
+        # 写入b50_data_file
+        with open(data_file_path, "w", encoding="utf-8") as f:
+            json.dump(config_content, f, ensure_ascii=False, indent=4)
+        return config_content
     else:
-        new_local_b50_data = b50_data
+        raise ValueError("Only MAIMAI DX is supported for now")
 
-    # 写入b50_data_file
-    with open(b50_data_file, "w", encoding="utf-8") as f:
-        json.dump(new_local_b50_data, f, ensure_ascii=False, indent=4)
-    return new_local_b50_data
+def filit_maimai_ap_data(fish_data, top_len=50):
+    charts_data = fish_data['records']
+
+    # 解析AP数据
+    ap_data = []
+    for song in charts_data:
+        fc_flag = song.get('fc', '').lower()
+        if 'ap' in fc_flag or 'app' in fc_flag:
+            ap_data.append(song)
+
+    # 按照ra值降序排序，如果ra值相同，按照ds定数降序排序
+    ap_data.sort(key=lambda x: (x.get('ra', 0), x.get('ds', 0)), reverse=True)
+    ap_data = ap_data[:top_len]
+
+    for song in ap_data:
+        index = ap_data.index(song) + 1
+        # 添加clip_id字段
+        song['clip_id'] = f"APBest_{index}"
+
+    return ap_data
 
 
 def get_keyword(downloader_type, title_name, level_index, type):
@@ -150,31 +213,6 @@ def search_one_video(downloader, song_data):
     return song_data, output_info
 
 
-def search_b50_videos(downloader, b50_data, b50_data_file, search_wait_time=(0,0)):
-    global search_max_results, downloader_type
-
-    i = 0
-    for song in b50_data:
-        i += 1
-        # Skip if video info already exists and is not empty
-        if 'video_info_match' in song and song['video_info_match']:
-            print(f"跳过({i}/50): {song['title']} ，已储存有相关视频信息")
-            continue
-        
-        print(f"正在搜索视频({i}/50): {song['title']}")
-        song_data = search_one_video(downloader, song)
-
-        # 每次搜索后都写入b50_data_file
-        with open(b50_data_file, "w", encoding="utf-8") as f:
-            json.dump(b50_data, f, ensure_ascii=False, indent=4)
-        
-        # 等待几秒，以减少被检测为bot的风险
-        if search_wait_time[0] > 0 and search_wait_time[1] > search_wait_time[0]:
-            time.sleep(random.randint(search_wait_time[0], search_wait_time[1]))
-    
-    return b50_data
-
-
 def download_one_video(downloader, song, video_download_path, high_res=False):
     clip_name = f"{song['song_id']}-{song['level_index']}-{song['type']}"
     
@@ -195,114 +233,6 @@ def download_one_video(downloader, song, video_download_path, high_res=False):
                               video_download_path, 
                               high_res=high_res)
     return {"status": "success", "info": f"下载{clip_name}完成"}
-
-    
-def download_b50_videos(downloader, b50_data, video_download_path, download_wait_time=(0,0)):
-    global download_high_res
-
-    i = 0
-    for song in b50_data:
-        i += 1
-        # 视频命名为song['song_id']-song['level_index']-song['type']，以便查找复用
-        clip_name = f"{song['song_id']}-{song['level_index']}-{song['type']}"
-        
-        # Check if video already exists
-        video_path = os.path.join(video_download_path, f"{clip_name}.mp4")
-        if os.path.exists(video_path):
-            print(f"已找到谱面视频的缓存({i}/50): {clip_name}")
-            continue
-            
-        print(f"正在下载视频({i}/50): {clip_name}……")
-        if 'video_info_match' not in song or not song['video_info_match']:
-            print(f"Error: 没有{song['title']}-{song['level_label']}-{song['type']}的视频信息，Skipping………")
-            continue
-        video_info = song['video_info_match']
-        v_id = video_info['id'] 
-        downloader.download_video(v_id, 
-                                  clip_name, 
-                                  video_download_path, 
-                                  high_res=download_high_res)
-        
-        # 等待几秒，以减少被检测为bot的风险
-        if download_wait_time[0] > 0 and download_wait_time[1] > download_wait_time[0]:
-            time.sleep(random.randint(download_wait_time[0], download_wait_time[1]))
-        print("\n")
-
-
-def gene_resource_config(b50_data, images_path, videoes_path, ouput_file):
-    global clip_start_interval, clip_play_time, default_comment_placeholders
-
-    intro_clip_data = {
-        "id": "intro_1",
-        "duration": 10,
-        "text": "【请填写前言部分】" if default_comment_placeholders else ""
-    }
-
-    ending_clip_data = {
-        "id": "ending_1",
-        "duration": 10,
-        "text": "【请填写后记部分】" if default_comment_placeholders else ""
-    }
-
-    video_config_data = {
-        "enable_re_modify": False,
-        "intro": [intro_clip_data],
-        "ending": [ending_clip_data],
-        "main": [],
-    }
-
-    main_clips = []
-    
-    if clip_start_interval[0] > clip_start_interval[1]:
-        print(f"Error: 视频开始时间区间设置错误，请检查global_config.yaml文件中的CLIP_START_INTERVAL配置。")
-        clip_start_interval = (clip_start_interval[1], clip_start_interval[1])
-
-    for song in b50_data:
-        if not song['clip_id']:
-            print(f"Error: 没有找到 {song['title']}-{song['level_label']}-{song['type']} 的clip_id，请检查数据格式，跳过该片段。")
-            continue
-        id = song['clip_id']
-        video_name = f"{song['song_id']}-{song['level_index']}-{song['type']}"
-        __image_path = os.path.join(images_path, id + ".png")
-        __image_path = os.path.normpath(__image_path)
-        if not os.path.exists(__image_path):
-            print(f"Error: 没有找到 {id}.png 图片，请检查本地缓存数据。")
-            __image_path = ""
-
-        __video_path = os.path.join(videoes_path, video_name + ".mp4")
-        __video_path = os.path.normpath(__video_path)
-        if not os.path.exists(__video_path):
-            print(f"Error: 没有找到 {video_name}.mp4 视频，请检查本地缓存数据。")
-            __video_path = ""
-        
-        duration = clip_play_time
-        start = random.randint(clip_start_interval[0], clip_start_interval[1])
-        end = start + duration
-
-        main_clip_data = {
-            "id": id,
-            "achievement_title": song['title'],
-            "song_id": song['song_id'],
-            "level_index": song['level_index'],
-            "type": song['type'],
-            "main_image": __image_path,
-            "video": __video_path,
-            "duration": duration,
-            "start": start,
-            "end": end,
-            "text": "【请填写b50评价】" if default_comment_placeholders else "",
-        }
-        main_clips.append(main_clip_data)
-
-    # 倒序排列（b15在前，b35在后）
-    main_clips.reverse()
-
-    video_config_data["main"] = main_clips
-
-    with open(ouput_file, 'w', encoding="utf-8") as file:
-        json.dump(video_config_data, file, ensure_ascii=False, indent=4)
-
-    return video_config_data
 
 
 def st_init_cache_pathes():
