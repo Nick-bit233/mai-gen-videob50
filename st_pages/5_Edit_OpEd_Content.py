@@ -3,7 +3,7 @@ import os
 import json
 import traceback
 from datetime import datetime
-from utils.PageUtils import *
+from utils.PageUtils import open_file_explorer, load_video_config, save_video_config, read_global_config
 from utils.PathUtils import get_data_paths, get_user_versions
 
 st.header("Step 4-2: 片头/片尾内容编辑")
@@ -80,7 +80,7 @@ def edit_context_widget(name, config, config_file_path):
                 # 更新配置
                 config[name] = items
                 ## 保存当前配置
-                save_config(config_file_path, config)
+                save_video_config(config_file_path, config)
                 st.success("配置已保存！")
             except Exception as e:
                 st.error(f"保存失败：{str(e)}")
@@ -108,7 +108,7 @@ if save_id:
         st.error(f"未找到视频内容配置文件{video_config_file}，请检查前置步骤是否完成，以及B50存档的数据完整性！")
         config = None
     else:
-        config = load_config(video_config_file)
+        config = load_video_config(video_config_file)
         for name in ["intro", "ending"]:
             st.session_state[f"{name}_items"] = config[name]
 else:

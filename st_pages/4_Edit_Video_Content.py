@@ -3,7 +3,7 @@ import os
 import json
 import traceback
 from datetime import datetime
-from utils.PageUtils import *
+from utils.PageUtils import LEVEL_LABELS, open_file_explorer, get_video_duration, load_record_config, load_video_config, save_video_config, read_global_config
 from utils.PathUtils import get_data_paths, get_user_versions
 from pre_gen import st_gene_resource_config
 
@@ -200,8 +200,8 @@ elif downloader_type == "bilibili":
 if not os.path.exists(b50_config_file):
     st.error(f"未找到配置文件{b50_config_file}，请检查B50存档的数据完整性！")
     st.stop()
-b50_config = load_config(b50_config_file)
-video_config = load_config(video_config_output_file)
+b50_config = load_record_config(b50_config_file)
+video_config = load_video_config(video_config_output_file)
 
 if not video_config or 'main' not in video_config:
     st.warning("该存档还没有视频内容的配置文件。请先点击下方按钮，生成配置后方可编辑。")
@@ -238,7 +238,7 @@ if video_config:
         print(f"跳转到视频片段: {target_index}")
         if target_index != st.session_state.current_index:
             # 保存当前配置
-            save_config(video_config_output_file, video_config)
+            save_video_config(video_config_output_file, video_config)
             st.toast("配置已保存！")
             # 更新session_state
             st.session_state.current_index = target_index
@@ -273,7 +273,7 @@ if video_config:
     
     # 保存配置按钮
     if st.button("保存配置"):
-        save_config(video_config_output_file, video_config)
+        save_video_config(video_config_output_file, video_config)
         st.success("配置已保存！")
 
 with st.container(border=True):

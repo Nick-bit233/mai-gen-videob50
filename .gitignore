@@ -186,3 +186,4 @@ cython_debug/
 # debug and test resources
 test_html.txt
 test_dxrating.txt
+develop_token.txt

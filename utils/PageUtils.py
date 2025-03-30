@@ -18,6 +18,7 @@ def remove_invalid_chars(text: str) -> str:
     # 去除非法字符，使用re.sub
     return re.sub(r'[\\/:*?"<>|]', '', text)
 
+# r/w config/config_{platfrom}.json
 def load_record_config(config_file):
     if os.path.exists(config_file):
         with open(config_file, 'r', encoding='utf-8') as f:
@@ -25,16 +26,30 @@ def load_record_config(config_file):
             return content.get("records", None)
     return None
 
-def load_config(config_file):
+def save_record_config(config_file, config_data):
+    if os.path.exists(config_file):
+        with open(config_file, 'r', encoding='utf-8') as f:
+            content = json.load(f)
+            content["records"] = config_data
+    else:
+        content = {"records": config_data}
+    
+    with open(config_file, 'w', encoding='utf-8') as f:
+        json.dump(content, f, ensure_ascii=False, indent=4)
+
+# r/w video_configs.json
+def load_video_config(config_file):
     if os.path.exists(config_file):
         with open(config_file, 'r', encoding='utf-8') as f:
             return json.load(f)
     return None
 
-def save_config(config_file, config_data):
+def save_video_config(config_file, config_data):
     with open(config_file, 'w', encoding='utf-8') as f:
         json.dump(config_data, f, ensure_ascii=False, indent=4)
 
+
+# r/w gloabl_config.yaml
 def read_global_config():
     if os.path.exists("global_config.yaml"):
         with open("global_config.yaml", "r", encoding='utf-8') as f:

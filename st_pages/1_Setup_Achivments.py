@@ -63,14 +63,14 @@ def convert_old_files(folder, username, save_paths):
         st.error("未找到video_config文件！请检查是否已将完整旧版数据文件复制到新的文件夹！")
         return
     try:
-        video_config = load_config(video_config_file)
+        video_config = load_video_config(video_config_file)
         main_clips = video_config['main']
         for each in main_clips:
             id = each['id']
             __image_path = os.path.join(save_paths['image_dir'], id + ".png")
             __image_path = os.path.normpath(__image_path)
             each['main_image'] = __image_path
-        save_config(video_config_file, video_config)          
+        save_video_config(video_config_file, video_config)          
         st.success("配置信息转换完成！")
     except Exception as e:
         st.error(f"转换video_config文件时发生错误: {e}")

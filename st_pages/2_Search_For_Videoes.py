@@ -6,7 +6,7 @@ import random
 import traceback
 import streamlit as st
 from datetime import datetime
-from utils.PageUtils import load_config, save_config, read_global_config, write_global_config
+from utils.PageUtils import load_record_config, save_record_config, read_global_config, write_global_config
 from utils.PathUtils import get_data_paths, get_user_versions
 from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
 from pre_gen import merge_b50_data, search_one_video
@@ -203,16 +203,17 @@ if not os.path.exists(b50_config_file):
     st.toast(f"已生成平台{downloader}的b50索引文件")
 
 # 对比以及合并b50_data_file和b50_config_file
-b50_data = load_config(b50_data_file)
-b50_config = load_config(b50_config_file)
-merged_b50_config, update_count = merge_b50_data(b50_data, b50_config)
-save_config(b50_config_file, merged_b50_config)
-if update_count > 0:
-    st.toast(f"已加载平台{downloader}的b50索引，共更新{update_count}条数据")
+# TODO: 修改为用户主动更新数据与合并
+# b50_data = load_record_config(b50_data_file)
+# b50_config = load_record_config(b50_config_file)
+# merged_b50_config, update_count = merge_b50_data(b50_data, b50_config)
+# save_record_config(b50_config_file, merged_b50_config)
+# if update_count > 0:
+#     st.toast(f"已加载平台{downloader}的b50索引，共更新{update_count}条数据")
 
 def st_search_b50_videoes(dl_instance, placeholder, search_wait_time):
     # read b50_data
-    b50_config = load_config(b50_config_file)
+    b50_config = load_record_config(b50_config_file)
 
     with placeholder.container(border=True, height=560):
         with st.spinner("正在搜索b50视频信息..."):
@@ -230,8 +231,7 @@ def st_search_b50_videoes(dl_instance, placeholder, search_wait_time):
                 write_container.write(f"【{i}/50】{ouput_info}")
 
                 # 每次搜索后都写入b50_data_file
-                with open(b50_config_file, "w", encoding="utf-8") as f:
-                    json.dump(b50_config, f, ensure_ascii=False, indent=4)
+                save_record_config(b50_config_file, b50_config)
                 
                 # 等待几秒，以减少被检测为bot的风险
                 if search_wait_time[0] > 0 and search_wait_time[1] > search_wait_time[0]:

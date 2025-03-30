@@ -6,12 +6,12 @@ import traceback
 from copy import deepcopy
 from datetime import datetime
 from gene_images import generate_single_image, check_mask_waring
-from utils.PageUtils import *
+from utils.PageUtils import open_file_explorer, load_record_config, save_record_config
 from utils.PathUtils import *
 
 def st_generate_b50_images(placeholder, user_id, save_paths):
     # read b50_data
-    b50_data = load_config(save_paths['data_file'])
+    b50_data = load_record_config(save_paths['data_file'])
     image_path = save_paths['image_dir']
     with placeholder.container(border=True):
         pb = st.progress(0, text="正在生成B50成绩背景图片...")
@@ -27,8 +27,13 @@ def st_generate_b50_images(placeholder, user_id, save_paths):
                 warned = True
             record_for_gene_image = deepcopy(record_detail)
             record_for_gene_image['achievements'] = acc_string
-            prefix = "PastBest" if index < 35 else "NewBest"
-            image_name_index = index if index < 35 else index - 35
+            clip_id = record_detail['clip_id']
+            if "_" in clip_id:
+                prefix = clip_id.split("_")[0]
+                image_name_index = int(clip_id.split("_")[1]) - 1
+            else:
+                prefix = record_detail['clip_id']
+                image_name_index = index
             generate_single_image(
                 "./images/B50ViedoBase.png",
                 record_for_gene_image,

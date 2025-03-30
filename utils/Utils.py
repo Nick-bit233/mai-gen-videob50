@@ -324,10 +324,17 @@ def get_data_from_fish(username, params=None):
             response = requests.post(url, headers=headers, json=payload)
         elif query == "all":
             url = f"https://www.diving-fish.com/api/maimaidxprober/dev/player/records?username={username}"
+            # Read developer token from config file
+            if not os.path.exists("develop_token.txt"):
+                FISH_DE_TOKEN = ""
+            else:
+                with open("develop_token.txt", "r", encoding='utf-8') as f:
+                    content = f.readline().strip()
+                    FISH_DE_TOKEN = content
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
                 "Content-Type": "application/json",
-                "Developer-Token": "111", # TODO: replace with your developer token
+                "Developer-Token": FISH_DE_TOKEN,
             }
             response = requests.get(url, headers=headers)
         elif query == "test_all":
@@ -346,9 +353,10 @@ def get_data_from_fish(username, params=None):
 
     if response.status_code == 200:
         return response.json()
-    elif response.status_code == 400:
-        return {"error": "No such user"}
-    elif response.status_code == 403:
-        return {"error": "User has set privacy or not agreed to the user agreement"}
+    elif response.status_code == 400 or response.status_code == 403:
+        msg = response.json().get("message", None)
+        if not msg:
+            msg = response.json().get("msg", "水鱼端未知错误")
+        return {"error": f"用户校验失败，返回消息：{msg}"}
     else:
-        return {"error": f"Failed to get data, status code: {response.status_code}"}
+        return {"error": f"请求水鱼数据失败，状态码: {response.status_code}，返回消息：{response.json()}"}
