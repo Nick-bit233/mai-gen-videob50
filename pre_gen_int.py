@@ -60,11 +60,11 @@ def read_b50_from_html(b50_raw_file, username):
     # Locate B35 and B15
     # b35_div_names = [
     #     "Songs for Rating(Others)",
-    #     "日服B35名称占位符"
+    #     "rating対象曲（ベスト）"
     # ]
     # b15_div_names = [
     #     "Songs for Rating(New)",
-    #     "日服B15名称占位符"
+    #     "rating対象曲（新曲）"
     # ]
     # b35_screw = locate_html_screw(html_tree, b35_div_names)
     # b15_screw = locate_html_screw(html_tree, b15_div_names)
