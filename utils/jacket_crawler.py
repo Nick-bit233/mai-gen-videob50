@@ -24,10 +24,14 @@ def getJacketUrl():
         #    f.write(jsFile)
         #print("Write Done")
         
-        songIdPattern = r'\bsongId:(["\'`][^"\'`]*["\'`])'
+        songIdPattern = r'\bsongId:(["\'`])(?:\\.|(?!\1).)*\1'
         songImagePattern = r'imageName:".*?"'
-        songIdList = re.findall(songIdPattern, jsFile)
+        songIdList = []
         songImageList = re.findall(songImagePattern, jsFile)
+        for match in re.finditer(songIdPattern, jsFile):
+            songIdList.append(match.group()[7:])
+        #with open('songIds.json', 'w', encoding='utf-8') as f:
+        #    f.write(songIdList.__str__())
         #print(f'songIdList: {len(songIdList)}')
         #print(f'songImageList: {len(songImageList)}')
         for i in range(len(songIdList)):
@@ -52,3 +56,7 @@ def getJacket(songName):
         return None
 
 getJacketUrl()
+
+if __name__ == '__main__':
+    with open("jacketData.json", 'w', encoding='utf-8') as f:
+        f.write(urlDict.__str__())
