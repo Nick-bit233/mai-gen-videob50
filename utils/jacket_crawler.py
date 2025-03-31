@@ -4,8 +4,14 @@ from PIL import Image
 from io import BytesIO
 
 def get(url):
-    x = requests.get(url)
-    return x.text
+    try:
+        x = requests.get(url)
+        x.raise_for_status()
+        return x.text
+    except requests.exceptions.RequestException as e:
+        print(f"请求{url}失败：{e}")
+    return None
+
 
 urlDict = {}
 
@@ -13,7 +19,7 @@ def getJacketUrl():
     page = get('https://dxrating.net/search')
     pattern = r'dxdata-.*?\.js'
     matches = re.findall(pattern, page)
-    print(matches)
+    # print(matches)
     if matches:
         jsFile = get(f'https://dxrating.net/assets/{matches[0]}')
         #with open('dxdata.js', 'w', encoding="utf-8") as f:
@@ -38,6 +44,8 @@ def getJacketUrl():
             urlDict[songIdList[i][1:-1]] = songImageList[i][11:-1]
         # with open('imagesUrl.json', 'w', encoding='utf-8') as f:
         #     f.write(json.dumps(urlDict, ensure_ascii=False))
+    else:
+        print('没有找到dxdata')
 
 def getJacket(songName):
     if songName not in urlDict:
