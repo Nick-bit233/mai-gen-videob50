@@ -42,6 +42,7 @@ def getJacketUrl():
         #print(f'songImageList: {len(songImageList)}')
         for i in range(len(songIdList)):
             urlDict[songIdList[i][1:-1]] = songImageList[i][11:-1]
+        print(f"成功获取{len(songIdList)}张封面地址")
         # with open('imagesUrl.json', 'w', encoding='utf-8') as f:
         #     f.write(json.dumps(urlDict, ensure_ascii=False))
     else:
