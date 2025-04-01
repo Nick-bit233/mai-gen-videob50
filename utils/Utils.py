@@ -1,6 +1,7 @@
 import json
 import os.path
 import requests
+from utils import jacket_crawler
 from PIL import Image, ImageDraw, ImageFont
 
 
@@ -18,13 +19,12 @@ class Utils:
                 print("错误：JSON 解码失败。")
                 return {}
 
-    def JacketLoader(self, MusicId: int = 0):
-        __musicid = str(MusicId)[-4:].zfill(4)
-        try:
-            with Image.open(f"./images/Jackets/UI_Jacket_00{__musicid}.png") as Jacket:
-                return Jacket.copy()
-        except FileNotFoundError:
-            print(f"乐曲{__musicid}不存在。")
+    def JacketLoader(self, MusicName: str = None):
+        if MusicName:
+            Jacket = jacket_crawler.getJacket(MusicName)
+            if Jacket:
+                return Jacket.copy().resize((400, 400))
+            print(f"没有找到乐曲{MusicName}的封面。使用默认封面。")
             with Image.open(f"./images/Jackets/UI_Jacket_000000.png") as Jacket:
                 return Jacket.copy()
 
@@ -230,7 +230,7 @@ class Utils:
                 TempImage = Image.new('RGBA', Background.size, (0, 0, 0, 0))
                 # 加载乐曲封面
                 JacketPosition = (44, 53)
-                Jacket = self.JacketLoader(record_detail["song_id"])
+                Jacket = self.JacketLoader(record_detail['title'])
                 TempImage.paste(Jacket, JacketPosition, Jacket)
 
                 # 加载类型
