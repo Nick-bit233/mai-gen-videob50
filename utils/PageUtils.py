@@ -5,6 +5,7 @@ import yaml
 import subprocess
 import platform
 from moviepy import VideoFileClip
+from utils.Utils import DATA_CONFIG_VERSION
 
 LEVEL_LABELS = {
     0: "BASIC",
@@ -17,6 +18,35 @@ LEVEL_LABELS = {
 def remove_invalid_chars(text: str) -> str:
     # 去除非法字符，使用re.sub
     return re.sub(r'[\\/:*?"<>|]', '', text)
+
+def check_content_version(config_file, username):
+    if os.path.exists(config_file):
+        with open(config_file, 'r', encoding='utf-8') as f:
+            content = json.load(f)
+    # 检查版本号是否存在，不存在则添加
+    if type(content) == list:
+        print("存档版本过旧，转换存档格式到最新版本...")
+        new_content = {
+            "version": DATA_CONFIG_VERSION,
+            "type": "maimai",
+            "sub_type": "best",
+            "username": username,
+            "rating": 0,
+            "length_of_content": len(content),
+            "records": content,
+        }
+        with open(config_file, 'w', encoding='utf-8') as f:
+            json.dump(new_content, f, ensure_ascii=False, indent=4)
+    else:
+        if "version" not in content:
+            print("存档版本号不存在，添加版本号...")
+            content["version"] = DATA_CONFIG_VERSION
+            with open(config_file, 'w', encoding='utf-8') as f:
+                json.dump(content, f, ensure_ascii=False, indent=4)
+        else:
+            if content["version"] != DATA_CONFIG_VERSION:
+                print(f"存档版本号不匹配，当前最新版本：{DATA_CONFIG_VERSION}，文件版本：{content['version']}")   
+            
 
 # r/w config/config_{platfrom}.json
 def load_record_config(config_file):

@@ -79,12 +79,15 @@ def convert_old_files(folder, username, save_paths):
 def edit_b50_data(user_id, save_id):
     save_paths = get_data_paths(user_id, save_id)
     datafile_path = save_paths['data_file']
-    data = load_record_config(datafile_path)
-    # get dx rating from raw data file
-    raw_datafile_path = save_paths['raw_file']
-    with open(raw_datafile_path, 'r', encoding='utf-8') as f:
-        raw_data = json.load(f)
-        dx_rating = raw_data.get("rating", 0)
+    with open(datafile_path, 'r', encoding='utf-8') as f:
+        head_data = json.load(f)
+        dx_rating = head_data.get("rating", 0)
+        data = head_data.get("records", None)
+    # # get dx rating from raw data file
+    # raw_datafile_path = save_paths['raw_file']
+    # with open(raw_datafile_path, 'r', encoding='utf-8') as f:
+    #     raw_data = json.load(f)
+    #     dx_rating = raw_data.get("rating", 0)
     st.markdown(f'【当前存档信息】\n \n - 用户名：{user_id} \n \n - <p style="color: #00BFFF;">存档ID(时间戳)：{save_id}</p> \n \n - <p style="color: #ffc107;">DX Rating：{dx_rating}</p>', unsafe_allow_html=True)
     st.warning("您可以在下方表格中修改本存档的b50数据，注意修改保存后将无法撤销！")
     st.info("水鱼查分器不返回游玩次数数据，如需在视频中展示请手动填写游玩次数。")
@@ -191,8 +194,7 @@ def edit_b50_data(user_id, save_id):
         if st.button("保存修改"):
             # DataFrame is returned as JSON format list
             # json_data = edited_df
-            with open(datafile_path, 'w', encoding='utf-8') as f:
-                json.dump(edited_df, f, ensure_ascii=False, indent=2)
+            save_record_config(datafile_path, edited_df)
             st.success("更改已保存！")
     with col2:
         if st.button("结束编辑并返回"):
@@ -264,20 +266,7 @@ def fetch_new_achievement_data(username, save_paths, source, params=None):
         st.error(f"获取B50数据时发生错误: {e}")
         st.expander("错误详情").write(traceback.format_exc())
         return None
-
-# def update_b50(update_function, username, save_paths):
-#     try:
-#         # 使用指定的方法读取B50数据
-#         b50_data = update_function(save_paths['raw_file'], save_paths['data_file'], username)
-
-#         st.success(f"已获取用户{username}的最新B50数据！新的存档时间为：{os.path.dirname(save_paths['data_file'])}")
-#         st.session_state.data_updated_step1 = True
-#         return b50_data
-#     except Exception as e:
-#         st.session_state.data_updated_step1 = False
-#         st.error(f"获取B50数据时发生错误: {e}")
-#         st.expander("错误详情").write(traceback.format_exc())
-#         return None
+    
 
 def check_save_available(username, save_id):
     if not save_id:
@@ -333,6 +322,11 @@ if st.session_state.get('config_saved', False):
                     if selected_save_id:
                         print(selected_save_id)
                         st.session_state.save_id = selected_save_id
+
+                        # 加载存档时，检查存档完整性与兼容性
+                        save_paths = get_data_paths(username, selected_save_id)
+                        check_content_version(save_paths['data_file'], username)
+
                         st.success(f"已加载存档！用户名：{username}，存档时间：{selected_save_id}，可使用上方按钮加载和修改数据。")
                         st.session_state.data_updated_step1 = True                
                     else:
@@ -411,7 +405,7 @@ if st.session_state.get('config_saved', False):
                         source="fish",
                         params={
                             "type": "maimai",
-                            "query": "test_all",
+                            "query": "all",
                             "filiter": {
                                 "tag": "ap",
                                 "top": 50

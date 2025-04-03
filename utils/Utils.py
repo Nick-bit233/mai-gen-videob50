@@ -1,6 +1,7 @@
 import json
 import os.path
 import requests
+from utils.DataUtils import download_metadata, get_image_data
 from PIL import Image, ImageDraw, ImageFont
 
 DATA_CONFIG_VERSION = "0.4"
@@ -19,15 +20,20 @@ class Utils:
                 print("错误：JSON 解码失败。")
                 return {}
 
-    def JacketLoader(self, MusicId: int = 0):
-        __musicid = str(MusicId)[-4:].zfill(4)
+    def JacketLoader(self, MusicId):
+        if type(MusicId) == int:
+            image_path = f"jackets/Jackets/Jacket_{MusicId}.jpg"
+        else:
+            image_path = f"jackets/Jackets/Jacket_N_{MusicId}.jpg"
         try:
-            with Image.open(f"./images/Jackets/UI_Jacket_00{__musicid}.png") as Jacket:
-                return Jacket.copy()
+            print(f"正在获取乐曲封面{image_path}...")
+            jacket = get_image_data(image_path)
+            # 返回 RGBA 模式图像，并强制缩放到400*400px
+            return jacket.convert("RGBA").resize((400, 400), Image.LANCZOS)
         except FileNotFoundError:
-            print(f"乐曲{__musicid}不存在。")
-            with Image.open(f"./images/Jackets/UI_Jacket_000000.png") as Jacket:
-                return Jacket.copy()
+            print(f"获取乐曲封面{image_path}失败，将使用默认封面")
+            with Image.open(f"./images/Jackets/UI_Jacket_000000.png") as jacket:
+                return jacket.convert("RGBA")
 
     def DsLoader(self, level: int = 0, Ds: float = 0.0):
         if Ds >= 20 or Ds < 1:
@@ -231,7 +237,7 @@ class Utils:
                 TempImage = Image.new('RGBA', Background.size, (0, 0, 0, 0))
                 # 加载乐曲封面
                 JacketPosition = (44, 53)
-                Jacket = self.JacketLoader(record_detail["song_id"])
+                Jacket = self.JacketLoader(MusicId=record_detail["song_id"])
                 TempImage.paste(Jacket, JacketPosition, Jacket)
 
                 # 加载类型
