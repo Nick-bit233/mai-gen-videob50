@@ -2,7 +2,8 @@ import json
 import os
 import random
 import time
-from utils.Utils import get_data_from_fish, DATA_CONFIG_VERSION
+from utils.PageUtils import DATA_CONFIG_VERSION
+from utils.DataUtils import get_data_from_fish
 from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
 
 def merge_b50_data(new_b50_data, old_b50_data):

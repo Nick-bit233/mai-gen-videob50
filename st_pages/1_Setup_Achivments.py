@@ -83,11 +83,6 @@ def edit_b50_data(user_id, save_id):
         head_data = json.load(f)
         dx_rating = head_data.get("rating", 0)
         data = head_data.get("records", None)
-    # # get dx rating from raw data file
-    # raw_datafile_path = save_paths['raw_file']
-    # with open(raw_datafile_path, 'r', encoding='utf-8') as f:
-    #     raw_data = json.load(f)
-    #     dx_rating = raw_data.get("rating", 0)
     st.markdown(f'【当前存档信息】\n \n - 用户名：{user_id} \n \n - <p style="color: #00BFFF;">存档ID(时间戳)：{save_id}</p> \n \n - <p style="color: #ffc107;">DX Rating：{dx_rating}</p>', unsafe_allow_html=True)
     st.warning("您可以在下方表格中修改本存档的b50数据，注意修改保存后将无法撤销！")
     st.info("水鱼查分器不返回游玩次数数据，如需在视频中展示请手动填写游玩次数。")

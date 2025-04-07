@@ -1,10 +1,9 @@
 import json
 import os.path
 import requests
-from utils.DataUtils import download_metadata, get_image_data
+from utils.DataUtils import download_image_data, CHART_TYPE_MAP_MAIMAI
+from utils.PageUtils import load_music_metadata
 from PIL import Image, ImageDraw, ImageFont
-
-DATA_CONFIG_VERSION = "0.4"
 
 class Utils:
     def __init__(self, InputUserID: int = 0):
@@ -22,12 +21,12 @@ class Utils:
 
     def JacketLoader(self, MusicId):
         if type(MusicId) == int:
-            image_path = f"jackets/Jackets/Jacket_{MusicId}.jpg"
+            image_path = f"jackets/maimaidx/Jacket_{MusicId}.jpg"
         else:
-            image_path = f"jackets/Jackets/Jacket_N_{MusicId}.jpg"
+            image_path = f"jackets/maimaidx/Jacket_N_{MusicId}.jpg"
         try:
-            print(f"正在获取乐曲封面{image_path}...")
-            jacket = get_image_data(image_path)
+            # print(f"正在获取乐曲封面{image_path}...")
+            jacket = download_image_data(image_path)
             # 返回 RGBA 模式图像，并强制缩放到400*400px
             return jacket.convert("RGBA").resize((400, 400), Image.LANCZOS)
         except FileNotFoundError:
@@ -173,23 +172,23 @@ class Utils:
 
     def count_dx_stars(self, record_detail: dict):
         # 计算DX星数
-        with open(os.path.join(os.getcwd(), "music_datasets/all_music_infos.json"),
-                  'r', encoding='utf-8') as f:
-            music_info = json.load(f)
+        music_info = load_music_metadata()
         # 匹配乐曲id和难度id找到谱面notes数量
         level_index = record_detail['level_index']
         song_id = record_detail['song_id']
         user_dx_score = record_detail['dxScore']
-        max_dx_score = -1
-        for music in music_info:
-            if music['id'] == str(song_id):
-                notes_list = music['charts'][level_index]['notes']
-                max_dx_score = sum(notes_list) * 3
-                break
+
         dx_stars = 0
-        if max_dx_score == -1:
+        song_metadata = find_single_song_metadata(music_info, record_detail)
+        if song_metadata is None:
             print(f"未找到乐曲{song_id}的难度{level_index}的max dx score信息。")
             return dx_stars
+        else:
+            notes_list = song_metadata['charts'][level_index]['notes']
+            # 去除notes_list中的None值（sd谱中含有）
+            notes_list = [note for note in notes_list if note is not None]
+            max_dx_score = sum(notes_list) * 3
+
         match user_dx_score:
             case _ if 0 <= user_dx_score < max_dx_score * 0.85:
                 dx_stars = 0
@@ -309,60 +308,15 @@ class Utils:
         return Background
 
 
-def get_data_from_fish(username, params=None):
-    """从水鱼获取数据"""
-    if params is None:
-        params = {}
-    type = params.get("type", "maimai")
-    query = params.get("query", "best")
-    # MAIMAI DX 的请求
-    if type == "maimai":
-        if query == "best":
-            url = "https://www.diving-fish.com/api/maimaidxprober/query/player"
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "username": username,
-                "b50": "1"
-            }
-            response = requests.post(url, headers=headers, json=payload)
-        elif query == "all":
-            url = f"https://www.diving-fish.com/api/maimaidxprober/dev/player/records?username={username}"
-            # Read developer token from config file
-            if not os.path.exists("develop_token.txt"):
-                FISH_DE_TOKEN = ""
-            else:
-                with open("develop_token.txt", "r", encoding='utf-8') as f:
-                    content = f.readline().strip()
-                    FISH_DE_TOKEN = content
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                "Content-Type": "application/json",
-                "Developer-Token": FISH_DE_TOKEN,
-            }
-            response = requests.get(url, headers=headers)
-        elif query == "test_all":
-            url = "https://www.diving-fish.com/api/maimaidxprober/player/test_data"
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                "Content-Type": "application/json"
-            }
-            response = requests.get(url, headers=headers)
+def find_single_song_metadata(all_metadata, record_detail):
+    for music in all_metadata:
+        if music['id'] is not None and music['id'] == str(record_detail['song_id']):
+            return music
         else:
-            raise ValueError("Invalid filter type for MAIMAI DX")
-    elif type == "chuni":
-        raise NotImplementedError("Only MAIMAI DX is supported for now")
-    else:
-        raise ValueError("Invalid game data type for diving-fish.com")
-
-    if response.status_code == 200:
-        return response.json()
-    elif response.status_code == 400 or response.status_code == 403:
-        msg = response.json().get("message", None)
-        if not msg:
-            msg = response.json().get("msg", "水鱼端未知错误")
-        return {"error": f"用户校验失败，返回消息：{msg}"}
-    else:
-        return {"error": f"请求水鱼数据失败，状态码: {response.status_code}，返回消息：{response.json()}"}
+            # 对于未知id的新曲，必须使用曲名和谱面类型匹配
+            song_name = record_detail['title']
+            song_type = record_detail['type']
+            if song_name == music['name'] and \
+               CHART_TYPE_MAP_MAIMAI[song_type] == music['type']:
+                return music
+    return None

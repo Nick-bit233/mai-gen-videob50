@@ -1,10 +1,10 @@
 import streamlit as st
-from utils.PageUtils import change_theme
+from utils.PageUtils import change_theme, update_music_metadata
 from utils.themes import THEME_COLORS
 
 st.title("Mai-gen Videob50 视频生成器")
 
-st.write("当前版本: v0.4.2")
+st.write("当前版本: v0.5.0-beta")
 
 st.markdown(
     """
@@ -16,6 +16,13 @@ st.markdown(
 st.info("本工具的缓存数据均保存在本地，如您在编辑过程中意外退出，可在任意步骤加载已有存档继续编辑。")
 st.info("在使用过程中，请不要随意刷新页面。如果因为误刷新页面导致索引丢失，建议重新加载存档，并回到第一步检查数据完整性。")
 st.success("使用过程中遇到任何问题，可以前往Github页面发起issue，或加入QQ群：994702414 反馈")
+
+try:
+    # 检查乐曲元数据更新（TODO：设定更新冷却时间）
+    update_music_metadata()
+    st.success("乐曲元数据已更新")
+except Exception as e:
+    st.error(f"更新乐曲元数据时出错: {e}")
 
 st.write("单击下面的按钮开始")
 
