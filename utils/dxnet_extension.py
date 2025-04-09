@@ -1,4 +1,4 @@
-import json
+from utils.PageUtils import load_music_metadata
 
 # Parse achievement to rate name
 def get_rate(achievement):
@@ -62,12 +62,14 @@ def parse_level(ds):
 
 class ChartManager:
     
-    def __init__(self):
+    def __init__(self, compute_total_rating = True):
         self.all_songs = []
         self.results = []
+        self.compute_total_rating = compute_total_rating
+        self.total_rating = 0
 
-        with open("./music_datasets/jp_songs_info.json", 'r', encoding="utf-8") as f:
-            self.all_songs = json.load(f)
+        # with open("./music_datasets/jp_songs_info.json", 'r', encoding="utf-8") as f:
+        self.all_songs = load_music_metadata("maimaidx")    
 
     def fill_json(self, chart_json):
         #chart = {
@@ -94,6 +96,7 @@ class ChartManager:
         chart_level_index = chart_json["level_index"]
 
         matched_song = self.find_song(chart_title, chart_type)
+        song_rating = 0
         
         # Extract info from matched json object
         if matched_song:
@@ -103,7 +106,8 @@ class ChartManager:
                 print(f"Info: can't resolve ID for song {chart_title}.")
             ds = matched_song["charts"][chart_level_index]["level"]
             chart_json["ds"] = ds
-            chart_json["ra"] = compute_rating(chart_json["ds"], chart_json["achievements"])
+            song_rating = compute_rating(ds, chart_json["achievements"])
+            chart_json["ra"] = song_rating
             if chart_json["level"] == "0": # data from dxrating.net doesn't provide a level                    
                 chart_json["level"] = parse_level(ds)
         else:
@@ -111,7 +115,11 @@ class ChartManager:
             # Default internal level as .0 or .6(+). Need extra dataset to specify.
             chart_level = chart_json["level"]
             chart_json["ds"] = float(chart_level.replace("+", ".6") if "+" in chart_level else f"{chart_level}.0")
-            chart_json["ra"] = str(compute_rating(chart_json["ds"], chart_json["achievements"])) + "?"
+            song_rating = compute_rating(ds, chart_json["achievements"])
+            chart_json["ra"] = str(song_rating) + "?"
+
+        if self.compute_total_rating:
+            self.total_rating += song_rating
 
         return chart_json
 

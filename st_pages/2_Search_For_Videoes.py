@@ -213,25 +213,26 @@ if not os.path.exists(b50_config_file):
 
 def st_search_b50_videoes(dl_instance, placeholder, search_wait_time):
     # read b50_data
-    b50_config = load_record_config(b50_config_file)
+    b50_records = load_record_config(b50_config_file)
+    song_count = len(b50_records)
 
     with placeholder.container(border=True, height=560):
         with st.spinner("正在搜索b50视频信息..."):
             progress_bar = st.progress(0)
             write_container = st.container(border=True, height=400)
             i = 0
-            for song in b50_config:
+            for song in b50_records:
                 i += 1
-                progress_bar.progress(i / 50, text=f"正在搜索({i}/50): {song['title']}")
+                progress_bar.progress(i / song_count, text=f"正在搜索({i}/{song_count}): {song['title']}")
                 if 'video_info_match' in song and song['video_info_match']:
-                    write_container.write(f"跳过({i}/50): {song['title']} ，已储存有相关视频信息")
+                    write_container.write(f"跳过({i}/{song_count}): {song['title']} ，已储存有相关视频信息")
                     continue
                 
                 song_data, ouput_info = search_one_video(dl_instance, song)
-                write_container.write(f"【{i}/50】{ouput_info}")
+                write_container.write(f"【{i}/{song_count}】{ouput_info}")
 
                 # 每次搜索后都写入b50_data_file
-                save_record_config(b50_config_file, b50_config)
+                save_record_config(b50_config_file, b50_records)
                 
                 # 等待几秒，以减少被检测为bot的风险
                 if search_wait_time[0] > 0 and search_wait_time[1] > search_wait_time[0]:
