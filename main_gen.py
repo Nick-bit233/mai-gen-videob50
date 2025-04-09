@@ -1,7 +1,6 @@
 from gene_video import create_video_segment, create_info_segment, create_full_video, combine_full_video_from_existing_clips
 import json
 import os
-import yaml
 import traceback
 
 FONT_PATH = "./font/SOURCEHANSANSSC-BOLD.OTF"

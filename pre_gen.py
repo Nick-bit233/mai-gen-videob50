@@ -1,53 +1,52 @@
 import json
 import os
 import random
-import time
+
 from utils.PageUtils import DATA_CONFIG_VERSION
 from utils.DataUtils import get_data_from_fish
 from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
 
-def merge_b50_data(new_b50_data, old_b50_data):
-    """
-    合并两份b50数据，使用新数据的基本信息但保留旧数据中的视频相关信息
+# def merge_b50_data(new_b50_data, old_b50_data):
+#     """
+#     合并两份b50数据，使用新数据的基本信息但保留旧数据中的视频相关信息
     
-    Args:
-        new_b50_data (list): 新的b50数据（不含video_info_list和video_info_match）
-        old_b50_data (list): 旧的b50数据（youtube版或bilibili版）
+#     Args:
+#         new_b50_data (list): 新的b50数据（不含video_info_list和video_info_match）
+#         old_b50_data (list): 旧的b50数据（youtube版或bilibili版）
     
-    Returns:
-        tuple: (合并后的b50数据列表, 更新计数)
-    """
-    # 检查数据长度是否一致
-    if len(new_b50_data) != len(old_b50_data):
-        print(f"Warning: 新旧b50数据长度不一致，将使用新数据替换旧数据。")
-        return new_b50_data, 0
+#     Returns:
+#         tuple: (合并后的b50数据列表, 更新计数)
+#     """
+#     # 检查数据长度是否一致
+#     if len(new_b50_data) != len(old_b50_data):
+#         print(f"Warning: 新旧b50数据长度不一致，将使用新数据替换旧数据。")
+#         return new_b50_data, 0
     
-    # 创建旧数据的复合键映射表
-    old_song_map = {
-        (song['song_id'], song['level_index'], song['type']): song 
-        for song in old_b50_data
-    }
+#     # 创建旧数据的复合键映射表
+#     old_song_map = {
+#         (song['song_id'], song['level_index'], song['type']): song 
+#         for song in old_b50_data
+#     }
     
-    # 按新数据的顺序创建合并后的列表
-    merged_b50_data = []
-    keep_count = 0
-    for new_song in new_b50_data:
-        song_key = (new_song['song_id'], new_song['level_index'], new_song['type'])
-        if song_key in old_song_map:
-            # 如果记录已存在，使用新数据但保留原有的视频信息
-            cached_song = old_song_map[song_key]
-            new_song['video_info_list'] = cached_song.get('video_info_list', [])
-            new_song['video_info_match'] = cached_song.get('video_info_match', {})
-            if new_song == cached_song:
-                keep_count += 1
-        else:
-            new_song['video_info_list'] = []
-            new_song['video_info_match'] = {}
-        merged_b50_data.append(new_song)
+#     # 按新数据的顺序创建合并后的列表
+#     merged_b50_data = []
+#     keep_count = 0
+#     for new_song in new_b50_data:
+#         song_key = (new_song['song_id'], new_song['level_index'], new_song['type'])
+#         if song_key in old_song_map:
+#             # 如果记录已存在，使用新数据但保留原有的视频信息
+#             cached_song = old_song_map[song_key]
+#             new_song['video_info_list'] = cached_song.get('video_info_list', [])
+#             new_song['video_info_match'] = cached_song.get('video_info_match', {})
+#             if new_song == cached_song:
+#                 keep_count += 1
+#         else:
+#             new_song['video_info_list'] = []
+#             new_song['video_info_match'] = {}
+#         merged_b50_data.append(new_song)
 
-    update_count = len(new_b50_data) - keep_count
-    return merged_b50_data, update_count
-
+#     update_count = len(new_b50_data) - keep_count
+#     return merged_b50_data, update_count
 
 def fetch_user_gamedata(raw_file_path, data_file_path, username, params, source="fish"):
     # params = {

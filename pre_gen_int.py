@@ -3,9 +3,10 @@ import json
 from lxml import etree
 import os
 
-from pre_gen import merge_b50_data
 from utils.dxnet_extension import ChartManager
 from utils.PageUtils import DATA_CONFIG_VERSION
+
+LEVEL_LABEL = ["Basic", "Advanced", "Expert", "Master", "Re:MASTER"]
 
 ################################################
 # Origin B50 data file finders
@@ -124,7 +125,6 @@ def iterate_songs(div_screw):
 # Parse HTML div of a song to diving-fish raw data JSON
 def parse_html_to_json(song_div, song_id_placeholder):
     LEVEL_DIV_LABEL = ["_basic", "_advanced", "_expert", "_master", "_remaster"]
-    LEVEL_LABEL = ["Basic", "Advanced", "Expert", "Master", "Re:MASTER"]
     # Initialise chart JSON
     chart = {
         "achievements": 0,
@@ -210,7 +210,6 @@ def read_dxrating_json(b50_raw_file, username):
 
 def parse_dxrating_json(song_json, song_id_placeholder):
     LEVEL_DIV_LABEL = ["basic", "advanced", "expert", "master", "remaster"]
-    LEVEL_LABEL = ["Basic", "Advanced", "Expert", "Master", "Re:MASTER"]
 
     # Initialise chart JSON
     chart = {

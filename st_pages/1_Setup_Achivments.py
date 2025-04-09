@@ -1,15 +1,13 @@
 import streamlit as st
 import os
 import json
-import subprocess
 import traceback
-from copy import deepcopy
+
 from datetime import datetime
 from pre_gen import fetch_user_gamedata, st_init_cache_pathes
 from pre_gen_int import update_b50_data_int
-from gene_images import generate_single_image, check_mask_waring
-from utils.PageUtils import *
-from utils.PathUtils import *
+from utils.PageUtils import load_video_config, save_video_config, save_record_config, remove_invalid_chars, check_content_version, open_file_explorer, LEVEL_LABELS
+from utils.PathUtils import get_data_paths, get_user_base_dir, get_user_version_dir, get_user_versions
 from utils.dxnet_extension import get_rate
 import glob
 

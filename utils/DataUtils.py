@@ -1,5 +1,4 @@
 import json
-import os
 import requests
 import base64
 import hashlib

@@ -1,13 +1,11 @@
 import streamlit as st
 import os
-import json
-import subprocess
 import traceback
 from copy import deepcopy
 from datetime import datetime
 from gene_images import generate_single_image, check_mask_waring
-from utils.PageUtils import open_file_explorer, load_record_config, save_record_config
-from utils.PathUtils import *
+from utils.PageUtils import open_file_explorer, load_record_config
+from utils.PathUtils import get_data_paths, get_user_versions
 from utils.DataUtils import encode_song_id, CHART_TYPE_MAP_MAIMAI
 
 def check_record_songid(record_detail):

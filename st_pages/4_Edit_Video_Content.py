@@ -1,6 +1,5 @@
 import streamlit as st
 import os
-import json
 import traceback
 from datetime import datetime
 from utils.PageUtils import LEVEL_LABELS, open_file_explorer, get_video_duration, load_record_config, load_video_config, save_video_config, read_global_config

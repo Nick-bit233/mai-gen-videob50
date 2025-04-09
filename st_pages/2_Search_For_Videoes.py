@@ -1,5 +1,4 @@
 import os
-import json
 import time
 import shutil
 import random
@@ -9,7 +8,7 @@ from datetime import datetime
 from utils.PageUtils import load_record_config, save_record_config, read_global_config, write_global_config
 from utils.PathUtils import get_data_paths, get_user_versions
 from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
-from pre_gen import merge_b50_data, search_one_video
+from pre_gen import search_one_video
 
 G_config = read_global_config()
 _downloader = G_config.get('DOWNLOADER', 'bilibili')

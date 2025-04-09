@@ -4,9 +4,9 @@ import traceback
 import os
 import streamlit as st
 from datetime import datetime
-from utils.PageUtils import load_record_config, save_record_config, read_global_config, write_global_config
+from utils.PageUtils import load_record_config, save_record_config, read_global_config
 from utils.PathUtils import get_data_paths, get_user_versions
-from pre_gen import search_one_video, download_one_video
+from pre_gen import download_one_video
 
 G_config = read_global_config()
 
