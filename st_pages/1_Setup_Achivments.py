@@ -5,7 +5,7 @@ import subprocess
 import traceback
 from copy import deepcopy
 from datetime import datetime
-from pre_gen import update_b50_data, st_init_cache_pathes
+from pre_gen import fetch_user_gamedata, st_init_cache_pathes
 from pre_gen_int import update_b50_data_int_html, update_b50_data_int_json
 from gene_images import generate_single_image, check_mask_waring
 from utils.PageUtils import *
@@ -63,14 +63,14 @@ def convert_old_files(folder, username, save_paths):
         st.error("未找到video_config文件！请检查是否已将完整旧版数据文件复制到新的文件夹！")
         return
     try:
-        video_config = load_config(video_config_file)
+        video_config = load_video_config(video_config_file)
         main_clips = video_config['main']
         for each in main_clips:
             id = each['id']
             __image_path = os.path.join(save_paths['image_dir'], id + ".png")
             __image_path = os.path.normpath(__image_path)
             each['main_image'] = __image_path
-        save_config(video_config_file, video_config)          
+        save_video_config(video_config_file, video_config)          
         st.success("配置信息转换完成！")
     except Exception as e:
         st.error(f"转换video_config文件时发生错误: {e}")
@@ -79,12 +79,10 @@ def convert_old_files(folder, username, save_paths):
 def edit_b50_data(user_id, save_id):
     save_paths = get_data_paths(user_id, save_id)
     datafile_path = save_paths['data_file']
-    data = load_config(datafile_path)
-    # get dx rating from raw data file
-    raw_datafile_path = save_paths['raw_file']
-    with open(raw_datafile_path, 'r', encoding='utf-8') as f:
-        raw_data = json.load(f)
-        dx_rating = raw_data.get("rating", 0)
+    with open(datafile_path, 'r', encoding='utf-8') as f:
+        head_data = json.load(f)
+        dx_rating = head_data.get("rating", 0)
+        data = head_data.get("records", None)
     st.markdown(f'【当前存档信息】\n \n - 用户名：{user_id} \n \n - <p style="color: #00BFFF;">存档ID(时间戳)：{save_id}</p> \n \n - <p style="color: #ffc107;">DX Rating：{dx_rating}</p>', unsafe_allow_html=True)
     st.warning("您可以在下方表格中修改本存档的b50数据，注意修改保存后将无法撤销！")
     st.info("水鱼查分器不返回游玩次数数据，如需在视频中展示请手动填写游玩次数。")
@@ -191,8 +189,7 @@ def edit_b50_data(user_id, save_id):
         if st.button("保存修改"):
             # DataFrame is returned as JSON format list
             # json_data = edited_df
-            with open(datafile_path, 'w', encoding='utf-8') as f:
-                json.dump(edited_df, f, ensure_ascii=False, indent=2)
+            save_record_config(datafile_path, edited_df)
             st.success("更改已保存！")
     with col2:
         if st.button("结束编辑并返回"):
@@ -243,19 +240,28 @@ with st.container(border=True):
             st.session_state.username = username  # 保存用户名到session_state
             st.session_state.config_saved = True  # 添加状态标记
 
-def update_b50(update_function, username, save_paths):
+def fetch_new_achievement_data(username, save_paths, source, params=None):
+    save_timestamp = os.path.dirname(save_paths['data_file'])
+    raw_file_path = save_paths['raw_file']
+    data_file_path = save_paths['data_file']
     try:
-        # 使用指定的方法读取B50数据
-        b50_data = update_function(save_paths['raw_file'], save_paths['data_file'], username)
-
-        st.success(f"已获取用户{username}的最新B50数据！新的存档时间为：{os.path.dirname(save_paths['data_file'])}")
+        if source == "fish":
+            new_data = fetch_user_gamedata(raw_file_path, data_file_path, username, params, source=source)
+        elif source == "int_html":
+            new_data = update_b50_data_int_html(raw_file_path, data_file_path, username)
+        elif source == "int_json":
+            new_data = update_b50_data_int_json(raw_file_path, data_file_path, username)
+        else:
+            raise ValueError("未知数据源！")
+        st.success(f"已从用户{username}的最新数据建立存档，时间为：{save_timestamp}")
         st.session_state.data_updated_step1 = True
-        return b50_data
+        return new_data
     except Exception as e:
         st.session_state.data_updated_step1 = False
         st.error(f"获取B50数据时发生错误: {e}")
         st.expander("错误详情").write(traceback.format_exc())
         return None
+    
 
 def check_save_available(username, save_id):
     if not save_id:
@@ -311,6 +317,11 @@ if st.session_state.get('config_saved', False):
                     if selected_save_id:
                         print(selected_save_id)
                         st.session_state.save_id = selected_save_id
+
+                        # 加载存档时，检查存档完整性与兼容性
+                        save_paths = get_data_paths(username, selected_save_id)
+                        check_content_version(save_paths['data_file'], username)
+
                         st.success(f"已加载存档！用户名：{username}，存档时间：{selected_save_id}，可使用上方按钮加载和修改数据。")
                         st.session_state.data_updated_step1 = True                
                     else:
@@ -354,6 +365,7 @@ if st.session_state.get('config_saved', False):
 
     st.write(f"新建b50存档")
     with st.container(border=True):
+        # ======= Data from FISH =======
         st.info(f"从国服获取b50请使用下方按钮，您将以用户名{raw_username}从查分器获取一份新的B50数据，系统将自动为您创建一份新的存档。")
 
         if st.button("从水鱼获取b50数据（国服）"):
@@ -363,13 +375,41 @@ if st.session_state.get('config_saved', False):
             if save_id:
                 os.makedirs(save_dir, exist_ok=True) # 新建存档文件夹
                 st.session_state.save_id = save_id
-                with st.spinner("正在获取b50数据更新..."):
-                    update_b50(
-                        update_b50_data,
+                with st.spinner("正在获取数据更新..."):
+                    fetch_new_achievement_data(
                         raw_username,
                         current_paths,
+                        source="fish",
+                        params={
+                            "type": "maimai",
+                            "query": "best"
+                        }
                     )
 
+        if st.button("从水鱼获取AP b50存档"):
+            current_paths = get_data_paths(username, timestamp=None)  # 获取新的存档路径
+            save_dir = os.path.dirname(current_paths['data_file'])
+            save_id = os.path.basename(save_dir)  # 从存档路径得到新存档的时间戳
+            if save_id:
+                os.makedirs(save_dir, exist_ok=True) # 新建存档文件夹
+                st.session_state.save_id = save_id
+                with st.spinner("正在获取数据更新..."):
+                    fetch_new_achievement_data(
+                        raw_username,
+                        current_paths,
+                        source="fish",
+                        params={
+                            "type": "maimai",
+                            "query": "all",
+                            "filiter": {
+                                "tag": "ap",
+                                "top": 50
+                            },
+                        }
+                    )
+
+
+        # ======= Data from DX Web =======
         st.info("如使用国际服/日服数据，请按照下列顺序操作。国服用户请忽略。")
 
         st.markdown("1. 如果您还没有过任何外服存档，请点击下方按钮生成一份空白存档。")
@@ -401,10 +441,11 @@ if st.session_state.get('config_saved', False):
                         st.error("请先新建存档，或加载已有存档！")
                     else:
                         current_paths = get_data_paths(username, save_id)  # 获取当前存档路径
-                        update_b50(
-                            update_b50_data_int_html,
-                            username,
-                            current_paths)
+                        fetch_new_achievement_data(
+                            raw_username,
+                            current_paths,
+                            source="int_html"
+                        )
 
         with col2:
             if st.button("从本地JSON读取b50"):
@@ -414,10 +455,11 @@ if st.session_state.get('config_saved', False):
                         st.error("请先新建存档，或加载已有存档！")
                     else:
                         current_paths = get_data_paths(username, save_id)  # 获取当前存档路径
-                        update_b50(
-                            update_b50_data_int_json, 
-                            username,
-                            current_paths)
+                        fetch_new_achievement_data(
+                            raw_username,
+                            current_paths,
+                            source="int_json"
+                        )
 
 
     if st.session_state.get('data_updated_step1', False):

@@ -6,6 +6,10 @@ homepage = st.Page("st_pages/0_homepage.py",
 setup = st.Page("st_pages/1_Setup_Achivments.py",
                 title="获取和管理B50数据",
                 icon=":material/leaderboard:")
+custom_setup = st.Page("st_pages/Make_Custom_Save.py",
+                title="创建自定义B50数据",
+                icon=":material/leaderboard:")
+
 img_gen = st.Page("st_pages/Generate_Pic_Resources.py",
                 title="1. 生成B50成绩图片",
                 icon=":material/photo_library:")
@@ -28,7 +32,8 @@ composite = st.Page("st_pages/6_Compostie_Videoes.py",
 
 pg = st.navigation(
     {
-        "Home": [homepage, setup],
+        "Home": [homepage],
+        "Save-manage": [setup, custom_setup],
         "Pre-generation": [img_gen, search, download],
         "Edit-video": [edit_comment, edit_intro_ending],
         "Run-generation": [composite]
