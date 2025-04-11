@@ -6,8 +6,9 @@ from copy import deepcopy
 from datetime import datetime
 import pandas as pd
 from utils.PathUtils import *
-from utils.PageUtils import DATA_CONFIG_VERSION, remove_invalid_chars, open_file_explorer
-from utils.dxnet_extension import get_rate
+from utils.PageUtils import DATA_CONFIG_VERSION, LEVEL_LABELS, remove_invalid_chars, open_file_explorer
+from utils.DataUtils import CHART_TYPE_MAP_MAIMAI, reverse_find_song_metadata, search_songs
+from utils.dxnet_extension import get_rate, parse_level, compute_rating
 
 # 检查streamlit扩展组件安装情况
 try:
@@ -33,6 +34,10 @@ def load_songs_data():
     except Exception as e:
         st.error(f"加载歌曲数据失败: {e}")
         return []
+    
+# 加载歌曲数据
+songs_data = load_songs_data()
+maimai_level_label_list = list(LEVEL_LABELS.values())
 
 # 创建空白记录模板
 def create_empty_record(index, prefix="Number"):
@@ -45,14 +50,15 @@ def create_empty_record(index, prefix="Number"):
         "level_index": 3,
         "level": "0",
         "ds": 0.0,
-        "achievements": 100.0000,
+        "achievements": 101.0000,
         "fc": "",
         "fs": "",
         "ra": 0,
-        "rate": "sss",
+        "rate": "sssp",
         "dxScore": 0,
         "playCount": 0
     }
+
 
 # 创建空白配置模板
 def create_empty_config():
@@ -66,35 +72,37 @@ def create_empty_config():
         "records": []
     }
 
-# 搜索歌曲
-def search_songs(keyword, songs_data):
-    if not keyword or len(keyword) < 2:
-        return []
-    
-    keyword = keyword.lower()
-    results = []
-    
-    # 按歌名、艺术家、ID搜索
-    for song in songs_data:
-        song_id = str(song.get("id", ""))
-        title = song.get("title", "").lower()
-        artist = song.get("artist", "").lower()
-        
-        if (keyword in title or
-            keyword in artist or
-            keyword in song_id):
-            results.append(song)
-    
-    # 限制结果数量
-    return results[:20]
 
 # 从歌曲数据创建记录
-def create_record_from_song(song, index):
-    song_type = "DX" if song.get("dx", False) else "SD"
+def create_record_from_song(song, level_label, index, game_type="maimaidx"):
+    song_type = song.get("type", "1")
+    song_level_index = maimai_level_label_list.index(level_label)
+    # if index is out of bounds(For Re:MASTER), use last item(MASTER)
+    if song_level_index < len(song["charts"]):
+        song_charts_metadata = song["charts"][song_level_index]
+    else:
+        song_charts_metadata = song["charts"][-1]
+        level_label = maimai_level_label_list[-2]
+    song_ds = song_charts_metadata.get("level", 0)
+    notes_list = [note for note in song_charts_metadata["notes"] if note is not None]
     record = create_empty_record(index)
-    record["song_id"] = song.get("id", "")
-    record["title"] = song.get("title", "")
-    record["type"] = song_type
+    match song_type:
+        case 1:
+            record["type"] = "DX"
+        case 0:
+            record["type"] = "SD"
+        case _:
+            song_type = "DX"
+    record["song_id"] = song.get("id", -1)
+    record["title"] = song.get("name", "")
+    record["level_label"] = level_label
+    record["level_index"] = song_level_index
+    record["level"] = parse_level(song_ds)
+    record["ds"] = song_ds
+    record["fc"] = "app"
+    record["fs"] = "fsdp"
+    record["ra"] = compute_rating(song_ds, 101.0000)
+    record["dxScore"] = sum(notes_list) * 3
     return record
 
 
@@ -122,48 +130,6 @@ def save_config_to_file(username, save_id, config):
     
     return save_paths
 
-# 计算单曲评级
-def calculate_record_fields(record):
-    # 计算level
-    ds_l, ds_p = str(float(record['ds'])).split('.')
-    ds_p = int(ds_p[0])
-    plus = '+' if ds_p > 6 else ''
-    record['level'] = f"{ds_l}{plus}"
-    
-    # 计算rate
-    record['rate'] = get_rate(float(record['achievements']))
-    
-    # 确保level_index正确
-    REVERSE_LEVEL_LABELS = {"BASIC": 0, "ADVANCED": 1, "EXPERT": 2, "MASTER": 3, "RE:MASTER": 4}
-    record['level_index'] = REVERSE_LEVEL_LABELS.get(record['level_label'].upper(), 3)
-    
-    # 确保数值字段是数字类型
-    record['ra'] = int(record['ra'])
-    record['achievements'] = float(record['achievements'])
-    record['ds'] = float(record['ds'])
-    record['dxScore'] = int(record['dxScore'])
-    record['playCount'] = int(record['playCount'])
-    
-    return record
-
-# 初始化会话状态
-if "custom_config" not in st.session_state:
-    st.session_state.custom_config = create_empty_config()
-
-if "records" not in st.session_state:
-    st.session_state.records = []
-
-if "username" not in st.session_state:
-    st.session_state.username = ""
-
-if "save_id" not in st.session_state:
-    st.session_state.save_id = ""
-
-if "current_prefix" not in st.session_state:
-    st.session_state.current_prefix = "Number"
-
-# 加载歌曲数据
-songs_data = load_songs_data()
 
 @st.dialog("编辑存档基本信息")
 def edit_config_info():
@@ -204,8 +170,9 @@ def edit_config_info():
     if st.button("取消"):
         st.rerun()
 
+
 def update_record_grid(placeholder):
-    with placeholder.container():
+    with placeholder.container(border=True):
         # 显示和编辑现有记录
         if st.session_state.records:
             st.write(f"当前记录数量: {len(st.session_state.records)}")
@@ -217,7 +184,7 @@ def update_record_grid(placeholder):
                             "ds", "achievements", "fc", "fs", "ra", "rate", "dxScore", "playCount"],
                 column_config={
                     "clip_id": "编号",
-                    "song_id": st.column_config.TextColumn("曲ID"),
+                    "song_id": st.column_config.NumberColumn("曲ID"),
                     "title": "曲名",
                     "type": st.column_config.SelectboxColumn(
                         "类型",
@@ -227,7 +194,7 @@ def update_record_grid(placeholder):
                     ),
                     "level_label": st.column_config.SelectboxColumn(
                         "难度",
-                        options=["Basic", "Advanced", "Expert", "Master", "Re:MASTER"],
+                        options=maimai_level_label_list,
                         width=100,
                         required=True
                     ),
@@ -288,31 +255,15 @@ def update_record_grid(placeholder):
             )
             
             # 更新记录
-            if edited_records is not None:
-                # 处理可能的删除记录情况
-                if len(edited_records) < len(st.session_state.records):
+            if st.button("保存编辑"):
+                if edited_records is not None:
                     st.session_state.records = edited_records
-                    st.success("已删除记录")
                     st.rerun()
-                else:
-                    # 更新处理后的记录
-                    updated_records = []
-                    for i, record in enumerate(edited_records):
-                        # 计算和更新相关字段
-                        updated_record = calculate_record_fields(record)
-                        updated_records.append(updated_record)
-                    
-                    st.session_state.records = updated_records
-            
+
             # 记录管理按钮
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("自动更新所有记录"):
-                    updated_records = []
-                    for record in st.session_state.records:
-                        updated_record = calculate_record_fields(record)
-                        updated_records.append(updated_record)
-                    st.session_state.records = updated_records
+                if st.button("重置所有记录的成绩数据"):
                     st.success("已更新所有记录")
                     st.rerun()
             
@@ -323,6 +274,59 @@ def update_record_grid(placeholder):
                     st.rerun()
         else:
             st.write("当前没有记录，请添加记录。")
+
+
+def search_music_metadata(search_keyword):
+    return search_songs(search_keyword, songs_data)
+
+
+@st.dialog("搜索并添加记录")
+def search_and_add_record() -> list:
+    st.write("搜索选项")
+    with st.container(border=True):
+        level_label = st.radio(
+            "要搜索谱面的难度分类",
+            options=maimai_level_label_list,
+            index=3,
+        )
+    selected_ret_string = st_searchbox(
+        search_music_metadata,
+        placeholder="输入歌曲名称关键词或ID进行搜索",
+        key="searchbox",
+        rerun_scope="fragment"
+    )
+    
+    if st.button("添加此记录", disabled=not selected_ret_string):
+        try:
+            song_metadata = reverse_find_song_metadata(selected_ret_string, songs_data)
+            new_record = create_record_from_song(
+                song_metadata,
+                level_label,
+                len(st.session_state.records) + 1
+            )
+            st.session_state.records.append(new_record)
+            st.toast(f"已添加歌曲{selected_ret_string}的记录")
+            st.rerun()
+        except ValueError as e:
+            st.error(f"添加记录失败: {e}")
+            traceback.print_exc()
+
+
+# 初始化会话状态
+if "custom_config" not in st.session_state:
+    st.session_state.custom_config = create_empty_config()
+
+if "records" not in st.session_state:
+    st.session_state.records = []
+
+if "username" not in st.session_state:
+    st.session_state.username = ""
+
+if "save_id" not in st.session_state:
+    st.session_state.save_id = ""
+
+if "current_prefix" not in st.session_state:
+    st.session_state.current_prefix = "Number"
 
 # 用户名输入部分
 if not st.session_state.username:
@@ -373,11 +377,12 @@ if st.session_state.username:
                         current_config = load_config_from_file(username, selected_save_id)
                         if not current_config:
                             st.warning("此存档内容为空，请先保存存档！")
+                            st.session_state.custom_config = create_empty_config()
+                            st.session_state.records = []
                         else:
                             st.session_state.custom_config = current_config
                             st.session_state.records = deepcopy(current_config.get("records", []))
                             st.success(f"已加载存档！用户名：{username}，存档时间：{selected_save_id}")
-                            st.rerun()
                     else:
                         st.error("无效的存档路径！")
         else:
@@ -391,6 +396,8 @@ if st.session_state.username:
             os.makedirs(save_dir, exist_ok=True) # 新建存档文件夹
             st.session_state.save_id = save_id
             st.success(f"已新建空白存档！用户名：{username}，存档时间：{save_id}")
+            st.session_state.custom_config = create_empty_config()
+            st.session_state.records = []
 
 if st.session_state.username and st.session_state.save_id:
     # 编辑存档的基本信息
@@ -403,7 +410,7 @@ if st.session_state.username and st.session_state.save_id:
     with st.container(border=True):
 
         if st.button("搜索并添加一条歌曲记录"):
-            pass
+            search_and_add_record()
 
         if st.button("添加一条空白记录"):
             new_record = create_empty_record(len(st.session_state.records) + 1)

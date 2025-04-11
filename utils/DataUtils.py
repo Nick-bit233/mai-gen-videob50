@@ -5,6 +5,7 @@ import base64
 import hashlib
 import struct
 from PIL import Image
+import re
 
 BUCKET_ENDPOINT = "https://nickbit-maigen-images.oss-cn-shanghai.aliyuncs.com"
 FC_PROXY_ENDPOINT = "https://fish-usta-proxy-efexqrwlmf.cn-shanghai.fcapp.run"
@@ -13,6 +14,12 @@ CHART_TYPE_MAP_MAIMAI =  {
     "DX": 1,
     "宴": 10,
     "协": 11,
+}
+REVERSE_TYPE_MAP_MAIMAI = {
+    0: "SD",
+    1: "DX",
+    10: "宴",
+    11: "协",
 }
 
 def download_metadata(data_type="maimaidx"):
@@ -210,6 +217,53 @@ def get_data_from_fish(username, params=None):
         raise NotImplementedError("Only MAIMAI DX is supported for now")
     else:
         raise ValueError("Invalid game data type for diving-fish.com")
+
+
+def search_songs(query, songs_data):
+    """
+    在歌曲数据中搜索匹配的歌曲。
+    
+    Args:
+        query (str): 要搜索的查询字符串
+        songs_data (dict): 歌曲元数据的json对象
+        
+    Returns:
+        list: 匹配的歌曲列表
+    """
+    results = []
+    for song in songs_data:
+        if query.lower() in song.get('name', '').lower() \
+           or query.lower() in song.get('artist', '').lower() \
+           or query.lower() in song.get('idid', '').lower():
+            song_type = REVERSE_TYPE_MAP_MAIMAI.get(song.get('type'), '-')
+            index = songs_data.index(song)
+            result_string = f"{song.get('name', '')} [{song_type}] %{index}%"
+            results.append(result_string)
+    return results
+
+def reverse_find_song_metadata(ret_string, songs_data):
+    """
+    将搜索结果字符串转换为歌曲元数据。
+    
+    Args:
+        result_string (str): 搜索结果字符串
+        songs_data (list): 歌曲数据列表
+        
+    Returns:
+        dict: 匹配的歌曲元数据
+    """
+    match = re.search(r'%(\d+)%', ret_string)
+    if not match:
+        raise ValueError("Invalid result string format, missing index")
+    index = int(match.group(1))
+    
+    # 查找匹配的歌曲
+    for song in songs_data:
+        if songs_data.index(song) == index:
+            return song
+    raise ValueError("No matching song found in metadata")
+
+
 
 if __name__ == "__main__":
     img_path = "jackets/maimaidx/Jacket_1103.jpg"
