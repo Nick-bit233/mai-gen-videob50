@@ -1,5 +1,6 @@
 import json
 import os
+from typing import List
 import requests
 import base64
 import hashlib
@@ -219,7 +220,7 @@ def get_data_from_fish(username, params=None):
         raise ValueError("Invalid game data type for diving-fish.com")
 
 
-def search_songs(query, songs_data):
+def search_songs(query, songs_data) -> List[tuple[str, dict]]:
     """
     在歌曲数据中搜索匹配的歌曲。
     
@@ -234,11 +235,11 @@ def search_songs(query, songs_data):
     for song in songs_data:
         if query.lower() in song.get('name', '').lower() \
            or query.lower() in song.get('artist', '').lower() \
-           or query.lower() in song.get('idid', '').lower():
+           or query.lower() in str(song.get('id', '')):
             song_type = REVERSE_TYPE_MAP_MAIMAI.get(song.get('type'), '-')
             index = songs_data.index(song)
-            result_string = f"{song.get('name', '')} [{song_type}] %{index}%"
-            results.append(result_string)
+            result_string = f"{song.get('name', '')} [{song_type}]"
+            results.append((result_string, song))
     return results
 
 def reverse_find_song_metadata(ret_string, songs_data):

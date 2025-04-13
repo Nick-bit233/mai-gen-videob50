@@ -40,21 +40,25 @@ songs_data = load_songs_data()
 maimai_level_label_list = list(LEVEL_LABELS.values())
 
 # 创建空白记录模板
-def create_empty_record(index, prefix="Number"):
+def create_empty_record(index):
+    prefix = st.session_state.generate_setting.get("clip_prefix", "Clip")
+    add_name_index = st.session_state.generate_setting.get("auto_index", True)
+    auto_all_perfect = st.session_state.generate_setting.get("auto_all_perfect", True)
     return {
-        "clip_id": f"{prefix}_{index}",
-        "song_id": "",
+        "clip_id": f"clip_{index}",
+        "clip_name": f"{prefix} {index}" if add_name_index else prefix,
+        "song_id": -1,
         "title": "",
         "type": "DX",
         "level_label": "Master",
         "level_index": 3,
         "level": "0",
         "ds": 0.0,
-        "achievements": 101.0000,
-        "fc": "",
-        "fs": "",
+        "achievements": 101.0000 if auto_all_perfect else 0.0,
+        "fc": "app" if auto_all_perfect else "",
+        "fs": "fsdp" if auto_all_perfect else "",
         "ra": 0,
-        "rate": "sssp",
+        "rate": "sssp" if auto_all_perfect else "d",
         "dxScore": 0,
         "playCount": 0
     }
@@ -76,7 +80,11 @@ def create_empty_config():
 # 从歌曲数据创建记录
 def create_record_from_song(song, level_label, index, game_type="maimaidx"):
     song_type = song.get("type", "1")
+    song_id = song.get("id", -1)
+    song_id = int(song_id) if song_id is not None else -1
     song_level_index = maimai_level_label_list.index(level_label)
+    auto_all_perfect = st.session_state.generate_setting.get("auto_all_perfect", True)
+
     # if index is out of bounds(For Re:MASTER), use last item(MASTER)
     if song_level_index < len(song["charts"]):
         song_charts_metadata = song["charts"][song_level_index]
@@ -84,7 +92,7 @@ def create_record_from_song(song, level_label, index, game_type="maimaidx"):
         song_charts_metadata = song["charts"][-1]
         level_label = maimai_level_label_list[-2]
     song_ds = song_charts_metadata.get("level", 0)
-    notes_list = [note for note in song_charts_metadata["notes"] if note is not None]
+    notes_list = [note for note in song_charts_metadata.get("notes", [0]) if note is not None]
     record = create_empty_record(index)
     match song_type:
         case 1:
@@ -93,16 +101,15 @@ def create_record_from_song(song, level_label, index, game_type="maimaidx"):
             record["type"] = "SD"
         case _:
             song_type = "DX"
-    record["song_id"] = song.get("id", -1)
+    record["song_id"] = song_id
     record["title"] = song.get("name", "")
     record["level_label"] = level_label
     record["level_index"] = song_level_index
     record["level"] = parse_level(song_ds)
     record["ds"] = song_ds
-    record["fc"] = "app"
-    record["fs"] = "fsdp"
-    record["ra"] = compute_rating(song_ds, 101.0000)
-    record["dxScore"] = sum(notes_list) * 3
+    record["ra"] = compute_rating(song_ds, record.get("achievements", 0))
+    record["dxScore"] = sum(notes_list) * 3 if auto_all_perfect else 0
+    # print(record)
     return record
 
 
@@ -131,6 +138,16 @@ def save_config_to_file(username, save_id, config):
     return save_paths
 
 
+def save_custom_config():
+    # 更新配置
+    st.session_state.custom_config["records"] = st.session_state.records
+    st.session_state.custom_config["length_of_content"] = len(st.session_state.records)
+    # 保存当前配置到文件
+    save_paths = save_config_to_file(st.session_state.username, st.session_state.save_id, st.session_state.custom_config)
+    st.success(f"已保存到当前存档! 存档ID: {st.session_state.save_id}")
+    return save_paths
+
+
 @st.dialog("编辑存档基本信息")
 def edit_config_info():
     current_config = st.session_state.custom_config
@@ -139,13 +156,11 @@ def edit_config_info():
         "选择存档游戏类型",
         options=["maimai"],
         index= 0 if current_config["type"] == "maimai" else 0,
-        format_func=lambda x: x.capitalize()
     )
     sub_type = st.radio(
-        "是否为AP存档（可选，仅影响图片中AP图标的显示）", 
+        "是否为AP存档（可选，不影响视频渲染内容）", 
         options=["custom", "ap"],
         index= 1 if current_config["sub_type"] == "ap" else 0,
-        format_func=lambda x: x.capitalize()
     )
     rating = st.number_input(
         "Rating 值（可选）",
@@ -153,16 +168,11 @@ def edit_config_info():
         min_value=0,
         max_value=20000
     )
-    clip_prefix = st.text_input(
-        "每页记录标题的前缀（默认为number）",
-        value=current_config.get("clip_prefix", "Number")
-    )
 
     if st.button("保存"):
         current_config["game_type"] = game_type
         current_config["sub_type"] = sub_type
         current_config["rating"] = rating
-        current_config["clip_prefix"] = clip_prefix
         
         st.session_state.custom_config = current_config
         st.success("已保存存档基本信息")
@@ -176,15 +186,16 @@ def update_record_grid(placeholder):
         # 显示和编辑现有记录
         if st.session_state.records:
             st.write(f"当前记录数量: {len(st.session_state.records)}")
+            st.warning("注意：修改表格中的记录内容后，请务必点击‘保存编辑’按钮！未保存修改的情况下使用上方按钮添加新记录将会导致修改内容丢失！")
             
             # 创建数据编辑器
             edited_records = st.data_editor(
                 st.session_state.records,
-                column_order=["clip_id", "song_id", "title", "type", "level_label",
+                column_order=["clip_name", "song_id", "title", "type", "level_label",
                             "ds", "achievements", "fc", "fs", "ra", "rate", "dxScore", "playCount"],
                 column_config={
-                    "clip_id": "编号",
-                    "song_id": st.column_config.NumberColumn("曲ID"),
+                    "clip_name": "抬头标题",
+                    "song_id": "曲ID",
                     "title": "曲名",
                     "type": st.column_config.SelectboxColumn(
                         "类型",
@@ -258,7 +269,7 @@ def update_record_grid(placeholder):
             if st.button("保存编辑"):
                 if edited_records is not None:
                     st.session_state.records = edited_records
-                    st.rerun()
+                    save_custom_config()
 
             # 记录管理按钮
             col1, col2 = st.columns(2)
@@ -280,32 +291,33 @@ def search_music_metadata(search_keyword):
     return search_songs(search_keyword, songs_data)
 
 
-@st.dialog("搜索并添加记录")
 def search_and_add_record() -> list:
-    st.write("搜索选项")
-    with st.container(border=True):
+    with st.container():
         level_label = st.radio(
             "要搜索谱面的难度分类",
+            help="请注意，如果搜索到的乐曲没有Re:MASTER谱面，将使用其MASTER谱面数据填充记录，但难度分类仍然会显示为Re:MASTER",
             options=maimai_level_label_list,
             index=3,
+            horizontal=True,
         )
-    selected_ret_string = st_searchbox(
+
+    selected_value = st_searchbox(
         search_music_metadata,
         placeholder="输入歌曲名称关键词或ID进行搜索",
         key="searchbox",
-        rerun_scope="fragment"
+        rerun_scope="app"
     )
+    song_metadata = selected_value
     
-    if st.button("添加此记录", disabled=not selected_ret_string):
+    if st.button("添加此记录", disabled=not selected_value):
         try:
-            song_metadata = reverse_find_song_metadata(selected_ret_string, songs_data)
             new_record = create_record_from_song(
                 song_metadata,
                 level_label,
                 len(st.session_state.records) + 1
             )
             st.session_state.records.append(new_record)
-            st.toast(f"已添加歌曲{selected_ret_string}的记录")
+            st.toast(f"已添加歌曲{song_metadata['name']}的记录")
             st.rerun()
         except ValueError as e:
             st.error(f"添加记录失败: {e}")
@@ -325,8 +337,8 @@ if "username" not in st.session_state:
 if "save_id" not in st.session_state:
     st.session_state.save_id = ""
 
-if "current_prefix" not in st.session_state:
-    st.session_state.current_prefix = "Number"
+if "generate_setting" not in st.session_state:
+    st.session_state.generate_setting = {}
 
 # 用户名输入部分
 if not st.session_state.username:
@@ -374,14 +386,14 @@ if st.session_state.username:
                 if st.button("加载此存档（只需要点击一次！）"):
                     if selected_save_id:
                         st.session_state.save_id = selected_save_id
-                        current_config = load_config_from_file(username, selected_save_id)
-                        if not current_config:
+                        g_setting = load_config_from_file(username, selected_save_id)
+                        if not g_setting:
                             st.warning("此存档内容为空，请先保存存档！")
                             st.session_state.custom_config = create_empty_config()
                             st.session_state.records = []
                         else:
-                            st.session_state.custom_config = current_config
-                            st.session_state.records = deepcopy(current_config.get("records", []))
+                            st.session_state.custom_config = g_setting
+                            st.session_state.records = deepcopy(g_setting.get("records", []))
                             st.success(f"已加载存档！用户名：{username}，存档时间：{selected_save_id}")
                     else:
                         st.error("无效的存档路径！")
@@ -401,7 +413,7 @@ if st.session_state.username:
 
 if st.session_state.username and st.session_state.save_id:
     # 编辑存档的基本信息
-    st.write("点击下面的按钮，编辑本存档的基本信息（如页面抬头标题等)")
+    st.write("点击下面的按钮，编辑本存档的基本信息")
     if st.button("编辑存档基本信息"):
         edit_config_info()
 
@@ -409,13 +421,34 @@ if st.session_state.username and st.session_state.save_id:
     st.subheader("编辑歌曲记录信息")
     with st.container(border=True):
 
-        if st.button("搜索并添加一条歌曲记录"):
+        with st.expander("添加记录设定", expanded=True):
+            g_setting = st.session_state.generate_setting
+            clip_prefix = st.text_input(
+                "自定义记录的抬头标题的前缀（显示在视频页右上方，默认为Clip）",
+                value=g_setting.get("clip_prefix", "Clip")
+            )
+            auto_index = st.checkbox(
+                "自动编号（勾选后自动为记录的抬头添加尾缀编号，如Clip 1, Clip 2 ...）",
+                value=g_setting.get("auto_index", True)
+            )
+            auto_all_perfect = st.checkbox(
+                "自动填充理论值成绩",
+                value=g_setting.get("auto_all_perfect", True)
+            )
+            st.session_state.generate_setting["clip_prefix"] = clip_prefix
+            st.session_state.generate_setting["auto_index"] = auto_index
+            st.session_state.generate_setting["auto_all_perfect"] = auto_all_perfect
+
+        with st.container(border=True):
+            st.write("搜索并添加记录")
             search_and_add_record()
 
-        if st.button("添加一条空白记录"):
-            new_record = create_empty_record(len(st.session_state.records) + 1)
-            st.session_state.records.append(new_record)
-            st.success("已添加空白记录")
+        with st.container(border=True):
+            st.write("添加空白记录")
+            if st.button("添加一条空白记录"):
+                new_record = create_empty_record(len(st.session_state.records) + 1)
+                st.session_state.records.append(new_record)
+                st.success("已添加空白记录")
 
         record_detail_placeholder = st.empty()
         update_record_grid(record_detail_placeholder)
@@ -464,25 +497,13 @@ if st.session_state.username and st.session_state.save_id:
         #             st.success("记录排序已更新")
         #             st.rerun()
 
-    # 保存配置
+    # 导航功能按钮
     with st.container(border=True):
-        st.subheader("保存存档")
-
         if st.session_state.save_id and st.button("打开存档文件夹"):
             version_dir = get_user_version_dir(st.session_state.username, st.session_state.save_id)
             if os.path.exists(version_dir):
                 absolute_path = os.path.abspath(version_dir)
                 open_file_explorer(absolute_path)
-        
-        if st.button("保存修改到当前存档", disabled=not st.session_state.save_id):
-            # 更新配置
-            st.session_state.custom_config["records"] = st.session_state.records
-            st.session_state.custom_config["length_of_content"] = len(st.session_state.records)
-            
-            # 保存到文件
-            save_paths = save_config_to_file(st.session_state.username, st.session_state.save_id, st.session_state.custom_config)
-            
-            st.success(f"已保存到当前存档! 存档ID: {st.session_state.save_id}")
         
         if st.button("继续下一步"):
             st.session_state.data_updated_step1 = True

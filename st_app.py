@@ -2,7 +2,8 @@ import streamlit as st
 
 homepage = st.Page("st_pages/0_homepage.py",
                 title="首页",
-                icon=":material/home:")
+                icon=":material/home:",
+                default=True)
 setup = st.Page("st_pages/1_Setup_Achivments.py",
                 title="获取和管理B50数据",
                 icon=":material/leaderboard:")
