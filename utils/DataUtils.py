@@ -242,29 +242,6 @@ def search_songs(query, songs_data) -> List[tuple[str, dict]]:
             results.append((result_string, song))
     return results
 
-def reverse_find_song_metadata(ret_string, songs_data):
-    """
-    将搜索结果字符串转换为歌曲元数据。
-    
-    Args:
-        result_string (str): 搜索结果字符串
-        songs_data (list): 歌曲数据列表
-        
-    Returns:
-        dict: 匹配的歌曲元数据
-    """
-    match = re.search(r'%(\d+)%', ret_string)
-    if not match:
-        raise ValueError("Invalid result string format, missing index")
-    index = int(match.group(1))
-    
-    # 查找匹配的歌曲
-    for song in songs_data:
-        if songs_data.index(song) == index:
-            return song
-    raise ValueError("No matching song found in metadata")
-
-
 
 if __name__ == "__main__":
     img_path = "jackets/maimaidx/Jacket_1103.jpg"

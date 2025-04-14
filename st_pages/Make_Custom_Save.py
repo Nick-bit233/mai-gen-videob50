@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import re
 import json
 import traceback
 from copy import deepcopy
@@ -7,7 +8,7 @@ from datetime import datetime
 import pandas as pd
 from utils.PathUtils import *
 from utils.PageUtils import DATA_CONFIG_VERSION, LEVEL_LABELS, remove_invalid_chars, open_file_explorer
-from utils.DataUtils import CHART_TYPE_MAP_MAIMAI, reverse_find_song_metadata, search_songs
+from utils.DataUtils import CHART_TYPE_MAP_MAIMAI, search_songs
 from utils.dxnet_extension import get_rate, parse_level, compute_rating
 
 # 检查streamlit扩展组件安装情况
@@ -180,12 +181,15 @@ def edit_config_info():
     if st.button("取消"):
         st.rerun()
 
+def update_records_count(placeholder):
+    placeholder.write(f"当前记录数量: {len(st.session_state.records)}")
 
-def update_record_grid(placeholder):
-    with placeholder.container(border=True):
+
+def update_record_grid(grid, external_placeholder):
+    with grid.container(border=True):
         # 显示和编辑现有记录
         if st.session_state.records:
-            st.write(f"当前记录数量: {len(st.session_state.records)}")
+            st.write("编辑记录表格")
             st.warning("注意：修改表格中的记录内容后，请务必点击‘保存编辑’按钮！未保存修改的情况下使用上方按钮添加新记录将会导致修改内容丢失！")
             
             # 创建数据编辑器
@@ -270,11 +274,13 @@ def update_record_grid(placeholder):
                 if edited_records is not None:
                     st.session_state.records = edited_records
                     save_custom_config()
+                    update_records_count(external_placeholder)  # 更新外部记录数量的显示
 
             # 记录管理按钮
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("重置所有记录的成绩数据"):
+                    # TODO: 重置所有记录的成绩数据
                     st.success("已更新所有记录")
                     st.rerun()
             
@@ -295,7 +301,7 @@ def search_and_add_record() -> list:
     with st.container():
         level_label = st.radio(
             "要搜索谱面的难度分类",
-            help="请注意，如果搜索到的乐曲没有Re:MASTER谱面，将使用其MASTER谱面数据填充记录，但难度分类仍然会显示为Re:MASTER",
+            help="请注意，如果搜索到的乐曲没有Re:MASTER谱面，将使用其MASTER谱面数据填充记录",
             options=maimai_level_label_list,
             index=3,
             horizontal=True,
@@ -421,15 +427,16 @@ if st.session_state.username and st.session_state.save_id:
     st.subheader("编辑歌曲记录信息")
     with st.container(border=True):
 
-        with st.expander("添加记录设定", expanded=True):
+        with st.expander("添加记录设置", expanded=True):
             g_setting = st.session_state.generate_setting
             clip_prefix = st.text_input(
-                "自定义记录的抬头标题的前缀（显示在视频页右上方，默认为Clip）",
+                "自定义记录的抬头标题（显示在视频页右上方，默认为Clip）",
                 value=g_setting.get("clip_prefix", "Clip")
             )
             auto_index = st.checkbox(
-                "自动编号（勾选后自动为记录的抬头添加尾缀编号，如Clip 1, Clip 2 ...）",
-                value=g_setting.get("auto_index", True)
+                "自动编号",
+                help="勾选后自动为记录的抬头添加尾缀编号，如Clip 1, Clip 2 ...",
+                value=g_setting.get("auto_index", False)
             )
             auto_all_perfect = st.checkbox(
                 "自动填充理论值成绩",
@@ -440,7 +447,7 @@ if st.session_state.username and st.session_state.save_id:
             st.session_state.generate_setting["auto_all_perfect"] = auto_all_perfect
 
         with st.container(border=True):
-            st.write("搜索并添加记录")
+            st.write("搜索歌曲并添加记录")
             search_and_add_record()
 
         with st.container(border=True):
@@ -450,52 +457,66 @@ if st.session_state.username and st.session_state.save_id:
                 st.session_state.records.append(new_record)
                 st.success("已添加空白记录")
 
-        record_detail_placeholder = st.empty()
-        update_record_grid(record_detail_placeholder)
+        record_count_placeholder = st.empty()
+        update_records_count(record_count_placeholder)  # 更新记录数量的显示
 
-    st.subheader("编辑歌曲记录排序")
-    with st.container(border=True):
+        record_grid = st.container()
+        update_record_grid(record_grid, record_count_placeholder)  # 更新记录表格的显示
+
+    with st.expander("更改记录排序", expanded=True):
         st.write("拖动下面的列表，以调整记录的顺序")
-        # 准备简化版的记录数据用于排序显示
-        # display_records = []
-        # for i, record in enumerate(st.session_state.records):
-        #     display_records.append({
-        #         "id": i,
-        #         "title": record["title"] or f"记录 #{i+1}",
-        #         "type": record["type"],
-        #         "level": record["level"],
-        #         "ds": f"{record['ds']:.1f}",
-        #         "achievements": f"{record['achievements']:.4f}",
-        #         "ra": record["ra"]
-        #     })
+        # 用于排序显示的记录（字符串）
+        display_tags = []
+        for i, record in enumerate(st.session_state.records):
+            read_string = f"{record['title'] or '无曲目'} | {record['level_label'] or '无难度'} [{record['type'] or '-'}]"
+            display_tags.append(f"(#{i+1}) {read_string}")
+
+        simple_style = """
+        .sortable-component {
+            background-color: #F6F8FA;
+            font-size: 16px;
+            counter-reset: item;
+        }
+        .sortable-item {
+            background-color: black;
+            color: white;
+        }
+        """
         
-        # # 使用streamlit_sortables组件实现拖拽排序
-        # with st.container(border=True):
-        #     sorted_records = sort_items(
-        #         display_records,
-        #         key="id", 
-        #         items_key="sortable_records",
-        #         item_style={"padding": "5px", "border": "1px solid #ddd", "background": "#f1f1f1"},
-        #         display=["title", "type", "level", "ds", "achievements", "ra"]
-        #     )
-            
-        #     # 如果排序发生变化
-        #     if sorted_records and "sortable_records" in st.session_state:
-        #         # 根据排序后的顺序重建记录列表
-        #         new_records = []
-        #         for item in st.session_state.sortable_records:
-        #             new_records.append(st.session_state.records[item["id"]])
-                
-        #         # 更新clip_id
-        #         for i, record in enumerate(new_records, 1):
-        #             prefix = "NewBest" if i <= 15 else "PastBest"
-        #             idx = i if i <= 15 else i - 15
-        #             record["clip_id"] = f"{prefix}_{idx}"
-                
-        #         if st.button("应用排序更改"):
-        #             st.session_state.records = new_records
-        #             st.success("记录排序已更新")
-        #             st.rerun()
+        # 使用streamlit_sortables组件实现拖拽排序
+        with st.container(border=True):
+            sorted_tags = sort_items(
+                display_tags,
+                direction="vertical",
+                custom_style=simple_style
+            )
+
+        if sorted_tags:
+            st.session_state.sortable_records = sorted_tags
+            sorted_records = []
+            for tag in sorted_tags:
+                # 提取索引
+                match = re.search(r'\(#(\d+)\)', tag)
+                if not match:
+                    raise ValueError(f"Unable to match index from string {tag}")
+                index = int(match.group(1)) - 1
+                # 根据索引获取记录
+                sorted_records.append(st.session_state.records[index])
+
+            # st.write("Debug: sorted records")
+            # st.write(sorted_records)
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("应用排序更改"):
+                    st.session_state.records = sorted_records
+                    st.success("记录排序已更新")
+                    st.rerun()
+            with col2:
+                if st.button("同步抬头标题后缀与当前排序一致",
+                            help="仅在勾选了自动编号的情况下生效",
+                            disabled=not st.session_state.generate_setting.get("auto_index", False)):
+                    # TODO:同步抬头标题后缀
+                    pass
 
     # 导航功能按钮
     with st.container(border=True):
