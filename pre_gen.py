@@ -88,14 +88,17 @@ def generate_data_file_from_fish(fish_data, data_file_path, params):
 
             for i in range(len(b35_data)):
                 song = b35_data[i]
-                song['clip_id'] = f"PastBest_{i + 1}"
+                song['clip_name'] = f"PastBest_{i + 1}"
 
             for i in range(len(b15_data)):
                 song = b15_data[i]
-                song['clip_id'] = f"NewBest_{i + 1}"
+                song['clip_name'] = f"NewBest_{i + 1}"
             
             # 合并b35_data和b15_data到同一列表
             b50_data = b35_data + b15_data
+            for i in range(len(b50_data)):
+                song['clip_id'] = f"clip_{i + 1}"
+
             config_content = {
                 "version": DATA_CONFIG_VERSION,
                 "type": type,
@@ -151,7 +154,8 @@ def filit_maimai_ap_data(fish_data, top_len=50):
     for song in ap_data:
         index = ap_data.index(song) + 1
         # 添加clip_id字段
-        song['clip_id'] = f"APBest_{index}"
+        song['clip_name'] = f"APBest_{index}"
+        song['clip_id'] = f"clip_{index}"
 
     return ap_data
 

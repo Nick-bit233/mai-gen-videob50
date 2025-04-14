@@ -7,7 +7,7 @@ from copy import deepcopy
 from datetime import datetime
 import pandas as pd
 from utils.PathUtils import *
-from utils.PageUtils import DATA_CONFIG_VERSION, LEVEL_LABELS, remove_invalid_chars, open_file_explorer
+from utils.PageUtils import DATA_CONFIG_VERSION, LEVEL_LABELS, check_content_version, remove_invalid_chars, open_file_explorer
 from utils.DataUtils import CHART_TYPE_MAP_MAIMAI, search_songs
 from utils.dxnet_extension import get_rate, parse_level, compute_rating
 
@@ -15,13 +15,13 @@ from utils.dxnet_extension import get_rate, parse_level, compute_rating
 try:
     from streamlit_sortables import sort_items
 except ImportError:
-    st.error("缺少streamlit-sortables库，请安装该库以使用拖拽排序功能。")
+    st.error("缺少streamlit-sortables库，请更新软件发布包的运行环境，否则无法正常使用拖拽排序功能。")
     st.stop()
 
 try:
     from streamlit_searchbox import st_searchbox
 except ImportError:
-    st.error("缺少streamlit-searchbox库，请安装该库以使用搜索功能。")
+    st.error("缺少streamlit-searchbox库，请更新软件发布包的运行环境，否则无法正常使用搜索功能。")
     st.stop()
 
 st.header("创建自定义乐曲信息存档")
@@ -47,7 +47,7 @@ def create_empty_record(index):
     auto_all_perfect = st.session_state.generate_setting.get("auto_all_perfect", True)
     return {
         "clip_id": f"clip_{index}",
-        "clip_name": f"{prefix} {index}" if add_name_index else prefix,
+        "clip_name": f"{prefix}_{index}" if add_name_index else prefix,
         "song_id": -1,
         "title": "",
         "type": "DX",
@@ -66,12 +66,12 @@ def create_empty_record(index):
 
 
 # 创建空白配置模板
-def create_empty_config():
+def create_empty_config(username):
     return {
         "version": DATA_CONFIG_VERSION,
         "type": "maimai",
         "sub_type": "custom",
-        "username": "",
+        "username": username,
         "rating": 0,
         "length_of_content": 0,
         "records": []
@@ -118,6 +118,8 @@ def create_record_from_song(song, level_label, index, game_type="maimaidx"):
 def load_config_from_file(username, save_id):
     save_paths = get_data_paths(username, save_id)
     config_file = save_paths['data_file']
+    # 读取存档时，检查存档文件版本，若为旧版本尝试自动更新
+    check_content_version(config_file, username)
     
     if os.path.exists(config_file):
         with open(config_file, 'r', encoding='utf-8') as f:
@@ -145,7 +147,7 @@ def save_custom_config():
     st.session_state.custom_config["length_of_content"] = len(st.session_state.records)
     # 保存当前配置到文件
     save_paths = save_config_to_file(st.session_state.username, st.session_state.save_id, st.session_state.custom_config)
-    st.success(f"已保存到当前存档! 存档ID: {st.session_state.save_id}")
+    st.success(f"已保存到当前存档! ")
     return save_paths
 
 
@@ -176,7 +178,17 @@ def edit_config_info():
         current_config["rating"] = rating
         
         st.session_state.custom_config = current_config
-        st.success("已保存存档基本信息")
+        save_custom_config()
+        st.rerun()
+    if st.button("取消"):
+        st.rerun()
+
+
+@st.dialog("清空数据确认")
+def clear_data_confirmation(opration_name, opration_func):
+    st.write(f"确定要{opration_name}吗？此操作不可撤销！")
+    if st.button("确认"):
+        opration_func()
         st.rerun()
     if st.button("取消"):
         st.rerun()
@@ -280,15 +292,17 @@ def update_record_grid(grid, external_placeholder):
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("重置所有记录的成绩数据"):
-                    # TODO: 重置所有记录的成绩数据
-                    st.success("已更新所有记录")
-                    st.rerun()
+                    clear_data_confirmation(
+                        "清零所有记录的成绩数据", 
+                        clear_all_records_achievement
+                    )
             
             with col2:
                 if st.button("清空所有记录"):
-                    st.session_state.records = []
-                    st.success("已清空所有记录")
-                    st.rerun()
+                    clear_data_confirmation(
+                        "清空所有记录",
+                        clear_all_records
+                    )
         else:
             st.write("当前没有记录，请添加记录。")
 
@@ -330,29 +344,28 @@ def search_and_add_record() -> list:
             traceback.print_exc()
 
 
-# 初始化会话状态
-if "custom_config" not in st.session_state:
-    st.session_state.custom_config = create_empty_config()
+def clear_all_records_achievement():
+    for record in st.session_state.records:
+        record["achievements"] = 0.0
+        record["fc"] = ""
+        record["fs"] = ""
+        record["ra"] = 0
+        record["rate"] = "d"
+        record["dxScore"] = 0
+    save_custom_config()
 
-if "records" not in st.session_state:
+
+def clear_all_records():
     st.session_state.records = []
+    save_custom_config()
 
-if "username" not in st.session_state:
-    st.session_state.username = ""
-
-if "save_id" not in st.session_state:
-    st.session_state.save_id = ""
-
-if "generate_setting" not in st.session_state:
-    st.session_state.generate_setting = {}
 
 # 用户名输入部分
-if not st.session_state.username:
+if not st.session_state.get("username", None):
     with st.container(border=True):
         st.subheader("输入用户名")
         input_username = st.text_input(
-            "输入用户名（将为此用户名创建存档）",
-            value=st.session_state.username if st.session_state.username else ""
+            "输入用户名（将为此用户名创建存档）"
         )
         
         if st.button("确定"):
@@ -374,7 +387,20 @@ if not st.session_state.username:
                 st.success("用户名已保存！")
                 st.session_state.username = safe_username
 
-if st.session_state.username:
+# 初始化会话状态
+if "custom_config" not in st.session_state:
+    st.session_state.custom_config = create_empty_config(st.session_state.get("username", ""))
+
+if "records" not in st.session_state:
+    st.session_state.records = []
+
+if "save_id" not in st.session_state:
+    st.session_state.save_id = ""
+
+if "generate_setting" not in st.session_state:
+    st.session_state.generate_setting = {}
+
+if st.session_state.get("username", None):
     username = st.session_state.username
     with st.container(border=True):
         st.write(f"当前用户名: {st.session_state.username}")
@@ -395,7 +421,7 @@ if st.session_state.username:
                         g_setting = load_config_from_file(username, selected_save_id)
                         if not g_setting:
                             st.warning("此存档内容为空，请先保存存档！")
-                            st.session_state.custom_config = create_empty_config()
+                            st.session_state.custom_config = create_empty_config(st.session_state.get("username", ""))
                             st.session_state.records = []
                         else:
                             st.session_state.custom_config = g_setting
@@ -414,10 +440,10 @@ if st.session_state.username:
             os.makedirs(save_dir, exist_ok=True) # 新建存档文件夹
             st.session_state.save_id = save_id
             st.success(f"已新建空白存档！用户名：{username}，存档时间：{save_id}")
-            st.session_state.custom_config = create_empty_config()
+            st.session_state.custom_config = create_empty_config(st.session_state.get("username", ""))
             st.session_state.records = []
 
-if st.session_state.username and st.session_state.save_id:
+if st.session_state.get("username", None) and st.session_state.get("save_id", None):
     # 编辑存档的基本信息
     st.write("点击下面的按钮，编辑本存档的基本信息")
     if st.button("编辑存档基本信息"):
@@ -508,15 +534,20 @@ if st.session_state.username and st.session_state.save_id:
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("应用排序更改"):
+                    # TODO：需要同步clip id
                     st.session_state.records = sorted_records
-                    st.success("记录排序已更新")
+                    # 更改排序后需要保存到文件
+                    save_custom_config()
                     st.rerun()
             with col2:
                 if st.button("同步抬头标题后缀与当前排序一致",
-                            help="仅在勾选了自动编号的情况下生效",
+                            help="仅在勾选了自动编号的情况下生效（请先应用排序更改，再点击按钮同步）",
                             disabled=not st.session_state.generate_setting.get("auto_index", False)):
-                    # TODO:同步抬头标题后缀
-                    pass
+                    # （手动）同步clip name
+                    for i, record in enumerate(st.session_state.records):
+                        record["clip_name"] = f"{st.session_state.generate_setting['clip_prefix']}_{i+1}"
+                    save_custom_config()
+                    st.rerun()
 
     # 导航功能按钮
     with st.container(border=True):

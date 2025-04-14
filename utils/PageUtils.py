@@ -7,7 +7,7 @@ import platform
 from moviepy import VideoFileClip
 from utils.DataUtils import download_metadata
 
-DATA_CONFIG_VERSION = "0.4"
+DATA_CONFIG_VERSION = "0.5"
 LEVEL_LABELS = {
     0: "BASIC",
     1: "ADVANCED",
@@ -20,13 +20,16 @@ def remove_invalid_chars(text: str) -> str:
     # 去除非法字符，使用re.sub
     return re.sub(r'[\\/:*?"<>|]', '', text)
 
-def check_content_version(config_file, username):
-    if os.path.exists(config_file):
-        with open(config_file, 'r', encoding='utf-8') as f:
-            content = json.load(f)
-    # 检查版本号是否存在，不存在则添加
+def try_update_config_json(content, username):
+    # v0.4以下
     if type(content) == list:
-        print("存档版本过旧，转换存档格式到最新版本...")
+        print("存档版本过旧，转换存档到最新版本...")
+        for item in content:
+            index = records.index(item)
+            item["clip_name"] = item.get("clip_id", "Clip")
+            item["clip_id"] = f"clip_{index + 1}"
+            # 将item["level_label"]转换为全大写
+            item["level_label"] = item.get("level_label", "").upper()
         new_content = {
             "version": DATA_CONFIG_VERSION,
             "type": "maimai",
@@ -36,17 +39,33 @@ def check_content_version(config_file, username):
             "length_of_content": len(content),
             "records": content,
         }
-        with open(config_file, 'w', encoding='utf-8') as f:
-            json.dump(new_content, f, ensure_ascii=False, indent=4)
+        return new_content
+    # v0.4
+    elif type(content) == dict and 'version' in content and content['version'] == "0.4":
+        print("转换v0.4存档到最新版本...")
+        content["version"] = DATA_CONFIG_VERSION
+        records = content["records"]
+        for item in records:
+            index = records.index(item)
+            item["clip_name"] = item.get("clip_id", "Clip")
+            item["clip_id"] = f"clip_{index + 1}"
+            item["level_label"] = item.get("level_label", "").upper()
+        return content
     else:
-        if "version" not in content:
-            print("存档版本号不存在，添加版本号...")
-            content["version"] = DATA_CONFIG_VERSION
-            with open(config_file, 'w', encoding='utf-8') as f:
-                json.dump(content, f, ensure_ascii=False, indent=4)
-        else:
-            if content["version"] != DATA_CONFIG_VERSION:
-                print(f"存档版本号不匹配，当前最新版本：{DATA_CONFIG_VERSION}，文件版本：{content['version']}")   
+        raise ValueError("无法匹配存档版本，请检查存档文件")
+
+def check_content_version(config_file, username):
+    if os.path.exists(config_file):
+        with open(config_file, 'r', encoding='utf-8') as f:
+            content = json.load(f)
+    # 检查版本号是否存在或过期
+    if "version" not in content or content["version"] != DATA_CONFIG_VERSION:
+        print(f"存档版本号不匹配，当前最新版本：{DATA_CONFIG_VERSION}，文件版本：{content.get('version', 'None') or 'None'}")
+        # 尝试修复存档
+        content = try_update_config_json(content, username)
+        # 保存更新后的存档
+        with open(config_file, 'w', encoding='utf-8') as f:
+            json.dump(content, f, ensure_ascii=False, indent=4)
 
 
 def update_music_metadata():

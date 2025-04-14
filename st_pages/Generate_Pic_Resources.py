@@ -38,19 +38,20 @@ def st_generate_b50_images(placeholder, user_id, save_paths):
             acc_string = f"{record_detail['achievements']:.4f}"
             mask_check_cnt, mask_warn = check_mask_waring(acc_string, mask_check_cnt, mask_warn)
             if mask_warn and not warned:
-                st.warning("检测到多个仅有一位小数精度的成绩，请尝试取消查分器设置的成绩掩码以获取精确成绩。特殊情况请忽略。")
+                st.warning("检测到多个仅有一位小数精度的成绩，请尝试取消查分器设置的成绩掩码以获取精确成绩。如为AP B50或自定义数据请忽略。")
                 warned = True
             record_for_gene_image = deepcopy(record_detail)
             record_for_gene_image['achievements'] = acc_string
             # TODO: always use music tag as song_id
             record_for_gene_image['song_id'] = check_record_songid(record_detail)
-            clip_id = record_detail['clip_id']
-            if "_" in clip_id:
-                prefix = clip_id.split("_")[0]
-                image_name_index = int(clip_id.split("_")[1]) - 1
+            clip_name = record_detail['clip_name']
+            if "_" in clip_name:
+                prefix = clip_name.split("_")[0]
+                image_name_index = int(clip_name.split("_")[1]) - 1
             else:
-                prefix = record_detail['clip_id']
+                prefix = record_detail['clip_name']
                 image_name_index = index
+            # TODO：重构，无需index了，record_detail中已经含有全部信息
             generate_single_image(
                 "./images/B50ViedoBase.png",
                 record_for_gene_image,
