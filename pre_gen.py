@@ -97,12 +97,14 @@ def generate_data_file_from_fish(fish_data, data_file_path, params):
             # 合并b35_data和b15_data到同一列表
             b50_data = b35_data + b15_data
             for i in range(len(b50_data)):
+                song = b50_data[i]
+                song["level_label"] = song.get("level_label", "").upper()
                 song['clip_id'] = f"clip_{i + 1}"
 
             config_content = {
                 "version": DATA_CONFIG_VERSION,
                 "type": type,
-                "sub_type": "b50",
+                "sub_type": "best",
                 "username": fish_data['username'],
                 "rating": fish_data['rating'],
                 "length_of_content": len(b50_data),
@@ -153,6 +155,8 @@ def filit_maimai_ap_data(fish_data, top_len=50):
 
     for song in ap_data:
         index = ap_data.index(song) + 1
+        # 将level_label转换为全大写
+        song["level_label"] = song.get("level_label", "").upper()
         # 添加clip_id字段
         song['clip_name'] = f"APBest_{index}"
         song['clip_id'] = f"clip_{index}"
@@ -252,7 +256,7 @@ def st_init_cache_pathes():
             os.makedirs(path)
 
 
-def st_gene_resource_config(b50_data, 
+def st_gene_resource_config(records, config_sub_type,
                             images_path, videoes_path, output_file,
                             clip_start_interval, clip_play_time, default_comment_placeholders):
     intro_clip_data = {
@@ -280,11 +284,12 @@ def st_gene_resource_config(b50_data,
         print(f"Error: 视频开始时间区间设置错误，请检查global_config.yaml文件中的CLIP_START_INTERVAL配置。")
         clip_start_interval = (clip_start_interval[1], clip_start_interval[1])
 
-    for song in b50_data:
+    for song in records:
         if not song['clip_id']:
             print(f"Error: 没有找到 {song['title']}-{song['level_label']}-{song['type']} 的clip_id，请检查数据格式，跳过该片段。")
             continue
         id = song['clip_id']
+        clip_name = song.get('clip_name', id)
         video_name = f"{song['song_id']}-{song['level_index']}-{song['type']}"
         __image_path = os.path.join(images_path, id + ".png")
         __image_path = os.path.normpath(__image_path)
@@ -304,6 +309,7 @@ def st_gene_resource_config(b50_data,
 
         main_clip_data = {
             "id": id,
+            "clip_name": clip_name,
             "achievement_title": song['title'],
             "song_id": song['song_id'],
             "level_index": song['level_index'],
@@ -317,8 +323,17 @@ def st_gene_resource_config(b50_data,
         }
         main_clips.append(main_clip_data)
 
-    # 倒序排列（b15在前，b35在后）
-    main_clips.reverse()
+    # 根据配置文件中的sub_type类型进行排序（b50/apb50等需要翻转排序，其余正序）
+    match config_sub_type:
+        case "best":
+            main_clips.reverse()
+        case "ap":
+            main_clips.reverse()
+        case "custom":
+            pass
+        case _:
+            print(f"Error: 不支持的sub_type类型 {config_sub_type}，将使用默认正序。")
+            pass
 
     video_config_data["main"] = main_clips
 

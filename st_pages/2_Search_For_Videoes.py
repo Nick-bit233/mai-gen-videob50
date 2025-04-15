@@ -213,7 +213,7 @@ if not os.path.exists(b50_config_file):
 
 def st_search_b50_videoes(dl_instance, placeholder, search_wait_time):
     # read b50_data
-    b50_config = load_record_config(b50_config_file)
+    b50_config = load_record_config(b50_config_file, username)
 
     with placeholder.container(border=True, height=560):
         with st.spinner("正在搜索b50视频信息..."):

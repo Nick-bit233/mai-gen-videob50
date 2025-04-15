@@ -36,6 +36,7 @@ def generate_complete_video(configs, username,
         print(f"Error: 合成完整视频时发生异常: {traceback.print_exc()}")
         return {"status": "error", "info": f"合成完整视频时发生异常: {traceback.print_exc()}"}
 
+@DeprecationWarning
 def video_generation_test():
     username = "c1ty"
 
@@ -83,6 +84,7 @@ def video_generation_test():
     #                            fps=30, threads=4, preset='ultrafast', bitrate='5000k')
     # full_video.show()
 
+@DeprecationWarning
 def combine_video_test(username):
     print(f"Start: 正在合并{username}的B50视频")
     video_clip_path = f"./videos/{username}"

@@ -20,7 +20,7 @@ def remove_invalid_chars(text: str) -> str:
     # 去除非法字符，使用re.sub
     return re.sub(r'[\\/:*?"<>|]', '', text)
 
-def try_update_config_json(content, username):
+def try_update_config_json(content, username=""):
     # v0.4以下
     if type(content) == list:
         print("存档版本过旧，转换存档到最新版本...")
@@ -54,10 +54,13 @@ def try_update_config_json(content, username):
     else:
         raise ValueError("无法匹配存档版本，请检查存档文件")
 
-def check_content_version(config_file, username):
+def load_full_config_safe(config_file, username):
+    # 尝试读取存档文件，如果不存在则返回None
     if os.path.exists(config_file):
         with open(config_file, 'r', encoding='utf-8') as f:
             content = json.load(f)
+    else:
+        raise FileNotFoundError(f"存档文件不存在：{config_file}")
     # 检查版本号是否存在或过期
     if "version" not in content or content["version"] != DATA_CONFIG_VERSION:
         print(f"存档版本号不匹配，当前最新版本：{DATA_CONFIG_VERSION}，文件版本：{content.get('version', 'None') or 'None'}")
@@ -66,6 +69,9 @@ def check_content_version(config_file, username):
         # 保存更新后的存档
         with open(config_file, 'w', encoding='utf-8') as f:
             json.dump(content, f, ensure_ascii=False, indent=4)
+        return content
+    else:
+        return content
 
 
 def update_music_metadata():
@@ -91,12 +97,13 @@ def load_music_metadata(game_type="maimaidx"):
 
 
 # r/w config/config_{platfrom}.json
-def load_record_config(config_file):
-    if os.path.exists(config_file):
-        with open(config_file, 'r', encoding='utf-8') as f:
-            content = json.load(f)
-            return content.get("records", None)
-    return None
+def load_record_config(config_file, username=""):
+    try:
+        # 读取存档时，检查存档文件版本，若为旧版本尝试自动更新
+        content = load_full_config_safe(config_file, username)
+        return content.get("records", None)
+    except FileNotFoundError:
+        return None
 
 def save_record_config(config_file, config_data):
     if os.path.exists(config_file):

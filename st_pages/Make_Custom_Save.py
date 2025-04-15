@@ -2,12 +2,13 @@ import streamlit as st
 import os
 import re
 import json
+from json import JSONEncoder
 import traceback
 from copy import deepcopy
 from datetime import datetime
 import pandas as pd
 from utils.PathUtils import *
-from utils.PageUtils import DATA_CONFIG_VERSION, LEVEL_LABELS, check_content_version, remove_invalid_chars, open_file_explorer
+from utils.PageUtils import DATA_CONFIG_VERSION, LEVEL_LABELS, load_full_config_safe, remove_invalid_chars, open_file_explorer
 from utils.DataUtils import CHART_TYPE_MAP_MAIMAI, search_songs
 from utils.dxnet_extension import get_rate, parse_level, compute_rating
 
@@ -25,6 +26,12 @@ except ImportError:
     st.stop()
 
 st.header("创建自定义乐曲信息存档")
+
+class IntKeepingEncoder(JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, int):
+            return int(obj)
+        return super().default(obj)
 
 # 加载歌曲数据
 @st.cache_data
@@ -91,7 +98,8 @@ def create_record_from_song(song, level_label, index, game_type="maimaidx"):
         song_charts_metadata = song["charts"][song_level_index]
     else:
         song_charts_metadata = song["charts"][-1]
-        level_label = maimai_level_label_list[-2]
+        song_level_index = 3
+        level_label = maimai_level_label_list[song_level_index]
     song_ds = song_charts_metadata.get("level", 0)
     notes_list = [note for note in song_charts_metadata.get("notes", [0]) if note is not None]
     record = create_empty_record(index)
@@ -118,14 +126,11 @@ def create_record_from_song(song, level_label, index, game_type="maimaidx"):
 def load_config_from_file(username, save_id):
     save_paths = get_data_paths(username, save_id)
     config_file = save_paths['data_file']
-    # 读取存档时，检查存档文件版本，若为旧版本尝试自动更新
-    check_content_version(config_file, username)
-    
-    if os.path.exists(config_file):
-        with open(config_file, 'r', encoding='utf-8') as f:
-            content = json.load(f)
-            return content
-    else:
+    try:
+        # 读取存档时，检查存档文件版本，若为旧版本尝试自动更新
+        content = load_full_config_safe(config_file, username)
+        return content
+    except FileNotFoundError:
         return None
 
 
@@ -136,7 +141,8 @@ def save_config_to_file(username, save_id, config):
     os.makedirs(save_dir, exist_ok=True)
     
     with open(save_paths['data_file'], 'w', encoding='utf-8') as f:
-        json.dump(config, f, ensure_ascii=False, indent=4)
+        test_r = config.get("records", [])[0]
+        json.dump(config, f, ensure_ascii=False, indent=4, cls=IntKeepingEncoder)
     
     return save_paths
 
@@ -161,9 +167,9 @@ def edit_config_info():
         index= 0 if current_config["type"] == "maimai" else 0,
     )
     sub_type = st.radio(
-        "是否为AP存档（可选，不影响视频渲染内容）", 
-        options=["custom", "ap"],
-        index= 1 if current_config["sub_type"] == "ap" else 0,
+        "是否为BestXX存档（若选择为best，则视频渲染将倒序进行）", 
+        options=["custom", "best"],
+        index= 1 if current_config["sub_type"] in ["ap", "best"] else 0,
     )
     rating = st.number_input(
         "Rating 值（可选）",
@@ -223,7 +229,7 @@ def update_record_grid(grid, external_placeholder):
                         "难度",
                         options=maimai_level_label_list,
                         width=100,
-                        required=True
+                        required=True,
                     ),
                     "ds": st.column_config.NumberColumn(
                         "定数",
@@ -534,7 +540,9 @@ if st.session_state.get("username", None) and st.session_state.get("save_id", No
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("应用排序更改"):
-                    # TODO：需要同步clip id
+                    # 需要同步clip id
+                    for i, record in enumerate(sorted_records):
+                        record["clip_id"] = f"clip_{i+1}"
                     st.session_state.records = sorted_records
                     # 更改排序后需要保存到文件
                     save_custom_config()

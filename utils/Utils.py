@@ -174,7 +174,7 @@ class Utils:
         # 计算DX星数
         music_info = load_music_metadata()
         # 匹配乐曲id和难度id找到谱面notes数量
-        level_index = record_detail['level_index']
+        level_index = int(record_detail['level_index'])
         song_id = record_detail['song_id']
         user_dx_score = record_detail['dxScore']
 

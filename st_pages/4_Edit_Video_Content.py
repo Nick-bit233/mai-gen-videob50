@@ -3,7 +3,7 @@ import os
 import json
 import traceback
 from datetime import datetime
-from utils.PageUtils import LEVEL_LABELS, open_file_explorer, get_video_duration, load_record_config, load_video_config, save_video_config, read_global_config
+from utils.PageUtils import LEVEL_LABELS, open_file_explorer, get_video_duration, load_full_config_safe, load_video_config, save_video_config, read_global_config
 from utils.PathUtils import get_data_paths, get_user_versions
 from pre_gen import st_gene_resource_config
 
@@ -81,14 +81,17 @@ def update_preview(preview_placeholder, config, current_index):
             return
 
         # 显示当前视频片段的内容
-        st.subheader(f"当前预览: {item['id']}")
+        clip_id = item['id']
+        clip_name = item.get('clip_name', clip_id)
+        st.subheader(f"当前预览: {clip_name}")
+
         info_col1, info_col2 = st.columns(2)
         with info_col1:
             st.text(f"谱面名称：{item['achievement_title']} ({item['type']}) [{LEVEL_LABELS[item['level_index']]}]")
         with info_col2:
             absolute_path = os.path.abspath(os.path.dirname(item['video']))
             st.text(f"谱面确认视频文件：{os.path.basename(item['video'])}")
-            if st.button("打开视频所在文件夹", key=f"open_folder_{item['id']}"):
+            if st.button("打开视频所在文件夹", key=f"open_folder_{clip_id}"):
                 open_file_explorer(absolute_path)
         main_col1, main_col2 = st.columns(2)
         with main_col1:
@@ -98,7 +101,7 @@ def update_preview(preview_placeholder, config, current_index):
             @st.dialog("删除视频确认")
             def delete_video_dialog():
                 st.warning("确定要删除这个视频吗？此操作不可撤销！")
-                if st.button("确认删除", key=f"confirm_delete_{item['id']}"):
+                if st.button("确认删除", key=f"confirm_delete_{clip_id}"):
                     try:
                         os.remove(item['video'])
                         st.toast("视频已删除！")
@@ -109,13 +112,13 @@ def update_preview(preview_placeholder, config, current_index):
             if os.path.exists(item['video']):
                 st.video(item['video'])         
                 st.info(f"谱面确认视频不是想要的那个？可能刚才在检查下载链接的时候弄错了什么…… \n 点击下面按钮可以删除此视频，然后请回到上一步重新下载。")
-                if st.button("删除该视频", key=f"delete_btn_{item['id']}"):
+                if st.button("删除该视频", key=f"delete_btn_{clip_id}"):
                     delete_video_dialog()
             else:
                 st.warning("谱面确认视频文件不存在，请检查下载步骤是否正常完成！")
 
         st.subheader("编辑评论")
-        item['text'] = st.text_area("心得体会", value=item.get('text', ''), key=f"text_{item['id']}",
+        item['text'] = st.text_area("心得体会", value=item.get('text', ''), key=f"text_{clip_id}",
                                     placeholder="请填写b50评价")
 
         # 从文件中获取视频的时长
@@ -147,17 +150,17 @@ def update_preview(preview_placeholder, config, current_index):
         with scol1:
             st.subheader("开始时间")
         with scol2:
-            start_min = st.number_input("分钟", min_value=0, value=show_start_minutes, step=1, key=f"start_min_{item['id']}")
+            start_min = st.number_input("分钟", min_value=0, value=show_start_minutes, step=1, key=f"start_min_{clip_id}")
         with scol3:
-            start_sec = st.number_input("秒", min_value=0, max_value=59, value=show_start_seconds, step=1, key=f"start_sec_{item['id']}")
+            start_sec = st.number_input("秒", min_value=0, max_value=59, value=show_start_seconds, step=1, key=f"start_sec_{clip_id}")
             
         ecol1, ecol2, ecol3 = st.columns(3, vertical_alignment="bottom")
         with ecol1:
             st.subheader("结束时间")
         with ecol2:
-            end_min = st.number_input("分钟", min_value=0, value=show_end_minutes, step=1, key=f"end_min_{item['id']}")
+            end_min = st.number_input("分钟", min_value=0, value=show_end_minutes, step=1, key=f"end_min_{clip_id}")
         with ecol3:
-            end_sec = st.number_input("秒", min_value=0, max_value=59, value=show_end_seconds, step=1, key=f"end_sec_{item['id']}")
+            end_sec = st.number_input("秒", min_value=0, max_value=59, value=show_end_seconds, step=1, key=f"end_sec_{clip_id}")
 
         # 转换为总秒数
         start_time = start_min * 60 + start_sec
@@ -198,17 +201,24 @@ if downloader_type == "youtube":
 elif downloader_type == "bilibili":
     b50_config_file = current_paths['config_bi']
 if not os.path.exists(b50_config_file):
-    st.error(f"未找到配置文件{b50_config_file}，请检查B50存档的数据完整性！")
+    st.error(f"未找到存档配置文件{b50_config_file}，请检查B50存档的数据完整性！")
     st.stop()
-b50_config = load_record_config(b50_config_file)
-video_config = load_video_config(video_config_output_file)
 
+try:
+    b50_config = load_full_config_safe(b50_config_file, username)
+    config_subtype = b50_config.get('sub_type', 'best')
+    records = b50_config.get('records', [])
+except Exception as e:
+    st.error(f"读取存档配置文件失败: {e}")
+    st.stop()
+
+video_config = load_video_config(video_config_output_file)
 if not video_config or 'main' not in video_config:
     st.warning("该存档还没有视频内容的配置文件。请先点击下方按钮，生成配置后方可编辑。")
     if st.button("生成视频内容配置"):
         st.toast("正在生成……")
         try:
-            video_config = st_gene_resource_config(b50_config, 
+            video_config = st_gene_resource_config(records, config_subtype,
                                             image_output_path, video_download_path, video_config_output_file,
                                             G_config['CLIP_START_INTERVAL'], G_config['CLIP_PLAY_TIME'], G_config['DEFAULT_COMMENT_PLACEHOLDERS'])
             st.success("视频配置生成完成！")

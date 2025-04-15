@@ -1,13 +1,10 @@
 import streamlit as st
 import os
 import json
-import subprocess
 import traceback
-from copy import deepcopy
 from datetime import datetime
 from pre_gen import fetch_user_gamedata, st_init_cache_pathes
 from pre_gen_int import update_b50_data_int_html, update_b50_data_int_json
-from gene_images import generate_single_image, check_mask_waring
 from utils.PageUtils import *
 from utils.PathUtils import *
 from utils.dxnet_extension import get_rate
@@ -86,7 +83,7 @@ def edit_b50_data(user_id, save_id):
         dx_rating = head_data.get("rating", 0)
         data = head_data.get("records", None)
     st.markdown(f'【当前存档信息】\n \n - 用户名：{user_id} \n \n - <p style="color: #00BFFF;">存档ID(时间戳)：{save_id}</p> \n \n - <p style="color: #ffc107;">DX Rating：{dx_rating}</p>', unsafe_allow_html=True)
-    st.warning("请注意：该页面组件已于v0.5.0版本后过时，如需手动修改存档，请于‘创建自定义b50数据’中操作。本页面仍然保留，但不对可能的数据损坏负责！")
+    st.error("请注意：该页面组件已于v0.5.0版本后过时，如需手动修改存档，请在‘创建/编辑自定义b50数据’页面中操作。本页面仍然保留，但不对可能的数据损坏负责！")
     st.warning("注意：修改保存后将无法撤销！")
     st.info("水鱼查分器不返回游玩次数数据，如需在视频中展示请手动填写游玩次数。")
     st.info("通过导入HTML/JSON获取时：\n1. 数据不包括FC状态/FS状态/DX分数，如有需求请手动填写\n2. 定数信息为本地缓存的日服数据库读取，与国服/国际服不符是正常现象。\n3. 本地数据库可能过期，可能出现rating中带有'?'的乐曲。请手动检查定数和修改rating。")
@@ -322,7 +319,7 @@ if st.session_state.get('config_saved', False):
 
                         # 加载存档时，检查存档完整性与兼容性
                         save_paths = get_data_paths(username, selected_save_id)
-                        check_content_version(save_paths['data_file'], username)
+                        load_full_config_safe(save_paths['data_file'], username)
 
                         st.success(f"已加载存档！用户名：{username}，存档时间：{selected_save_id}，可使用上方按钮加载和修改数据。")
                         st.session_state.data_updated_step1 = True                
@@ -498,7 +495,7 @@ if st.session_state.get('config_saved', False):
             current_paths = get_data_paths(username, st.session_state.save_id)
             version_dir = get_user_version_dir(username, st.session_state.save_id)
             convert_old_files(version_dir, username, current_paths)  # 转换旧版本文件名
-            check_content_version(current_paths['data_file'], username)  # 转换旧版本config json文件
+            load_full_config_safe(current_paths['data_file'], username)  # 转换旧版本config json文件
             st.session_state.data_updated_step1 = True
         
         st.markdown("4. 点击下方按钮打开视频下载目录。请前往旧版本生成器的`videos\downloads`目录，将已下载的视频文件复制到新的目录。如果还没有下载任何视频文件，可以跳过此步骤。")
