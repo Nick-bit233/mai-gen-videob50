@@ -1,6 +1,6 @@
 import json
 import os.path
-import requests
+
 from utils.DataUtils import download_image_data, CHART_TYPE_MAP_MAIMAI
 from utils.PageUtils import load_music_metadata
 from PIL import Image, ImageDraw, ImageFont

@@ -80,13 +80,14 @@ def edit_b50_data(user_id, save_id):
     datafile_path = save_paths['data_file']
     with open(datafile_path, 'r', encoding='utf-8') as f:
         head_data = json.load(f)
+        print(head_data)
         dx_rating = head_data.get("rating", 0)
         data = head_data.get("records", None)
     st.markdown(f'【当前存档信息】\n \n - 用户名：{user_id} \n \n - <p style="color: #00BFFF;">存档ID(时间戳)：{save_id}</p> \n \n - <p style="color: #ffc107;">DX Rating：{dx_rating}</p>', unsafe_allow_html=True)
     st.error("请注意：该页面组件已于v0.5.0版本后过时，如需手动修改存档，请在‘创建/编辑自定义b50数据’页面中操作。本页面仍然保留，但不对可能的数据损坏负责！")
     st.warning("注意：修改保存后将无法撤销！")
     st.info("水鱼查分器不返回游玩次数数据，如需在视频中展示请手动填写游玩次数。")
-    st.info("通过导入HTML/JSON获取时：\n1. 数据不包括FC状态/FS状态/DX分数，如有需求请手动填写\n2. 定数信息为本地缓存的日服数据库读取，与国服/国际服不符是正常现象。\n3. 本地数据库可能过期，可能出现rating中带有'?'的乐曲。请手动检查定数和修改rating。")
+    st.info("通过导入HTML/JSON获取数据时：\n1. 数据不包括FC状态/FS状态/DX分数，如有需求请手动填写\n2. 定数信息来源于Github上的日服歌曲数据库，与国服/国际服不符或缺失最新谱面信息是正常现象。如果您的数据与日服定数版本不同，请注意检查！\n3. 如出现rating中带有'?'的乐曲，请检查定数和修改rating。")
     # st.info("无论您的数据来源服务器，本页面自动补全数据时，认为'X.6'定数属于'X'等级而不是'X+'等级，这会在DX2025更新后统一修改。您也可以手动修改等级标示。")
     
     # json数据中添加游玩次数字段
@@ -245,21 +246,19 @@ def fetch_new_achievement_data(username, save_paths, source, params=None):
     data_file_path = save_paths['data_file']
     try:
         if source == "fish":
-            new_data = fetch_user_gamedata(raw_file_path, data_file_path, username, params, source=source)
+            fetch_user_gamedata(raw_file_path, data_file_path, username, params, source=source)
         elif source == "int_html":
-            new_data = update_b50_data_int_html(raw_file_path, data_file_path, username)
+            update_b50_data_int(raw_file_path, data_file_path, username, params, parser = "html")
         elif source == "int_json":
-            new_data = update_b50_data_int_json(raw_file_path, data_file_path, username)
+            update_b50_data_int(raw_file_path, data_file_path, username, params, parser = "json")
         else:
             raise ValueError("未知数据源！")
         st.success(f"已从用户{username}的最新数据建立存档，时间为：{save_timestamp}")
         st.session_state.data_updated_step1 = True
-        return new_data
     except Exception as e:
         st.session_state.data_updated_step1 = False
         st.error(f"获取B50数据时发生错误: {e}")
         st.expander("错误详情").write(traceback.format_exc())
-        return None
     
 
 def check_save_available(username, save_id):
@@ -410,6 +409,7 @@ if st.session_state.get('config_saved', False):
 
         # ======= Data from DX Web =======
         st.info("如使用国际服/日服数据，请按照下列顺序操作。国服用户请忽略。")
+        st.info("这种导入方式暂不支持AP50等自定义乐曲列表，敬请期待后续版本！\n您也可以手动修改存档文件中的歌曲信息，但开发者不保证能够追踪和修复造成的运行错误。")
 
         st.markdown("1. 如果您还没有过任何外服存档，请点击下方按钮生成一份空白存档。")
         if st.button("新建空白存档", key="dx_int_create_new_save"):
@@ -443,7 +443,11 @@ if st.session_state.get('config_saved', False):
                         fetch_new_achievement_data(
                             raw_username,
                             current_paths,
-                            source="int_html"
+                            source="int_html",
+                            params={
+                                "type": "maimai",
+                                "query": "best"
+                            }
                         )
 
         with col2:
@@ -457,7 +461,11 @@ if st.session_state.get('config_saved', False):
                         fetch_new_achievement_data(
                             raw_username,
                             current_paths,
-                            source="int_json"
+                            source="int_json",
+                            params={
+                                "type": "maimai",
+                                "query": "best"
+                            }
                         )
 
 

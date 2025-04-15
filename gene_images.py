@@ -1,5 +1,5 @@
 import os
-import json
+
 from PIL import Image, ImageDraw, ImageFont
 from utils.Utils import Utils
 from copy import deepcopy

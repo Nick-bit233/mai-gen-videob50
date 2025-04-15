@@ -1,9 +1,8 @@
 import streamlit as st
 import os
-import json
 import traceback
 from datetime import datetime
-from utils.PageUtils import open_file_explorer, load_video_config, save_video_config, read_global_config
+from utils.PageUtils import load_video_config, save_video_config, read_global_config
 from utils.PathUtils import get_data_paths, get_user_versions
 
 st.header("Step 4-2: 片头/片尾内容编辑")

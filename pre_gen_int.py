@@ -3,8 +3,10 @@ import json
 from lxml import etree
 import os
 
-from pre_gen import merge_b50_data
-from utils.dxnet_extension import get_rate, ChartManager
+from utils.dxnet_extension import ChartManager
+from utils.PageUtils import DATA_CONFIG_VERSION
+
+LEVEL_LABEL = ["Basic", "Advanced", "Expert", "Master", "Re:MASTER"]
 
 ################################################
 # Origin B50 data file finders
@@ -58,22 +60,22 @@ def read_b50_from_html(b50_raw_file, username):
     html_raw = find_origin_b50(username, "html")
     html_tree = etree.HTML(html_raw)
     # Locate B35 and B15
-    # b35_div_names = [
-    #     "Songs for Rating(Others)",
-    #     "日服B35名称占位符"
-    # ]
-    # b15_div_names = [
-    #     "Songs for Rating(New)",
-    #     "日服B15名称占位符"
-    # ]
-    # b35_screw = locate_html_screw(html_tree, b35_div_names)
-    # b15_screw = locate_html_screw(html_tree, b15_div_names)
-    html_screws = html_tree.xpath('//div[@class="screw_block m_15 f_15 p_s"]')
-    print(html_screws)
-    if not html_screws:
-        raise Exception("Error: B35/B15 screw not found. Please check HTML input!")
-    b35_screw = html_screws[1]
-    b15_screw = html_screws[0]
+    b35_div_names = [
+        "Songs for Rating(Others)",
+        "rating対象曲（ベスト）"
+    ]
+    b15_div_names = [
+        "Songs for Rating(New)",
+        "rating対象曲（新曲）"
+    ]
+    b35_screw = locate_html_screw(html_tree, b35_div_names)
+    b15_screw = locate_html_screw(html_tree, b15_div_names)
+
+    # html_screws = html_tree.xpath('//div[@class="screw_block m_15 f_15 p_s"]')
+    # if not html_screws:
+    #     raise Exception("Error: B35/B15 screw not found. Please check HTML input!")
+    # b35_screw = html_screws[1]
+    # b15_screw = html_screws[0]
 
     # Iterate songs and save as JSON
     b50_json = {
@@ -86,16 +88,18 @@ def read_b50_from_html(b50_raw_file, username):
     }
     manager = ChartManager()
     song_id_placeholder = 0 # Avoid same file names for downloaded videos
-    for song in iterate_songs(html_tree, b35_screw):
+    for song in iterate_songs(b35_screw):
         song_id_placeholder -= 1 # Remove after implemented dataset
         song_json = parse_html_to_json(song, song_id_placeholder)
         song_json = manager.fill_json(song_json)
         b50_json["charts"]["sd"].append(song_json)
-    for song in iterate_songs(html_tree, b15_screw):
+    for song in iterate_songs(b15_screw):
         song_id_placeholder -= 1 # Remove after implemented dataset
         song_json = parse_html_to_json(song, song_id_placeholder)
         song_json = manager.fill_json(song_json)
         b50_json["charts"]["dx"].append(song_json)
+
+    b50_json["rating"] = manager.total_rating
 
     # Write b50 JSON to raw file
     with open(b50_raw_file, 'w', encoding="utf-8") as f:
@@ -110,7 +114,7 @@ def locate_html_screw(html_tree, div_names):
     raise Exception(f"Error: HTML screw (type = \"{div_names[0]}\") not found.")
 
 
-def iterate_songs(html_tree, div_screw):
+def iterate_songs(div_screw):
     current_div = div_screw
     while True:
         current_div = current_div.xpath('following-sibling::div[1]')[0]
@@ -121,7 +125,6 @@ def iterate_songs(html_tree, div_screw):
 # Parse HTML div of a song to diving-fish raw data JSON
 def parse_html_to_json(song_div, song_id_placeholder):
     LEVEL_DIV_LABEL = ["_basic", "_advanced", "_expert", "_master", "_remaster"]
-    LEVEL_LABEL = ["Basic", "Advanced", "Expert", "Master", "Re:MASTER"]
     # Initialise chart JSON
     chart = {
         "achievements": 0,
@@ -198,6 +201,8 @@ def read_dxrating_json(b50_raw_file, username):
         else:
             b50_json["charts"]["dx"].append(song_json)
 
+    b50_json["rating"] = manager.total_rating
+
     # Write b50 JSON to raw file
     with open(b50_raw_file, 'w', encoding="utf-8") as f:
         json.dump(b50_json, f, ensure_ascii = False, indent = 4)
@@ -205,7 +210,6 @@ def read_dxrating_json(b50_raw_file, username):
 
 def parse_dxrating_json(song_json, song_id_placeholder):
     LEVEL_DIV_LABEL = ["basic", "advanced", "expert", "master", "remaster"]
-    LEVEL_LABEL = ["Basic", "Advanced", "Expert", "Master", "Re:MASTER"]
 
     # Initialise chart JSON
     chart = {
@@ -244,43 +248,53 @@ def parse_dxrating_json(song_json, song_id_placeholder):
 # Update local cache files
 ################################################
 
-def update_b50_data_int(b50_raw_file, b50_data_file, username, data_parser):
-    raw_data = data_parser(b50_raw_file, username)
-    b35_data = raw_data['charts']['sd']
-    b15_data = raw_data['charts']['dx']
+def update_b50_data_int(b50_raw_file, b50_data_file, username, params, parser):
+    data_parser = read_b50_from_html # html parser is default
+    if parser == "html":
+        data_parser = read_b50_from_html
+    elif parser == "json":
+        data_parser = read_dxrating_json
 
-    # No need for updating raw file again
-    # 缓存，写入b50_raw_file
-    # with open(b50_raw_file, "w", encoding="utf-8") as f:
-    #     json.dump(fish_data, f, ensure_ascii=False, indent=4)
+    # building b50_raw
+    parsed_data = data_parser(b50_raw_file, username)
 
-    # Keep remaining the same as original codes
-    for i in range(len(b35_data)):
-        song = b35_data[i]
-        song['clip_id'] = f"PastBest_{i + 1}"
+    # building b50_config
+    generate_data_file_int(parsed_data, b50_data_file, params)
 
-    for i in range(len(b15_data)):
-        song = b15_data[i]
-        song['clip_id'] = f"NewBest_{i + 1}"
-    
-    # 合并b35_data和b15_data到同一列表
-    b50_data = b35_data + b15_data
-    new_local_b50_data = []
-    # 检查是否已有b50_data_file
-    if os.path.exists(b50_data_file):
-        with open(b50_data_file, "r", encoding="utf-8") as f:
-            local_b50_data = json.load(f)
-            new_local_b50_data, _ = merge_b50_data(b50_data, local_b50_data)
+def generate_data_file_int(parsed_data, data_file_path, params):
+    type = params.get("type", "maimai")
+    query = params.get("query", "best")
+    filter = params.get("filter", None)
+    if type == "maimai":
+        if query == "best":
+            # split b50 data
+            charts_data = parsed_data["charts"]
+            b35_data = charts_data["sd"]
+            b15_data = charts_data["dx"]
+
+            for i in range(len(b35_data)):
+                song = b35_data[i]
+                song['clip_id'] = f"PastBest_{i + 1}"
+
+            for i in range(len(b15_data)):
+                song = b15_data[i]
+                song['clip_id'] = f"NewBest_{i + 1}"
+            
+            # 合并b35_data和b15_data到同一列表
+            b50_data = b35_data + b15_data
+            config_content = {
+                "version": DATA_CONFIG_VERSION,
+                "type": type,
+                "sub_type": "b50",
+                "username": parsed_data["username"],
+                "rating": parsed_data["rating"],
+                "length_of_content": len(b50_data),
+                "records": b50_data,
+            }
+                
+        # 写入b50_data_file
+        with open(data_file_path, "w", encoding="utf-8") as f:
+            json.dump(config_content, f, ensure_ascii=False, indent=4)
+        return config_content
     else:
-        new_local_b50_data = b50_data
-
-    # 写入b50_data_file
-    with open(b50_data_file, "w", encoding="utf-8") as f:
-        json.dump(new_local_b50_data, f, ensure_ascii=False, indent=4)
-    return new_local_b50_data
-
-def update_b50_data_int_html(b50_raw_file, b50_data_file, username):
-    return update_b50_data_int(b50_raw_file, b50_data_file, username, read_b50_from_html)
-
-def update_b50_data_int_json(b50_raw_file, b50_data_file, username):
-    return update_b50_data_int(b50_raw_file, b50_data_file, username, read_dxrating_json)
+        raise ValueError("Only MAIMAI DX is supported for now")
