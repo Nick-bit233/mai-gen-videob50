@@ -4,9 +4,9 @@ import traceback
 import os
 import streamlit as st
 from datetime import datetime
-from utils.PageUtils import *
+from utils.PageUtils import load_record_config, save_record_config, read_global_config
 from utils.PathUtils import get_data_paths, get_user_versions
-from pre_gen import search_one_video, download_one_video
+from pre_gen import download_one_video
 
 G_config = read_global_config()
 
@@ -122,7 +122,7 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
     with placeholder.container(border=True):
         song = config[current_index]
         # 获取当前匹配的视频信息
-        st.subheader(f"片段ID: {song['clip_id']}")
+        st.subheader(f"片段ID: {song['clip_id']}，标题名称: {song['clip_name']}")
 
         match_info_placeholder = st.empty()
         update_match_info(match_info_placeholder, song['video_info_match'])
@@ -152,7 +152,7 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
 
         if st.button("确定使用该信息", key=f"confirm_selected_match_{song['clip_id']}"):
             song['video_info_match'] = to_match_videos[selected_index]
-            save_config(b50_config_file, config)
+            save_record_config(b50_config_file, config)
             st.toast("配置已保存！")
             update_match_info(match_info_placeholder, song['video_info_match'])
         
@@ -176,7 +176,7 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
                     st.success(f"已使用视频{to_replace_video_info['id']}替换匹配信息，详情：")
                     st.markdown(f"【{to_replace_video_info['title']}】({to_replace_video_info['duration']}秒) [🔗{to_replace_video_info['id']}]({to_replace_video_info['url']})")
                     song['video_info_match'] = to_replace_video_info
-                    save_config(b50_config_file, config)
+                    save_record_config(b50_config_file, config)
                     st.toast("配置已保存！")
                     update_match_info(match_info_placeholder, song['video_info_match'])
 
@@ -198,7 +198,7 @@ elif downloader_type == "bilibili":
 if not os.path.exists(b50_config_file):
     st.error(f"未找到配置文件{b50_config_file}，请检查B50存档的数据完整性！")
     st.stop()
-b50_config = load_config(b50_config_file)
+b50_config = load_record_config(b50_config_file, username)
 
 if b50_config:
     for song in b50_config:
@@ -265,7 +265,7 @@ if b50_config:
     
     # 保存配置按钮
     if st.button("保存配置"):
-        save_config(b50_config_file, b50_config)
+        save_record_config(b50_config_file, b50_config)
         st.success("配置已保存！")
 
     download_info_placeholder = st.empty()

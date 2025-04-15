@@ -1,11 +1,11 @@
 import os
-import json
+
 from PIL import Image, ImageDraw, ImageFont
 from utils.Utils import Utils
 from copy import deepcopy
 
 
-def generate_single_image(background_path, record_detail, output_path, prefix, index):
+def generate_single_image(background_path, record_detail, output_path, title_text):
     function = Utils()
     with Image.open(background_path) as background:
         # 生成并调整单个成绩图片
@@ -19,10 +19,10 @@ def generate_single_image(background_path, record_detail, output_path, prefix, i
         # 添加文字
         draw = ImageDraw.Draw(background)
         font = ImageFont.truetype("./font/FOT_NewRodin_Pro_EB.otf", 50)
-        draw.text((940, 100), f"{prefix} {index + 1}", fill=(255, 255, 255), font=font)
+        draw.text((940, 100), title_text, fill=(255, 255, 255), font=font)
         
         # 保存图片
-        background.save(os.path.join(output_path, f"{prefix}_{index + 1}.png"))
+        background.save(output_path)
         # background.save(f"./b50_images/{user_id}/{prefix}_{index + 1}.png")
 
 def check_mask_waring(acc_string, cnt, warned=False):
@@ -33,6 +33,8 @@ def check_mask_waring(acc_string, cnt, warned=False):
             warned = True
     return cnt, warned
 
+
+@DeprecationWarning
 def gene_images_batch(data, user_id, prefix):
     mask_check_cnt = 0
     mask_warn = False
@@ -49,6 +51,7 @@ def gene_images_batch(data, user_id, prefix):
             index,
         )
 
+@DeprecationWarning
 def generate_b50_images(UserID, b35_data, b15_data, output_dir):
     print("生成B50图片中...")
     os.makedirs(output_dir, exist_ok=True)

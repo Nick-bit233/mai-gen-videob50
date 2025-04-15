@@ -1,17 +1,16 @@
 import streamlit as st
 import os
 import json
-import subprocess
 import traceback
-from copy import deepcopy
 from datetime import datetime
-from pre_gen import update_b50_data, st_init_cache_pathes
+from pre_gen import fetch_user_gamedata, st_init_cache_pathes
 from pre_gen_int import update_b50_data_int_html, update_b50_data_int_json
-from gene_images import generate_single_image, check_mask_waring
 from utils.PageUtils import *
 from utils.PathUtils import *
 from utils.dxnet_extension import get_rate
 import glob
+
+maimai_level_label_list = list(LEVEL_LABELS.values())
 
 def convert_old_files(folder, username, save_paths):
     """
@@ -63,14 +62,14 @@ def convert_old_files(folder, username, save_paths):
         st.error("未找到video_config文件！请检查是否已将完整旧版数据文件复制到新的文件夹！")
         return
     try:
-        video_config = load_config(video_config_file)
+        video_config = load_video_config(video_config_file)
         main_clips = video_config['main']
         for each in main_clips:
             id = each['id']
             __image_path = os.path.join(save_paths['image_dir'], id + ".png")
             __image_path = os.path.normpath(__image_path)
             each['main_image'] = __image_path
-        save_config(video_config_file, video_config)          
+        save_video_config(video_config_file, video_config)          
         st.success("配置信息转换完成！")
     except Exception as e:
         st.error(f"转换video_config文件时发生错误: {e}")
@@ -79,16 +78,16 @@ def convert_old_files(folder, username, save_paths):
 def edit_b50_data(user_id, save_id):
     save_paths = get_data_paths(user_id, save_id)
     datafile_path = save_paths['data_file']
-    data = load_config(datafile_path)
-    # get dx rating from raw data file
-    raw_datafile_path = save_paths['raw_file']
-    with open(raw_datafile_path, 'r', encoding='utf-8') as f:
-        raw_data = json.load(f)
-        dx_rating = raw_data.get("rating", 0)
+    with open(datafile_path, 'r', encoding='utf-8') as f:
+        head_data = json.load(f)
+        print(head_data)
+        dx_rating = head_data.get("rating", 0)
+        data = head_data.get("records", None)
     st.markdown(f'【当前存档信息】\n \n - 用户名：{user_id} \n \n - <p style="color: #00BFFF;">存档ID(时间戳)：{save_id}</p> \n \n - <p style="color: #ffc107;">DX Rating：{dx_rating}</p>', unsafe_allow_html=True)
-    st.warning("您可以在下方表格中修改本存档的b50数据，注意修改保存后将无法撤销！")
+    st.error("请注意：该页面组件已于v0.5.0版本后过时，如需手动修改存档，请在‘创建/编辑自定义b50数据’页面中操作。本页面仍然保留，但不对可能的数据损坏负责！")
+    st.warning("注意：修改保存后将无法撤销！")
     st.info("水鱼查分器不返回游玩次数数据，如需在视频中展示请手动填写游玩次数。")
-    st.info("通过导入HTML/JSON获取时：\n1. 数据不包括FC状态/FS状态/DX分数，如有需求请手动填写\n2. 定数信息为本地缓存的日服数据库读取，与国服/国际服不符是正常现象。\n3. 本地数据库可能过期，可能出现rating中带有'?'的乐曲。请手动检查定数和修改rating。")
+    st.info("通过导入HTML/JSON获取数据时：\n1. 数据不包括FC状态/FS状态/DX分数，如有需求请手动填写\n2. 定数信息来源于Github上的日服歌曲数据库，与国服/国际服不符或缺失最新谱面信息是正常现象。如果您的数据与日服定数版本不同，请注意检查！\n3. 如出现rating中带有'?'的乐曲，请检查定数和修改rating。")
     # st.info("无论您的数据来源服务器，本页面自动补全数据时，认为'X.6'定数属于'X'等级而不是'X+'等级，这会在DX2025更新后统一修改。您也可以手动修改等级标示。")
     
     # json数据中添加游玩次数字段
@@ -99,10 +98,10 @@ def edit_b50_data(user_id, save_id):
     # 创建可编辑表格
     edited_df = st.data_editor(
         data,
-        column_order=["clip_id", "song_id", "title", "type", "level_label",
+        column_order=["clip_name", "song_id", "title", "type", "level_label",
                     "ds", "achievements", "fc", "fs", "ra", "dxScore", "playCount"],
         column_config={
-            "clip_id": "编号",
+            "clip_name": "抬头标题",
             "song_id": "曲ID",
             "title": "曲名",
             "type": st.column_config.SelectboxColumn(
@@ -113,7 +112,7 @@ def edit_b50_data(user_id, save_id):
             ),
             "level_label": st.column_config.SelectboxColumn(
                 "难度",
-                options=["Basic", "Advanced", "Expert", "Master", "Re:MASTER"],
+                options=maimai_level_label_list,
                 width=60,
                 required=True
             ),
@@ -162,7 +161,6 @@ def edit_b50_data(user_id, save_id):
                 required=False
             )
         },
-        disabled=["clip_id"],
         hide_index=False
     )
     
@@ -191,8 +189,7 @@ def edit_b50_data(user_id, save_id):
         if st.button("保存修改"):
             # DataFrame is returned as JSON format list
             # json_data = edited_df
-            with open(datafile_path, 'w', encoding='utf-8') as f:
-                json.dump(edited_df, f, ensure_ascii=False, indent=2)
+            save_record_config(datafile_path, edited_df)
             st.success("更改已保存！")
     with col2:
         if st.button("结束编辑并返回"):
@@ -243,19 +240,26 @@ with st.container(border=True):
             st.session_state.username = username  # 保存用户名到session_state
             st.session_state.config_saved = True  # 添加状态标记
 
-def update_b50(update_function, username, save_paths):
+def fetch_new_achievement_data(username, save_paths, source, params=None):
+    save_timestamp = os.path.dirname(save_paths['data_file'])
+    raw_file_path = save_paths['raw_file']
+    data_file_path = save_paths['data_file']
     try:
-        # 使用指定的方法读取B50数据
-        b50_data = update_function(save_paths['raw_file'], save_paths['data_file'], username)
-
-        st.success(f"已获取用户{username}的最新B50数据！新的存档时间为：{os.path.dirname(save_paths['data_file'])}")
+        if source == "fish":
+            fetch_user_gamedata(raw_file_path, data_file_path, username, params, source=source)
+        elif source == "int_html":
+            update_b50_data_int(raw_file_path, data_file_path, username, params, parser = "html")
+        elif source == "int_json":
+            update_b50_data_int(raw_file_path, data_file_path, username, params, parser = "json")
+        else:
+            raise ValueError("未知数据源！")
+        st.success(f"已从用户{username}的最新数据建立存档，时间为：{save_timestamp}")
         st.session_state.data_updated_step1 = True
-        return b50_data
     except Exception as e:
         st.session_state.data_updated_step1 = False
         st.error(f"获取B50数据时发生错误: {e}")
         st.expander("错误详情").write(traceback.format_exc())
-        return None
+    
 
 def check_save_available(username, save_id):
     if not save_id:
@@ -311,6 +315,11 @@ if st.session_state.get('config_saved', False):
                     if selected_save_id:
                         print(selected_save_id)
                         st.session_state.save_id = selected_save_id
+
+                        # 加载存档时，检查存档完整性与兼容性
+                        save_paths = get_data_paths(username, selected_save_id)
+                        load_full_config_safe(save_paths['data_file'], username)
+
                         st.success(f"已加载存档！用户名：{username}，存档时间：{selected_save_id}，可使用上方按钮加载和修改数据。")
                         st.session_state.data_updated_step1 = True                
                     else:
@@ -354,6 +363,7 @@ if st.session_state.get('config_saved', False):
 
     st.write(f"新建b50存档")
     with st.container(border=True):
+        # ======= Data from FISH =======
         st.info(f"从国服获取b50请使用下方按钮，您将以用户名{raw_username}从查分器获取一份新的B50数据，系统将自动为您创建一份新的存档。")
 
         if st.button("从水鱼获取b50数据（国服）"):
@@ -363,14 +373,43 @@ if st.session_state.get('config_saved', False):
             if save_id:
                 os.makedirs(save_dir, exist_ok=True) # 新建存档文件夹
                 st.session_state.save_id = save_id
-                with st.spinner("正在获取b50数据更新..."):
-                    update_b50(
-                        update_b50_data,
+                with st.spinner("正在获取数据更新..."):
+                    fetch_new_achievement_data(
                         raw_username,
                         current_paths,
+                        source="fish",
+                        params={
+                            "type": "maimai",
+                            "query": "best"
+                        }
                     )
 
+        if st.button("从水鱼获取AP b50存档"):
+            current_paths = get_data_paths(username, timestamp=None)  # 获取新的存档路径
+            save_dir = os.path.dirname(current_paths['data_file'])
+            save_id = os.path.basename(save_dir)  # 从存档路径得到新存档的时间戳
+            if save_id:
+                os.makedirs(save_dir, exist_ok=True) # 新建存档文件夹
+                st.session_state.save_id = save_id
+                with st.spinner("正在获取数据更新..."):
+                    fetch_new_achievement_data(
+                        raw_username,
+                        current_paths,
+                        source="fish",
+                        params={
+                            "type": "maimai",
+                            "query": "all",
+                            "filiter": {
+                                "tag": "ap",
+                                "top": 50
+                            },
+                        }
+                    )
+
+
+        # ======= Data from DX Web =======
         st.info("如使用国际服/日服数据，请按照下列顺序操作。国服用户请忽略。")
+        st.info("这种导入方式暂不支持AP50等自定义乐曲列表，敬请期待后续版本！\n您也可以手动修改存档文件中的歌曲信息，但开发者不保证能够追踪和修复造成的运行错误。")
 
         st.markdown("1. 如果您还没有过任何外服存档，请点击下方按钮生成一份空白存档。")
         if st.button("新建空白存档", key="dx_int_create_new_save"):
@@ -401,10 +440,15 @@ if st.session_state.get('config_saved', False):
                         st.error("请先新建存档，或加载已有存档！")
                     else:
                         current_paths = get_data_paths(username, save_id)  # 获取当前存档路径
-                        update_b50(
-                            update_b50_data_int_html,
-                            username,
-                            current_paths)
+                        fetch_new_achievement_data(
+                            raw_username,
+                            current_paths,
+                            source="int_html",
+                            params={
+                                "type": "maimai",
+                                "query": "best"
+                            }
+                        )
 
         with col2:
             if st.button("从本地JSON读取b50"):
@@ -414,10 +458,15 @@ if st.session_state.get('config_saved', False):
                         st.error("请先新建存档，或加载已有存档！")
                     else:
                         current_paths = get_data_paths(username, save_id)  # 获取当前存档路径
-                        update_b50(
-                            update_b50_data_int_json, 
-                            username,
-                            current_paths)
+                        fetch_new_achievement_data(
+                            raw_username,
+                            current_paths,
+                            source="int_json",
+                            params={
+                                "type": "maimai",
+                                "query": "best"
+                            }
+                        )
 
 
     if st.session_state.get('data_updated_step1', False):
@@ -429,7 +478,7 @@ if st.session_state.get('config_saved', False):
 
     with st.expander("从旧版本（v0.3.4及以下）迁移存档"):
         save_loaded = st.session_state.get('migrate_save_loaded', False)
-        st.info("如果您之前使用过旧版本的b50视频生成器，按照顺序执行以下步骤以转移存档。")
+        st.info("如果您之前使用过旧版本的b50视频生成器，可以尝试按照顺序执行以下步骤以转移存档（不保证成功率）。")
         
         st.markdown("1. 点击下方按钮生成一份空白存档。")
         if st.button("新建空白存档", key="migrate_create_new_save"):
@@ -453,7 +502,8 @@ if st.session_state.get('config_saved', False):
         if st.button("转换存档数据", disabled=not save_loaded):
             current_paths = get_data_paths(username, st.session_state.save_id)
             version_dir = get_user_version_dir(username, st.session_state.save_id)
-            convert_old_files(version_dir, username, current_paths)
+            convert_old_files(version_dir, username, current_paths)  # 转换旧版本文件名
+            load_full_config_safe(current_paths['data_file'], username)  # 转换旧版本config json文件
             st.session_state.data_updated_step1 = True
         
         st.markdown("4. 点击下方按钮打开视频下载目录。请前往旧版本生成器的`videos\downloads`目录，将已下载的视频文件复制到新的目录。如果还没有下载任何视频文件，可以跳过此步骤。")

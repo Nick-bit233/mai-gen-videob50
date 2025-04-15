@@ -4,6 +4,7 @@ import subprocess
 from PIL import Image, ImageFilter
 from moviepy import VideoFileClip, ImageClip, TextClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip, concatenate_videoclips
 from moviepy import vfx, afx
+from utils.Utils import load_music_jacket
 
 def get_splited_text(text, text_max_bytes=60):
     """
@@ -47,25 +48,24 @@ def get_splited_text(text, text_max_bytes=60):
     return lines
 
 
-def blur_image(image_path, blur_radius=5):
+def blur_image(pil_image, blur_radius=5):
     """
     对图片进行高斯模糊处理
     
     Args:
-        image_path (str): 图片路径
+        pil_image (obj): PIL.Image对象
         blur_radius (int): 模糊半径，默认为10
         
     Returns:
         numpy.ndarray: 模糊处理后的图片数组
     """
     try:
-        pil_image = Image.open(image_path)
         blurred_image = pil_image.filter(ImageFilter.GaussianBlur(radius=blur_radius))
         # 将模糊后的图片转换为 numpy 数组
         return np.array(blurred_image)
     except Exception as e:
         print(f"Warning: 图片模糊处理失败 - {str(e)}")
-        return np.array(Image.open(image_path))
+        return pil_image
 
 
 def create_blank_image(width, height, color=(0, 0, 0, 0)):
@@ -190,17 +190,18 @@ def create_video_segment(clip_config, resolution, font_path, text_size=28, inlin
         main_image = ImageClip(create_blank_image(resolution[0], resolution[1])).with_duration(clip_config['duration'])
 
     # 读取song_id，并获取预览图jacket
-    __musicid = str(clip_config['song_id'])[-4:].zfill(4)
-    __jacket_path = f"./images/Jackets/UI_Jacket_00{__musicid}.png"
-    if os.path.exists(__jacket_path):
+    music_tag = clip_config['song_id']
+    jacket_raw = load_music_jacket(music_tag)
+    
+    if jacket_raw:
         # 高斯模糊处理图片
-        jacket_array = blur_image(__jacket_path, blur_radius=5)
+        jacket_array = blur_image(jacket_raw, blur_radius=5)
         # 创建 ImageClip
         jacket_image = ImageClip(jacket_array).with_duration(clip_config['duration'])
         # 将jacket图片按视频分辨率宽度等比例缩放，以填充整个背景
         jacket_image = jacket_image.with_effects([vfx.Resize(width=resolution[0])])
     else:
-        print(f"Video Generator Warning: {clip_config['id']} 没有找到对应的封面图, 将使用默认背景")
+        print(f"Video Generator Warning: {clip_config['id']} 载入远程曲绘失败, 将使用默认背景")
         jacket_image = ImageClip(default_bg_path).with_duration(clip_config['duration'])
 
     jacket_image = jacket_image.with_effects([vfx.MultiplyColor(0.65)])

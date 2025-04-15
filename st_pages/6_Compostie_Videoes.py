@@ -1,10 +1,11 @@
 import streamlit as st
-import subprocess
 import traceback
+import os
+
 from datetime import datetime
-from utils.PageUtils import *
+from utils.PageUtils import open_file_explorer, load_video_config, read_global_config, write_global_config
 from utils.PathUtils import get_data_paths, get_user_versions
-from main_gen import generate_complete_video, generate_one_video_clip
+from main_gen import generate_complete_video
 from gene_video import render_all_video_clips, combine_full_video_direct, combine_full_video_ffmpeg_concat_gl
 
 st.header("Step 5: 视频生成")
@@ -110,7 +111,7 @@ video_config_file = current_paths['video_config']
 if not os.path.exists(video_config_file):
     st.error(f"未找到视频内容配置文件{video_config_file}，请检查前置步骤是否完成，以及B50存档的数据完整性！")
     st.stop()
-video_configs = load_config(video_config_file)
+video_configs = load_video_config(video_config_file)
 
 def save_video_render_config():
     # 保存配置
