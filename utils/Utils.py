@@ -19,21 +19,6 @@ class Utils:
                 print("错误：JSON 解码失败。")
                 return {}
 
-    def JacketLoader(self, MusicId):
-        if type(MusicId) == int:
-            image_path = f"jackets/maimaidx/Jacket_{MusicId}.jpg"
-        else:
-            image_path = f"jackets/maimaidx/Jacket_N_{MusicId}.jpg"
-        try:
-            # print(f"正在获取乐曲封面{image_path}...")
-            jacket = download_image_data(image_path)
-            # 返回 RGBA 模式图像，并强制缩放到400*400px
-            return jacket.convert("RGBA").resize((400, 400), Image.LANCZOS)
-        except FileNotFoundError:
-            print(f"获取乐曲封面{image_path}失败，将使用默认封面")
-            with Image.open(f"./images/Jackets/UI_Jacket_000000.png") as jacket:
-                return jacket.convert("RGBA")
-
     def DsLoader(self, level: int = 0, Ds: float = 0.0):
         if Ds >= 20 or Ds < 1:
             raise Exception("定数无效")
@@ -234,9 +219,10 @@ class Utils:
 
                 # 载入图片元素
                 TempImage = Image.new('RGBA', Background.size, (0, 0, 0, 0))
+
                 # 加载乐曲封面
                 JacketPosition = (44, 53)
-                Jacket = self.JacketLoader(MusicId=record_detail["song_id"])
+                Jacket = load_music_jacket(music_tag=record_detail["song_id"])
                 TempImage.paste(Jacket, JacketPosition, Jacket)
 
                 # 加载类型
@@ -306,6 +292,29 @@ class Utils:
             print(e)
 
         return Background
+
+
+def load_music_jacket(music_tag):
+    if type(music_tag) == int:
+        image_path = f"jackets/maimaidx/Jacket_{music_tag}.jpg"
+    elif type(music_tag) == str:
+        # 判断music_tag字符串是否为正整数
+        if music_tag.isdigit():
+            music_id = int(music_tag)
+            image_path = f"jackets/maimaidx/Jacket_{music_id}.jpg"
+        else:
+            image_path = f"jackets/maimaidx/Jacket_N_{music_tag}.jpg"
+    else:
+        raise ValueError("music_tag must be an integer or string.")
+    try:
+        # print(f"正在获取乐曲封面{image_path}...")
+        jacket = download_image_data(image_path)
+        # 返回 RGBA 模式图像，并强制缩放到400*400px
+        return jacket.convert("RGBA").resize((400, 400), Image.LANCZOS)
+    except FileNotFoundError:
+        print(f"获取乐曲封面{image_path}失败，将使用默认封面")
+        with Image.open(f"./images/Jackets/UI_Jacket_000000.png") as jacket:
+            return jacket.convert("RGBA")
 
 
 def find_single_song_metadata(all_metadata, record_detail):

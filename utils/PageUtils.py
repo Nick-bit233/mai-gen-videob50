@@ -5,7 +5,7 @@ import yaml
 import subprocess
 import platform
 from moviepy import VideoFileClip
-from utils.DataUtils import download_metadata
+from utils.DataUtils import download_metadata, encode_song_id, CHART_TYPE_MAP_MAIMAI
 
 DATA_CONFIG_VERSION = "0.5"
 LEVEL_LABELS = {
@@ -20,6 +20,21 @@ def remove_invalid_chars(text: str) -> str:
     # 去除非法字符，使用re.sub
     return re.sub(r'[\\/:*?"<>|]', '', text)
 
+# 验证和编码song_id（重要：song_id涉及远程获取歌曲的有效曲绘数据）
+def format_record_songid(record, raw_song_id):
+    if raw_song_id and type(raw_song_id) == int and raw_song_id > 0:
+        # song_id exist and vaild (for past versions in maimai)
+        return raw_song_id
+    else:
+        # song_id is unknown (null or negative value), encode a music tag by song_name and song_type instead
+        song_name = record.get("title", None)
+        song_type = record.get("type", None)
+        if song_name and song_type is not None:
+            encoded_id = encode_song_id(song_name, CHART_TYPE_MAP_MAIMAI[song_type])
+            return encoded_id
+        else:
+            raise ValueError("Invalid song_id or song_name/song_type in record detail.")
+
 def try_update_config_json(content, username=""):
     # v0.4以下
     if type(content) == list:
@@ -30,6 +45,8 @@ def try_update_config_json(content, username=""):
             item["clip_id"] = f"clip_{index + 1}"
             # 将item["level_label"]转换为全大写
             item["level_label"] = item.get("level_label", "").upper()
+            # 检查song_id
+            item["song_id"] = format_record_songid(item, item.get("song_id", None))
         new_content = {
             "version": DATA_CONFIG_VERSION,
             "type": "maimai",
@@ -50,6 +67,7 @@ def try_update_config_json(content, username=""):
             item["clip_name"] = item.get("clip_id", "Clip")
             item["clip_id"] = f"clip_{index + 1}"
             item["level_label"] = item.get("level_label", "").upper()
+            item["song_id"] = format_record_songid(item, item.get("song_id", None))
         return content
     else:
         raise ValueError("无法匹配存档版本，请检查存档文件")

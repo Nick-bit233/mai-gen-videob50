@@ -8,8 +8,8 @@ from copy import deepcopy
 from datetime import datetime
 import pandas as pd
 from utils.PathUtils import *
-from utils.PageUtils import DATA_CONFIG_VERSION, LEVEL_LABELS, load_full_config_safe, remove_invalid_chars, open_file_explorer
-from utils.DataUtils import CHART_TYPE_MAP_MAIMAI, search_songs
+from utils.PageUtils import DATA_CONFIG_VERSION, LEVEL_LABELS, format_record_songid, load_full_config_safe, remove_invalid_chars, open_file_explorer
+from utils.DataUtils import search_songs
 from utils.dxnet_extension import get_rate, parse_level, compute_rating
 
 # 检查streamlit扩展组件安装情况
@@ -86,18 +86,16 @@ def create_empty_config(username):
 
 
 # 从歌曲数据创建记录
-def create_record_from_song(song, level_label, index, game_type="maimaidx"):
-    song_type = song.get("type", "1")
-    song_id = song.get("id", -1)
-    song_id = int(song_id) if song_id is not None else -1
+def create_record_from_song(metadata, level_label, index, game_type="maimaidx"):
+    song_type = metadata.get("type", "1")
     song_level_index = maimai_level_label_list.index(level_label)
     auto_all_perfect = st.session_state.generate_setting.get("auto_all_perfect", True)
 
     # if index is out of bounds(For Re:MASTER), use last item(MASTER)
-    if song_level_index < len(song["charts"]):
-        song_charts_metadata = song["charts"][song_level_index]
+    if song_level_index < len(metadata["charts"]):
+        song_charts_metadata = metadata["charts"][song_level_index]
     else:
-        song_charts_metadata = song["charts"][-1]
+        song_charts_metadata = metadata["charts"][-1]
         song_level_index = 3
         level_label = maimai_level_label_list[song_level_index]
     song_ds = song_charts_metadata.get("level", 0)
@@ -110,14 +108,18 @@ def create_record_from_song(song, level_label, index, game_type="maimaidx"):
             record["type"] = "SD"
         case _:
             song_type = "DX"
-    record["song_id"] = song_id
-    record["title"] = song.get("name", "")
+    record["title"] = metadata.get("name", "")
     record["level_label"] = level_label
     record["level_index"] = song_level_index
     record["level"] = parse_level(song_ds)
     record["ds"] = song_ds
     record["ra"] = compute_rating(song_ds, record.get("achievements", 0))
     record["dxScore"] = sum(notes_list) * 3 if auto_all_perfect else 0
+
+    # 处理 song_id
+    song_id = metadata["id"]
+    print(song_id)
+    record["song_id"] = format_record_songid(record, song_id)
     # print(record)
     return record
 
@@ -141,7 +143,6 @@ def save_config_to_file(username, save_id, config):
     os.makedirs(save_dir, exist_ok=True)
     
     with open(save_paths['data_file'], 'w', encoding='utf-8') as f:
-        test_r = config.get("records", [])[0]
         json.dump(config, f, ensure_ascii=False, indent=4, cls=IntKeepingEncoder)
     
     return save_paths

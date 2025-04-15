@@ -8,21 +8,6 @@ from datetime import datetime
 from gene_images import generate_single_image, check_mask_waring
 from utils.PageUtils import open_file_explorer, load_record_config, save_record_config
 from utils.PathUtils import *
-from utils.DataUtils import encode_song_id, CHART_TYPE_MAP_MAIMAI
-
-def check_record_songid(record_detail):
-    song_id = record_detail.get("song_id", None)
-    if song_id and type(song_id) == int and song_id > 0:
-        # song_id exist(for past versions in maimai)
-        return song_id
-    else:
-        # song_id is unknown (null or negative value), encode a music tag by song_name and song_type instead
-        song_name = record_detail.get("title", None)
-        song_type = record_detail.get("type", None)
-        if song_name and song_type is not None:
-            return encode_song_id(song_name, CHART_TYPE_MAP_MAIMAI[song_type])
-        else:
-            raise ValueError("Invalid song_id or song_name/song_type in record detail.")
 
 
 def st_generate_b50_images(placeholder, user_id, save_paths):
@@ -42,8 +27,6 @@ def st_generate_b50_images(placeholder, user_id, save_paths):
                 warned = True
             record_for_gene_image = deepcopy(record_detail)
             record_for_gene_image['achievements'] = acc_string
-            # TODO: always use music tag as song_id
-            record_for_gene_image['song_id'] = check_record_songid(record_detail)
             clip_name = record_detail['clip_name']
             # 标题名称与配置文件中的clip_name一致
             if "_" in clip_name:
