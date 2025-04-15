@@ -2,14 +2,15 @@ import streamlit as st
 import os
 import json
 import traceback
-
 from datetime import datetime
 from pre_gen import fetch_user_gamedata, st_init_cache_pathes
-from pre_gen_int import update_b50_data_int
-from utils.PageUtils import load_video_config, save_video_config, save_record_config, remove_invalid_chars, check_content_version, open_file_explorer, LEVEL_LABELS
-from utils.PathUtils import get_data_paths, get_user_base_dir, get_user_version_dir, get_user_versions
+from pre_gen_int import update_b50_data_int_html, update_b50_data_int_json
+from utils.PageUtils import *
+from utils.PathUtils import *
 from utils.dxnet_extension import get_rate
 import glob
+
+maimai_level_label_list = list(LEVEL_LABELS.values())
 
 def convert_old_files(folder, username, save_paths):
     """
@@ -83,7 +84,8 @@ def edit_b50_data(user_id, save_id):
         dx_rating = head_data.get("rating", 0)
         data = head_data.get("records", None)
     st.markdown(f'【当前存档信息】\n \n - 用户名：{user_id} \n \n - <p style="color: #00BFFF;">存档ID(时间戳)：{save_id}</p> \n \n - <p style="color: #ffc107;">DX Rating：{dx_rating}</p>', unsafe_allow_html=True)
-    st.warning("您可以在下方表格中修改本存档的b50数据，注意修改保存后将无法撤销！")
+    st.error("请注意：该页面组件已于v0.5.0版本后过时，如需手动修改存档，请在‘创建/编辑自定义b50数据’页面中操作。本页面仍然保留，但不对可能的数据损坏负责！")
+    st.warning("注意：修改保存后将无法撤销！")
     st.info("水鱼查分器不返回游玩次数数据，如需在视频中展示请手动填写游玩次数。")
     st.info("通过导入HTML/JSON获取数据时：\n1. 数据不包括FC状态/FS状态/DX分数，如有需求请手动填写\n2. 定数信息来源于Github上的日服歌曲数据库，与国服/国际服不符或缺失最新谱面信息是正常现象。如果您的数据与日服定数版本不同，请注意检查！\n3. 如出现rating中带有'?'的乐曲，请检查定数和修改rating。")
     # st.info("无论您的数据来源服务器，本页面自动补全数据时，认为'X.6'定数属于'X'等级而不是'X+'等级，这会在DX2025更新后统一修改。您也可以手动修改等级标示。")
@@ -96,10 +98,10 @@ def edit_b50_data(user_id, save_id):
     # 创建可编辑表格
     edited_df = st.data_editor(
         data,
-        column_order=["clip_id", "song_id", "title", "type", "level_label",
+        column_order=["clip_name", "song_id", "title", "type", "level_label",
                     "ds", "achievements", "fc", "fs", "ra", "dxScore", "playCount"],
         column_config={
-            "clip_id": "编号",
+            "clip_name": "抬头标题",
             "song_id": "曲ID",
             "title": "曲名",
             "type": st.column_config.SelectboxColumn(
@@ -110,7 +112,7 @@ def edit_b50_data(user_id, save_id):
             ),
             "level_label": st.column_config.SelectboxColumn(
                 "难度",
-                options=["Basic", "Advanced", "Expert", "Master", "Re:MASTER"],
+                options=maimai_level_label_list,
                 width=60,
                 required=True
             ),
@@ -159,7 +161,6 @@ def edit_b50_data(user_id, save_id):
                 required=False
             )
         },
-        disabled=["clip_id"],
         hide_index=False
     )
     
@@ -317,7 +318,7 @@ if st.session_state.get('config_saved', False):
 
                         # 加载存档时，检查存档完整性与兼容性
                         save_paths = get_data_paths(username, selected_save_id)
-                        check_content_version(save_paths['data_file'], username)
+                        load_full_config_safe(save_paths['data_file'], username)
 
                         st.success(f"已加载存档！用户名：{username}，存档时间：{selected_save_id}，可使用上方按钮加载和修改数据。")
                         st.session_state.data_updated_step1 = True                
@@ -477,7 +478,7 @@ if st.session_state.get('config_saved', False):
 
     with st.expander("从旧版本（v0.3.4及以下）迁移存档"):
         save_loaded = st.session_state.get('migrate_save_loaded', False)
-        st.info("如果您之前使用过旧版本的b50视频生成器，按照顺序执行以下步骤以转移存档。")
+        st.info("如果您之前使用过旧版本的b50视频生成器，可以尝试按照顺序执行以下步骤以转移存档（不保证成功率）。")
         
         st.markdown("1. 点击下方按钮生成一份空白存档。")
         if st.button("新建空白存档", key="migrate_create_new_save"):
@@ -501,7 +502,8 @@ if st.session_state.get('config_saved', False):
         if st.button("转换存档数据", disabled=not save_loaded):
             current_paths = get_data_paths(username, st.session_state.save_id)
             version_dir = get_user_version_dir(username, st.session_state.save_id)
-            convert_old_files(version_dir, username, current_paths)
+            convert_old_files(version_dir, username, current_paths)  # 转换旧版本文件名
+            load_full_config_safe(current_paths['data_file'], username)  # 转换旧版本config json文件
             st.session_state.data_updated_step1 = True
         
         st.markdown("4. 点击下方按钮打开视频下载目录。请前往旧版本生成器的`videos\downloads`目录，将已下载的视频文件复制到新的目录。如果还没有下载任何视频文件，可以跳过此步骤。")

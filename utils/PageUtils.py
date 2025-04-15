@@ -5,9 +5,9 @@ import yaml
 import subprocess
 import platform
 from moviepy import VideoFileClip
-from utils.DataUtils import download_metadata
+from utils.DataUtils import download_metadata, encode_song_id, CHART_TYPE_MAP_MAIMAI
 
-DATA_CONFIG_VERSION = "0.4"
+DATA_CONFIG_VERSION = "0.5"
 LEVEL_LABELS = {
     0: "BASIC",
     1: "ADVANCED",
@@ -20,13 +20,33 @@ def remove_invalid_chars(text: str) -> str:
     # 去除非法字符，使用re.sub
     return re.sub(r'[\\/:*?"<>|]', '', text)
 
-def check_content_version(config_file, username):
-    if os.path.exists(config_file):
-        with open(config_file, 'r', encoding='utf-8') as f:
-            content = json.load(f)
-    # 检查版本号是否存在，不存在则添加
+# 验证和编码song_id（重要：song_id涉及远程获取歌曲的有效曲绘数据）
+def format_record_songid(record, raw_song_id):
+    if raw_song_id and type(raw_song_id) == int and raw_song_id > 0:
+        # song_id exist and vaild (for past versions in maimai)
+        return raw_song_id
+    else:
+        # song_id is unknown (null or negative value), encode a music tag by song_name and song_type instead
+        song_name = record.get("title", None)
+        song_type = record.get("type", None)
+        if song_name and song_type is not None:
+            encoded_id = encode_song_id(song_name, CHART_TYPE_MAP_MAIMAI[song_type])
+            return encoded_id
+        else:
+            raise ValueError("Invalid song_id or song_name/song_type in record detail.")
+
+def try_update_config_json(content, username=""):
+    # v0.4以下
     if type(content) == list:
-        print("存档版本过旧，转换存档格式到最新版本...")
+        print("存档版本过旧，转换存档到最新版本...")
+        for item in content:
+            index = records.index(item)
+            item["clip_name"] = item.get("clip_id", "Clip")
+            item["clip_id"] = f"clip_{index + 1}"
+            # 将item["level_label"]转换为全大写
+            item["level_label"] = item.get("level_label", "").upper()
+            # 检查song_id
+            item["song_id"] = format_record_songid(item, item.get("song_id", None))
         new_content = {
             "version": DATA_CONFIG_VERSION,
             "type": "maimai",
@@ -36,17 +56,40 @@ def check_content_version(config_file, username):
             "length_of_content": len(content),
             "records": content,
         }
-        with open(config_file, 'w', encoding='utf-8') as f:
-            json.dump(new_content, f, ensure_ascii=False, indent=4)
+        return new_content
+    # v0.4
+    elif type(content) == dict and 'version' in content and content['version'] == "0.4":
+        print("转换v0.4存档到最新版本...")
+        content["version"] = DATA_CONFIG_VERSION
+        records = content["records"]
+        for item in records:
+            index = records.index(item)
+            item["clip_name"] = item.get("clip_id", "Clip")
+            item["clip_id"] = f"clip_{index + 1}"
+            item["level_label"] = item.get("level_label", "").upper()
+            item["song_id"] = format_record_songid(item, item.get("song_id", None))
+        return content
     else:
-        if "version" not in content:
-            print("存档版本号不存在，添加版本号...")
-            content["version"] = DATA_CONFIG_VERSION
-            with open(config_file, 'w', encoding='utf-8') as f:
-                json.dump(content, f, ensure_ascii=False, indent=4)
-        else:
-            if content["version"] != DATA_CONFIG_VERSION:
-                print(f"存档版本号不匹配，当前最新版本：{DATA_CONFIG_VERSION}，文件版本：{content['version']}")   
+        raise ValueError("无法匹配存档版本，请检查存档文件")
+
+def load_full_config_safe(config_file, username):
+    # 尝试读取存档文件，如果不存在则返回None
+    if os.path.exists(config_file):
+        with open(config_file, 'r', encoding='utf-8') as f:
+            content = json.load(f)
+    else:
+        raise FileNotFoundError(f"存档文件不存在：{config_file}")
+    # 检查版本号是否存在或过期
+    if "version" not in content or content["version"] != DATA_CONFIG_VERSION:
+        print(f"存档版本号不匹配，当前最新版本：{DATA_CONFIG_VERSION}，文件版本：{content.get('version', 'None') or 'None'}")
+        # 尝试修复存档
+        content = try_update_config_json(content, username)
+        # 保存更新后的存档
+        with open(config_file, 'w', encoding='utf-8') as f:
+            json.dump(content, f, ensure_ascii=False, indent=4)
+        return content
+    else:
+        return content
 
 
 def update_music_metadata():
@@ -72,12 +115,13 @@ def load_music_metadata(game_type="maimaidx"):
 
 
 # r/w config/config_{platfrom}.json
-def load_record_config(config_file):
-    if os.path.exists(config_file):
-        with open(config_file, 'r', encoding='utf-8') as f:
-            content = json.load(f)
-            return content.get("records", None)
-    return None
+def load_record_config(config_file, username=""):
+    try:
+        # 读取存档时，检查存档文件版本，若为旧版本尝试自动更新
+        content = load_full_config_safe(config_file, username)
+        return content.get("records", None)
+    except FileNotFoundError:
+        return None
 
 def save_record_config(config_file, config_data):
     if os.path.exists(config_file):

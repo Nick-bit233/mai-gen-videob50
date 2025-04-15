@@ -4,28 +4,13 @@ import traceback
 from copy import deepcopy
 from datetime import datetime
 from gene_images import generate_single_image, check_mask_waring
-from utils.PageUtils import open_file_explorer, load_record_config
-from utils.PathUtils import get_data_paths, get_user_versions
-from utils.DataUtils import encode_song_id, CHART_TYPE_MAP_MAIMAI
-
-def check_record_songid(record_detail):
-    song_id = record_detail.get("song_id", None)
-    if song_id and type(song_id) == int and song_id > 0:
-        return song_id
-    else:
-        # encode music tag by song_name and song_type
-        song_name = record_detail.get("title", None)
-        song_type = record_detail.get("type", None)
-        if song_name and song_type is not None:
-            return encode_song_id(song_name, CHART_TYPE_MAP_MAIMAI[song_type])
-        else:
-            raise ValueError("Invalid song_id or song_name/song_type in record detail.")
+from utils.PageUtils import open_file_explorer, load_record_config, save_record_config
+from utils.PathUtils import *
 
 
 def st_generate_b50_images(placeholder, user_id, save_paths):
     # read b50_data
-    b50_data = load_record_config(save_paths['data_file'])
-    image_path = save_paths['image_dir']
+    b50_data = load_record_config(save_paths['data_file'], user_id)
     with placeholder.container(border=True):
         pb = st.progress(0, text="正在生成B50成绩背景图片...")
         mask_check_cnt = 0
@@ -36,25 +21,26 @@ def st_generate_b50_images(placeholder, user_id, save_paths):
             acc_string = f"{record_detail['achievements']:.4f}"
             mask_check_cnt, mask_warn = check_mask_waring(acc_string, mask_check_cnt, mask_warn)
             if mask_warn and not warned:
-                st.warning("检测到多个仅有一位小数精度的成绩，请尝试取消查分器设置的成绩掩码以获取精确成绩。特殊情况请忽略。")
+                st.warning("检测到多个仅有一位小数精度的成绩，请尝试取消查分器设置的成绩掩码以获取精确成绩。如为AP B50或自定义数据请忽略。")
                 warned = True
             record_for_gene_image = deepcopy(record_detail)
             record_for_gene_image['achievements'] = acc_string
-            # TODO: always use music tag as song_id
-            record_for_gene_image['song_id'] = check_record_songid(record_detail)
-            clip_id = record_detail['clip_id']
-            if "_" in clip_id:
-                prefix = clip_id.split("_")[0]
-                image_name_index = int(clip_id.split("_")[1]) - 1
+            clip_name = record_detail['clip_name']
+            # 标题名称与配置文件中的clip_name一致
+            if "_" in clip_name:
+                prefix = clip_name.split("_")[0]
+                suffix_number = clip_name.split("_")[1]
+                title_text = f"{prefix} {suffix_number}"
             else:
-                prefix = record_detail['clip_id']
-                image_name_index = index
+                title_text = record_detail['clip_name']
+            # 图片名称与配置文件中的clip_id一致（唯一key）
+            image_save_path = os.path.join(save_paths['image_dir'], f"{record_detail['clip_id']}.png")
+            # TODO：base image path should be configurable
             generate_single_image(
                 "./images/B50ViedoBase.png",
                 record_for_gene_image,
-                image_path,
-                prefix,
-                image_name_index,
+                image_save_path,
+                title_text
             )
 
 st.title("Step 1: 生成B50成绩背景图片")

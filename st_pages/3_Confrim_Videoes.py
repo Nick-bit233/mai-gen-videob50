@@ -122,7 +122,7 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
     with placeholder.container(border=True):
         song = config[current_index]
         # 获取当前匹配的视频信息
-        st.subheader(f"片段ID: {song['clip_id']}")
+        st.subheader(f"片段ID: {song['clip_id']}，标题名称: {song['clip_name']}")
 
         match_info_placeholder = st.empty()
         update_match_info(match_info_placeholder, song['video_info_match'])
@@ -198,7 +198,7 @@ elif downloader_type == "bilibili":
 if not os.path.exists(b50_config_file):
     st.error(f"未找到配置文件{b50_config_file}，请检查B50存档的数据完整性！")
     st.stop()
-b50_config = load_record_config(b50_config_file)
+b50_config = load_record_config(b50_config_file, username)
 
 if b50_config:
     for song in b50_config:
