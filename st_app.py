@@ -8,7 +8,7 @@ setup = st.Page("st_pages/1_Setup_Achivments.py",
                 title="获取/管理查分器B50数据",
                 icon=":material/leaderboard:")
 custom_setup = st.Page("st_pages/Make_Custom_Save.py",
-                title="创建/编辑自定义B50数据",
+                title="编辑B50数据/创建自定义B50数据",
                 icon=":material/leaderboard:")
 
 img_gen = st.Page("st_pages/Generate_Pic_Resources.py",
