@@ -4,7 +4,7 @@ from lxml import etree
 import os
 
 from utils.dxnet_extension import ChartManager
-from utils.PageUtils import DATA_CONFIG_VERSION
+from utils.PageUtils import DATA_CONFIG_VERSION, format_record_songid
 
 LEVEL_LABEL = ["Basic", "Advanced", "Expert", "Master", "Re:MASTER"]
 
@@ -274,14 +274,20 @@ def generate_data_file_int(parsed_data, data_file_path, params):
 
             for i in range(len(b35_data)):
                 song = b35_data[i]
-                song['clip_id'] = f"PastBest_{i + 1}"
+                song['clip_name'] = f"PastBest_{i + 1}"
 
             for i in range(len(b15_data)):
                 song = b15_data[i]
-                song['clip_id'] = f"NewBest_{i + 1}"
+                song['clip_name'] = f"NewBest_{i + 1}"
             
             # 合并b35_data和b15_data到同一列表
             b50_data = b35_data + b15_data
+            for i in range(len(b50_data)):
+                song = b50_data[i]
+                song["level_label"] = song.get("level_label", "").upper()
+                song['clip_id'] = f"clip_{i + 1}"
+                song["song_id"] = format_record_songid(song, song.get("song_id", None))
+            
             config_content = {
                 "version": DATA_CONFIG_VERSION,
                 "type": type,

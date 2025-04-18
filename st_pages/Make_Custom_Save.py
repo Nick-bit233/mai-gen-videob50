@@ -25,7 +25,7 @@ except ImportError:
     st.error("缺少streamlit-searchbox库，请更新软件发布包的运行环境，否则无法正常使用搜索功能。")
     st.stop()
 
-st.header("创建自定义乐曲信息存档")
+st.header("编辑B50存档 / 创建自定义B50存档")
 
 class IntKeepingEncoder(JSONEncoder):
     def default(self, obj):
@@ -200,6 +200,27 @@ def clear_data_confirmation(opration_name, opration_func):
     if st.button("取消"):
         st.rerun()
 
+def dataframe_auto_calculate(edited_df):
+    # 根据填写数值自动计算其他字段
+    for record in edited_df:
+        # 计算level_index
+        level_index = maimai_level_label_list.index(record['level_label'].upper())
+        record['level_index'] = level_index
+
+        # 计算level
+        # 将record['ds']切分为整数部分和小数部分
+        ds_l, ds_p = str(record.get('ds', 0.0)).split('.')
+        # ds_p取第一位整数
+        ds_p = int(ds_p[0])
+        plus = '+' if ds_p > 6 else ''
+        record['level'] = f"{ds_l}{plus}"
+        # print(f"ds: {record['ds']} | level: {record['level']}")
+
+        # 计算rate
+        record['rate'] = get_rate(record['achievements'])
+        # print(f"achievements: {record['achievements']} | rate: {record['rate']}")
+
+
 def update_records_count(placeholder):
     placeholder.write(f"当前记录数量: {len(st.session_state.records)}")
 
@@ -265,12 +286,6 @@ def update_record_grid(grid, external_placeholder):
                         width=65,
                         required=True
                     ),
-                    "rate": st.column_config.SelectboxColumn(
-                        "评级",
-                        options=["d", "c", "b", "bb", "bbb", "a", "aa", "aaa", "s", "sp", "ss", "ssp", "sss", "sssp"],
-                        width=65,
-                        required=True
-                    ),
                     "dxScore": st.column_config.NumberColumn(
                         "DX分数",
                         format="%d",
@@ -288,6 +303,10 @@ def update_record_grid(grid, external_placeholder):
                 use_container_width=True
             )
             
+            # 自动计算其他字段（注意：不含ra）
+            if edited_records is not None:
+                dataframe_auto_calculate(edited_records)
+
             # 更新记录
             if st.button("保存编辑"):
                 if edited_records is not None:
@@ -330,7 +349,7 @@ def search_and_add_record() -> list:
 
     selected_value = st_searchbox(
         search_music_metadata,
-        placeholder="输入歌曲名称关键词或ID进行搜索",
+        placeholder="输入关键词进行搜索（目前支持：歌曲名 / 曲师名 / 歌曲ID）",
         key="searchbox",
         rerun_scope="app"
     )
@@ -567,5 +586,6 @@ if st.session_state.get("username", None) and st.session_state.get("save_id", No
                 open_file_explorer(absolute_path)
         
         if st.button("继续下一步"):
+            save_custom_config()
             st.session_state.data_updated_step1 = True
             st.switch_page("st_pages/Generate_Pic_Resources.py")

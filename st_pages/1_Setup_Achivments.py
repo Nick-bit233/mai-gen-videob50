@@ -3,11 +3,10 @@ import os
 import json
 import traceback
 from datetime import datetime
-from pre_gen import fetch_user_gamedata, st_init_cache_pathes
-from pre_gen_int import update_b50_data_int_html, update_b50_data_int_json
+from pre_gen import fetch_user_gamedata
+from pre_gen_int import update_b50_data_int
 from utils.PageUtils import *
 from utils.PathUtils import *
-from utils.dxnet_extension import get_rate
 import glob
 
 maimai_level_label_list = list(LEVEL_LABELS.values())
@@ -74,29 +73,19 @@ def convert_old_files(folder, username, save_paths):
     except Exception as e:
         st.error(f"转换video_config文件时发生错误: {e}")
 
-@st.dialog("手动修改b50数据", width="large")
+@st.dialog("b50数据查看", width="large")
 def edit_b50_data(user_id, save_id):
     save_paths = get_data_paths(user_id, save_id)
     datafile_path = save_paths['data_file']
     with open(datafile_path, 'r', encoding='utf-8') as f:
         head_data = json.load(f)
-        print(head_data)
         dx_rating = head_data.get("rating", 0)
         data = head_data.get("records", None)
     st.markdown(f'【当前存档信息】\n \n - 用户名：{user_id} \n \n - <p style="color: #00BFFF;">存档ID(时间戳)：{save_id}</p> \n \n - <p style="color: #ffc107;">DX Rating：{dx_rating}</p>', unsafe_allow_html=True)
-    st.error("请注意：该页面组件已于v0.5.0版本后过时，如需手动修改存档，请在‘创建/编辑自定义b50数据’页面中操作。本页面仍然保留，但不对可能的数据损坏负责！")
-    st.warning("注意：修改保存后将无法撤销！")
+    st.error("请注意：该页面组件已于v0.5.0版本后过时，如需手动修改存档，请在‘创建自定义B50存档’页面中操作。本窗口现为只读属性，无法保存数据修改！")
     st.info("水鱼查分器不返回游玩次数数据，如需在视频中展示请手动填写游玩次数。")
-    st.info("通过导入HTML/JSON获取数据时：\n1. 数据不包括FC状态/FS状态/DX分数，如有需求请手动填写\n2. 定数信息来源于Github上的日服歌曲数据库，与国服/国际服不符或缺失最新谱面信息是正常现象。如果您的数据与日服定数版本不同，请注意检查！\n3. 如出现rating中带有'?'的乐曲，请检查定数和修改rating。")
-    # st.info("无论您的数据来源服务器，本页面自动补全数据时，认为'X.6'定数属于'X'等级而不是'X+'等级，这会在DX2025更新后统一修改。您也可以手动修改等级标示。")
-    
-    # json数据中添加游玩次数字段
-    for item in data:
-        if "playCount" not in item:
-            item["playCount"] = 0  # 设置默认值
-    
-    # 创建可编辑表格
-    edited_df = st.data_editor(
+
+    st.dataframe(
         data,
         column_order=["clip_name", "song_id", "title", "type", "level_label",
                     "ds", "achievements", "fc", "fs", "ra", "dxScore", "playCount"],
@@ -104,98 +93,56 @@ def edit_b50_data(user_id, save_id):
             "clip_name": "抬头标题",
             "song_id": "曲ID",
             "title": "曲名",
-            "type": st.column_config.SelectboxColumn(
+            "type": st.column_config.TextColumn(
                 "类型",
-                options=["SD", "DX"],
-                width=40,
-                required=True
+                width=40
             ),
-            "level_label": st.column_config.SelectboxColumn(
+            "level_label": st.column_config.TextColumn(
                 "难度",
-                options=maimai_level_label_list,
-                width=60,
-                required=True
+                width=60
             ),
             "ds": st.column_config.NumberColumn(
                 "定数",
                 min_value=1.0,
                 max_value=15.0,
                 format="%.1f",
-                width=60,
-                required=True
+                width=60
             ),
             "achievements": st.column_config.NumberColumn(
                 "达成率",
                 min_value=0.0,
                 max_value=101.0,
-                format="%.4f",
-                required=True
+                format="%.4f"
             ),
-            "fc": st.column_config.SelectboxColumn(
+            "fc": st.column_config.TextColumn(
                 "Fc标",
-                options=["", "fc", "fcp", "ap", "app"],
-                width=40,
-                required=False
+                width=40
             ),
-            "fs": st.column_config.SelectboxColumn(
+            "fs": st.column_config.TextColumn(
                 "Sync标",
-                options=["", "sync", "fs", "fsp", "fsd", "fsdp"],
-                width=40,
-                required=False
+                width=40
             ),
             "ra": st.column_config.NumberColumn(
                 "单曲Ra",
                 format="%d",
-                width=75,
-                required=True
+                width=75
             ),
             "dxScore": st.column_config.NumberColumn(
                 "DX分数",
                 format="%d",
-                width=75,
-                required=True
+                width=75
             ),
             "playCount": st.column_config.NumberColumn(
                 "游玩次数",
-                format="%d",
-                required=False
+                format="%d"
             )
-        },
-        hide_index=False
+        }
     )
-    
-    # 根据填写数值自动计算其他字段
-    for record in edited_df:
-        # 计算level_index
-        REVERSE_LEVEL_LABELS = {v: k for k, v in LEVEL_LABELS.items()}
-        level_index = REVERSE_LEVEL_LABELS.get(record['level_label'].upper())
-        record['level_index'] = level_index
-        # print(f"level_label: {record['level_label']} | level_index: {record['level_index']}")
 
-        # 计算level
-        # 将record['ds']切分为整数部分和小数部分
-        ds_l, ds_p = str(record['ds']).split('.')
-        # ds_p取第一位整数
-        ds_p = int(ds_p[0])
-        plus = '+' if ds_p > 6 else ''
-        record['level'] = f"{ds_l}{plus}"
-        # print(f"ds: {record['ds']} | level: {record['level']}")
+    if st.button("返回"):
+        st.rerun()
 
-        # 计算rate
-        record['rate'] = get_rate(record['achievements'])
-        # print(f"achievements: {record['achievements']} | rate: {record['rate']}")
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("保存修改"):
-            # DataFrame is returned as JSON format list
-            # json_data = edited_df
-            save_record_config(datafile_path, edited_df)
-            st.success("更改已保存！")
-    with col2:
-        if st.button("结束编辑并返回"):
-            st.rerun()
-
-st.header("获取或管理B50成绩存档")
+st.header("获取和管理B50成绩存档")
 
 def check_username(input_username):
     # 检查用户名是否包含非法字符
@@ -288,10 +235,8 @@ def delete_save_data(username, save_id):
 if st.session_state.get('config_saved', False):
     raw_username = read_raw_username(username)
 
-    st_init_cache_pathes()
-
-    st.write("b50数据编辑")
-    if st.button("查看和修改当前存档的b50数据", key="edit_b50_data"):
+    st.write("b50数据预览")
+    if st.button("查看当前存档的b50数据", key="edit_b50_data"):
         save_id = st.session_state.get('save_id', None)
         save_available = check_save_available(username, save_id)
         if save_available:
@@ -409,7 +354,7 @@ if st.session_state.get('config_saved', False):
 
         # ======= Data from DX Web =======
         st.info("如使用国际服/日服数据，请按照下列顺序操作。国服用户请忽略。")
-        st.info("这种导入方式暂不支持AP50等自定义乐曲列表，敬请期待后续版本！\n您也可以手动修改存档文件中的歌曲信息，但开发者不保证能够追踪和修复造成的运行错误。")
+        st.info("国际服/日服数据导入方式暂不支持AP50等特殊数据自动筛选！\n 如需制作请在‘创建自定义B50存档’页面中手动编辑存档。")
 
         st.markdown("1. 如果您还没有过任何外服存档，请点击下方按钮生成一份空白存档。")
         if st.button("新建空白存档", key="dx_int_create_new_save"):

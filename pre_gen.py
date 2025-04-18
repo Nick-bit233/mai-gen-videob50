@@ -2,7 +2,7 @@ import json
 import os
 import random
 
-from utils.PageUtils import DATA_CONFIG_VERSION
+from utils.PageUtils import DATA_CONFIG_VERSION, format_record_songid
 from utils.DataUtils import get_data_from_fish
 from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
 
@@ -80,7 +80,7 @@ def generate_data_file_from_fish(fish_data, data_file_path, params):
     filiter = params.get("filiter", None)
     if type == "maimai":
         if query == "best":
-            # 解析fish b50数据   
+            # 解析fish b50数据  TODO: 模块化这段逻辑
             charts_data = fish_data['charts']
             b35_data = charts_data['sd']
             b15_data = charts_data['dx']
@@ -99,6 +99,7 @@ def generate_data_file_from_fish(fish_data, data_file_path, params):
                 song = b50_data[i]
                 song["level_label"] = song.get("level_label", "").upper()
                 song['clip_id'] = f"clip_{i + 1}"
+                song["song_id"] = format_record_songid(song, song.get("song_id", None))
 
             config_content = {
                 "version": DATA_CONFIG_VERSION,
