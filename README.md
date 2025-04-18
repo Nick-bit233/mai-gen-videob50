@@ -13,6 +13,8 @@ Auto search and generate your best 50 videoes of MaimaiDX
     - 因此，建议从全新开始使用新版本，如果要迁移旧版存档，请小心使用并注意备份存档！
     - 新版本还需要进行大量测试，如果遇到使用问题，请多多反馈bug！
 
+打个小广告：如果你觉得本项目好用的话，欢迎发电支持开发者！[爱发电](https://afdian.com/a/mai-gen-videob50)
+
 ## 快速开始
 
 - 对于大多数无编程基础的用户，请**从右侧Release页面下载最新的**打包版本。
