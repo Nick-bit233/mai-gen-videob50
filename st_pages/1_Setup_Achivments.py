@@ -3,11 +3,10 @@ import os
 import json
 import traceback
 from datetime import datetime
-from pre_gen import fetch_user_gamedata, st_init_cache_pathes
+from pre_gen import fetch_user_gamedata
 from pre_gen_int import update_b50_data_int
 from utils.PageUtils import *
 from utils.PathUtils import *
-from utils.dxnet_extension import get_rate
 import glob
 
 maimai_level_label_list = list(LEVEL_LABELS.values())
@@ -235,8 +234,6 @@ def delete_save_data(username, save_id):
 # 仅在配置已保存时显示"开始预生成"按钮
 if st.session_state.get('config_saved', False):
     raw_username = read_raw_username(username)
-
-    st_init_cache_pathes()
 
     st.write("b50数据预览")
     if st.button("查看当前存档的b50数据", key="edit_b50_data"):

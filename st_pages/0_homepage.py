@@ -1,6 +1,7 @@
 import streamlit as st
 from utils.PageUtils import change_theme, update_music_metadata
 from utils.themes import THEME_COLORS
+from pre_gen import st_init_cache_pathes
 import datetime
 import os
 import json
@@ -65,6 +66,8 @@ st.markdown(
 st.info("本工具的缓存数据均保存在本地，如您在编辑过程中意外退出，可在任意步骤加载已有存档继续编辑。")
 st.info("在使用过程中，请不要随意刷新页面。如果因为误刷新页面导致索引丢失，建议重新加载存档，并回到第一步检查数据完整性。")
 st.success("使用过程中遇到任何问题，可以前往Github页面发起issue，或加入QQ群：994702414 反馈")
+
+st_init_cache_pathes()
 
 st.write("单击下面的按钮开始")
 
