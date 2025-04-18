@@ -82,7 +82,7 @@ def edit_b50_data(user_id, save_id):
         dx_rating = head_data.get("rating", 0)
         data = head_data.get("records", None)
     st.markdown(f'【当前存档信息】\n \n - 用户名：{user_id} \n \n - <p style="color: #00BFFF;">存档ID(时间戳)：{save_id}</p> \n \n - <p style="color: #ffc107;">DX Rating：{dx_rating}</p>', unsafe_allow_html=True)
-    st.error("请注意：该页面组件已于v0.5.0版本后过时，如需手动修改存档，请在‘创建/编辑自定义b50数据’页面中操作。本窗口现为只读属性，无法保存数据修改！")
+    st.error("请注意：该页面组件已于v0.5.0版本后过时，如需手动修改存档，请在‘创建自定义B50存档’页面中操作。本窗口现为只读属性，无法保存数据修改！")
     st.info("水鱼查分器不返回游玩次数数据，如需在视频中展示请手动填写游玩次数。")
 
     st.dataframe(
@@ -354,7 +354,7 @@ if st.session_state.get('config_saved', False):
 
         # ======= Data from DX Web =======
         st.info("如使用国际服/日服数据，请按照下列顺序操作。国服用户请忽略。")
-        st.info("这种导入方式暂不支持AP50等自定义乐曲列表，敬请期待后续版本！\n您也可以手动修改存档文件中的歌曲信息，但开发者不保证能够追踪和修复造成的运行错误。")
+        st.info("国际服/日服数据导入方式暂不支持AP50等特殊数据自动筛选！\n 如需制作请在‘创建自定义B50存档’页面中手动编辑存档。")
 
         st.markdown("1. 如果您还没有过任何外服存档，请点击下方按钮生成一份空白存档。")
         if st.button("新建空白存档", key="dx_int_create_new_save"):

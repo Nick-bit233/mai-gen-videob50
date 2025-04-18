@@ -80,7 +80,7 @@ def generate_data_file_from_fish(fish_data, data_file_path, params):
     filiter = params.get("filiter", None)
     if type == "maimai":
         if query == "best":
-            # 解析fish b50数据   
+            # 解析fish b50数据  TODO: 模块化这段逻辑
             charts_data = fish_data['charts']
             b35_data = charts_data['sd']
             b15_data = charts_data['dx']

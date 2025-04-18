@@ -76,7 +76,8 @@ if st.button("开始使用"):
 
 try:
     # 检查乐曲元数据更新（设定24小时更新冷却时间）
-    if should_update_metadata(24):
+    metadata_path = "./music_metadata/maimaidx/songs.json"
+    if should_update_metadata(24) or not os.path.exists(metadata_path):
         update_music_metadata()
         st.success("乐曲元数据已更新")
     else:
