@@ -155,7 +155,7 @@ def read_raw_username(username):
     raw_username_file = os.path.join(get_user_base_dir(username), "raw_username.txt")
     if os.path.exists(raw_username_file):
         with open(raw_username_file, 'r', encoding='utf-8') as f:
-            return f.read().strip()
+            return f.read()
     else:
         return username
 
