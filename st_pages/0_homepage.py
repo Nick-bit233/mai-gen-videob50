@@ -54,7 +54,7 @@ def should_update_metadata(threshold_hours=24):
 
 st.title("Mai-gen Videob50 视频生成器")
 
-st.write("当前版本: v0.5.0-beta")
+st.write("当前版本: v0.5.0")
 
 st.markdown(
     """

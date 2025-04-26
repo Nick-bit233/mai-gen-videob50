@@ -5,6 +5,7 @@ from datetime import datetime
 from utils.PageUtils import LEVEL_LABELS, open_file_explorer, get_video_duration, load_full_config_safe, load_video_config, save_video_config, read_global_config
 from utils.PathUtils import get_data_paths, get_user_versions
 from pre_gen import st_gene_resource_config
+from main_gen import generate_one_video_clip
 
 DEFAULT_VIDEO_MAX_DURATION = 180
 
@@ -90,7 +91,7 @@ def update_preview(preview_placeholder, config, current_index):
         with info_col2:
             absolute_path = os.path.abspath(os.path.dirname(item['video']))
             st.text(f"谱面确认视频文件：{os.path.basename(item['video'])}")
-            if st.button("打开视频所在文件夹", key=f"open_folder_{clip_id}"):
+            if st.button("打开源视频所在文件夹", key=f"open_folder_{clip_id}"):
                 open_file_explorer(absolute_path)
         main_col1, main_col2 = st.columns(2)
         with main_col1:
@@ -109,9 +110,13 @@ def update_preview(preview_placeholder, config, current_index):
                         st.error(f"删除视频失败: 详细错误信息: {traceback.format_exc()}")
 
             if os.path.exists(item['video']):
-                st.video(item['video'])         
-                st.info(f"谱面确认视频不是想要的那个？可能刚才在检查下载链接的时候弄错了什么…… \n 点击下面按钮可以删除此视频，然后请回到上一步重新下载。")
-                if st.button("删除该视频", key=f"delete_btn_{clip_id}"):
+                st.video(item['video'])       
+                del_help_text = f"谱面确认视频不是想要的那个？可能刚才在检查下载链接的时候弄错了什么…… \n 点击按钮可以删除此视频，然后请回到上一步重新下载。"
+                if st.button(
+                    "删除该视频",
+                    help=del_help_text,
+                    key=f"delete_btn_{clip_id}"
+                ):
                     delete_video_dialog()
             else:
                 st.warning("谱面确认视频文件不存在，请检查下载步骤是否正常完成！")
@@ -187,6 +192,11 @@ def update_preview(preview_placeholder, config, current_index):
         with time_col2:
             st.write(f"结束时间: {int(item['end'] // 60):02d}:{int(item['end'] % 60):02d}")
         st.write(f"持续时间: {item['duration']}s")
+
+
+def get_output_video_name_with_timestamp(clip_id):
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{clip_id}_{timestamp}.mp4"
 
 # 读取下载器配置
 if 'downloader_type' in st.session_state:
@@ -285,7 +295,32 @@ if video_config:
         save_video_config(video_config_output_file, video_config)
         st.success("配置已保存！")
 
-with st.container(border=True):
+    with st.expander("导出当前编辑片段的预览视频"):
+        st.info("如需修改视频生成参数，请在第6步页面中设置")
+        video_output_path = current_paths['output_video_dir']
+        v_res = G_config['VIDEO_RES']
+        v_bitrate_kbps = f"{G_config['VIDEO_BITRATE']}k"
+        target_config = video_config["main"][st.session_state.current_index]
+        target_video_filename = get_output_video_name_with_timestamp(target_config['id'])
+        if st.button("导出视频"):
+            save_video_config(video_config_output_file, video_config)
+            with st.spinner(f"正在导出视频片段{target_video_filename} ……"):
+                res = generate_one_video_clip(
+                    config=target_config,
+                    video_file_name=target_video_filename,
+                    video_output_path=video_output_path,
+                    video_res=v_res,
+                    video_bitrate=v_bitrate_kbps
+                )
+            if res['status'] == 'success':
+                st.success(res['info'])
+            else:
+                st.error(res['info'])
+        absolute_path = os.path.abspath(video_output_path)
+        if st.button("打开导出视频所在文件夹"):
+            open_file_explorer(absolute_path)
+
+with st.expander("额外设置和配置文件管理"):
     video_config_file = current_paths['video_config']
     video_download_path = f"./videos/downloads"
     st.write("如果因为手动更新b50等原因而需要检查和修改配置，点击下方按钮打开配置文件夹。")

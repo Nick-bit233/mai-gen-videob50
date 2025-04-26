@@ -139,6 +139,7 @@ def generate_data_file_from_fish(fish_data, data_file_path, params):
     else:
         raise ValueError("Only MAIMAI DX is supported for now")
 
+
 def filit_maimai_ap_data(fish_data, top_len=50):
     charts_data = fish_data['records']
 
