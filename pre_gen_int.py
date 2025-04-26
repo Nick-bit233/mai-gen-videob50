@@ -62,11 +62,11 @@ def read_b50_from_html(b50_raw_file, username):
     # Locate B35 and B15
     b35_div_names = [
         "Songs for Rating(Others)",
-        "rating対象曲（ベスト）"
+        "RATING対象曲（ベスト）"
     ]
     b15_div_names = [
         "Songs for Rating(New)",
-        "rating対象曲（新曲）"
+        "RATING対象曲（新曲）"
     ]
     b35_screw = locate_html_screw(html_tree, b35_div_names)
     b15_screw = locate_html_screw(html_tree, b15_div_names)
@@ -145,7 +145,9 @@ def parse_html_to_json(song_div, song_id_placeholder):
     # Get achievements
     score_div = song_div.xpath('.//div[contains(@class, "music_score_block")]')
     if score_div:
-        score_text = score_div[0].text.rstrip('%')
+        score_text = score_div[0].text
+        score_text = score_text.strip().replace('\xa0', '').replace('\n', '').replace('\t', '')
+        score_text = score_text.rstrip('%')
         chart["achievements"] = float(score_text)
 
     # Get song level and internal level

@@ -4,7 +4,7 @@ import json
 import traceback
 from datetime import datetime
 from pre_gen import fetch_user_gamedata, st_init_cache_pathes
-from pre_gen_int import update_b50_data_int_html, update_b50_data_int_json
+from pre_gen_int import update_b50_data_int
 from utils.PageUtils import *
 from utils.PathUtils import *
 from utils.dxnet_extension import get_rate
