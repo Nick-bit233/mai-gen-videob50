@@ -25,6 +25,7 @@ def generate_single_image(background_path, record_detail, output_path, title_tex
         background.save(output_path)
         # background.save(f"./b50_images/{user_id}/{prefix}_{index + 1}.png")
 
+
 def check_mask_waring(acc_string, cnt, warned=False):
     if len(acc_string.split('.')[1]) >= 4 and acc_string.split('.')[1][-3:] == "000":
         cnt = cnt + 1
