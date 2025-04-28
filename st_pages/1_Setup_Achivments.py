@@ -145,11 +145,14 @@ def edit_b50_data(user_id, save_id):
 st.header("获取和管理B50成绩存档")
 
 def check_username(input_username):
+    ret_username = input_username
     # 检查用户名是否包含非法字符
     if any(char in input_username for char in ['/', '\\', ':', '*', '?', '"', '<', '>', '|']):
-        return remove_invalid_chars(input_username), input_username
-    else:
-        return input_username, input_username
+        ret_username = remove_invalid_chars(input_username)
+    # 检查用户名中是否包含空格，将空格转换为下划线
+    if ' ' in ret_username:
+        ret_username = ret_username.replace(' ', '_')
+    return ret_username, input_username
     
 def read_raw_username(username):
     raw_username_file = os.path.join(get_user_base_dir(username), "raw_username.txt")
