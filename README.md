@@ -1,3 +1,5 @@
+<img src="md_res/icon.png" width="256" alt="Icon">
+
 # mai-gen-videob50
 
 自动从流媒体上搜索并构建你的舞萌DX B50视频
@@ -6,7 +8,7 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 ## 更新速览
 
-我们预先更新了`v0.5-beta`版本，现在支持以下内容：
+我们更新了`v0.5`版本，现在支持以下内容：
 - 自定义你自己的B50存档！
 - 歌曲数据全部从服务器获取！大幅减小包体体积并支持热更新歌曲数据。
 - 支持从编辑界面生成单个预览片段视频
@@ -15,6 +17,8 @@ Auto search and generate your best 50 videoes of MaimaiDX
     - 新版本还需要进行大量测试，如果遇到使用问题，请多多反馈bug！
 
 打个小广告：如果你觉得本项目好用的话，欢迎发电支持开发者！[爱发电](https://afdian.com/a/mai-gen-videob50)
+
+<img src="md_res/afdian.png" width="360" alt="afdian">
 
 ## 快速开始
 
@@ -44,7 +48,7 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 - 生成视频帧效果
 
-![alt text](md_res/image.png)
+<img src="md_res/image.png" width="600" alt="preview">
 
 
 ## 特性
@@ -159,14 +163,7 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 - 网络链接问题
 
-    ```
-    [WinError 10060] 由于连接方在一段时间后没有正确答复或连接的主机没有反应，连接尝试失败。
-    ```
-
-    请检查网络连接。如果你使用代理，请检查是否在选择了代理开启的情况下没有打开代理，或代理服务是否正常。
-
-
-- 下载视频过程中出现RemoteProtocolError或SSLEOFError异常：
+    下载视频过程中出现RemoteProtocolError或SSLEOFError异常：
 
    - RemoteProtocolError
     ```
@@ -212,11 +209,13 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
     - 请尝试删除输入框开头的BV字母。
 
+- 手动输入视频BV号或ID进行搜索时，查询到的是其他不相干的视频：
+
+    - 这可能是由于搜索引擎的模糊语义匹配导致的，请尝试改为直接复制目标视频的标题进行搜索。
+
 ### 配置填写相关
 
-- Q：加载页面4-1时，提示图片文件或视频文件不存在
-
-    ![alt text](md_res/qa_1.png)
+- Q：加载页面4-1时，已经生成和图片和下载的视频没有正常显示
 
     请检查是否完成了第1-3步中的图片生成以及视频下载等全步骤。
     
@@ -227,7 +226,7 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
     （注意：此操作将会重置你已经填写的所有评论，如果你在还未填写任何评论的时候遇到该问题，可以进行该操作。否则，请参考下一问）
 
-    ![alt text](md_res/qa_2.png)
+    <img src="md_res/qa_2.png" width="500" alt="qa2">
 
 
 - Q：我先填写了部分评论，但是后来B50数据更新了，怎么更新评论？
@@ -261,7 +260,7 @@ Auto search and generate your best 50 videoes of MaimaiDX
     
     > 亦可手动获取对应的正确视频，替换到`./videos/downloads`文件夹下，请注意保持文件名一致。
 
-- Q：视频生成过程中中断，出现如下内存错误
+- Q：**视频生成过程中中断，报错中出现如下内存错误**
 
     ```
     _ArrayMemoryError: Unable to allocate xxx MiB for an array with shape (1920, 1080, 3) and data type float64
