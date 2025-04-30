@@ -52,6 +52,8 @@ def should_update_metadata(threshold_hours=24):
     
     return False
 
+st.image("md_res/icon.png", width=256)
+
 st.title("Mai-gen Videob50 视频生成器")
 
 st.write("当前版本: v0.5.0")
@@ -74,19 +76,21 @@ st.write("单击下面的按钮开始")
 if st.button("开始使用"):
     st.switch_page("st_pages/1_Setup_Achivments.py")
 
-try:
-    # 检查乐曲元数据更新（设定24小时更新冷却时间）
-    metadata_path = "./music_metadata/maimaidx/songs.json"
-    if should_update_metadata(24) or not os.path.exists(metadata_path):
-        update_music_metadata()
-        st.success("乐曲元数据已更新")
-    else:
-        st.info("最近已更新过乐曲元数据，如有需要可以点击下方按钮手动更新")
-        if st.button("更新乐曲元数据"):
+st.write("更新乐曲数据库")
+with st.container(border=True):
+    try:
+        # 检查乐曲元数据更新（设定24小时更新冷却时间）
+        metadata_path = "./music_metadata/maimaidx/songs.json"
+        if should_update_metadata(24) or not os.path.exists(metadata_path):
             update_music_metadata()
             st.success("乐曲元数据已更新")
-except Exception as e:
-    st.error(f"更新乐曲元数据时出错: {e}")
+        else:
+            st.info("最近已更新过乐曲元数据，如有需要可以点击下方按钮手动更新")
+            if st.button("更新乐曲元数据"):
+                update_music_metadata()
+                st.success("乐曲元数据已更新")
+    except Exception as e:
+        st.error(f"更新乐曲元数据时出错: {e}")
 
 
 st.write("外观选项")

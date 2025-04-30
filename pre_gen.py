@@ -65,6 +65,8 @@ def fetch_user_gamedata(raw_file_path, data_file_path, username, params, source=
             return None 
         if 'error' in fish_data:
             raise Exception(f"Error: 从水鱼获得B50数据失败。错误信息：{fish_data['error']}")
+        if 'charts' not in fish_data:
+            raise Exception(f"Error: 从水鱼获得B50数据失败。错误信息：{fish_data}")
         
         # 缓存，写入b50_raw_file
         with open(raw_file_path, "w", encoding="utf-8") as f:
