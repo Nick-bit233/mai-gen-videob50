@@ -2,6 +2,8 @@
 
 > 基于dxrating网站导出数据的B50读取正在测试中，如遇问题还请在QQ群(994702414)内反馈！
 
+> 对于国服未上线曲目的曲绘获取功能正在测试中！
+
 ## 快速使用
 
 进入您所在服务器maimai DX NET的Rating对象乐曲页面，复制HTML源代码备用
@@ -14,7 +16,7 @@
 
 1. 打开[国际服Maimai DX NET](https://maimaidx-eng.com/maimai-mobile/home/ratingTargetMusic/)或[日服Maimai DX NET](https://maimaidx.jp/maimai-mobile/home/ratingTargetMusic/)并进入Rating对象乐曲页面。
 
-> 日服maimai DX NET的rating对象乐曲页面属于SEGA的付费项目。
+> 日服maimai DX NET的rating对象乐曲页面属于SEGA的付费项目，价格为330円/月。
 
 2. 等待页面加载完毕后，按`Ctrl + U` 或 右键>>点击`查看网页源代码`（这个选项卡的名称可能因浏览器不同而有些许差别）。在新打开或跳转至的页面中，全选复制所有内容备用。
 
@@ -40,17 +42,17 @@
 
 - 使用保存的Rating对象乐曲网页作为B50信息的读取源，替代国服使用的水鱼查分器获取B50；
 
-- 也可以使用[DXrating](https://dxrating.net/)网站导出的B50 Json文件作为数据源。(NEW!)
+- 也可以使用[DXrating](https://dxrating.net/)网站导出的B50 Json文件作为数据源。
 
 ## 开发状态与计划
 
-- [x] 支持从[DXrating](https://dxrating.net/)网站获取B50数据；(NEW!)
+- [x] 支持从[DXrating](https://dxrating.net/)网站获取B50数据；
 
-- [ ] 为本插件录制一个简单的介绍视频；
+- [x] 歌曲列表文件的自动更新同步；(NEW!)
 
 - [ ] 改变成绩的获取来源，以获取DX score、FC等级、FS等级；
 
-- [ ] 歌曲列表文件的自动更新同步。
+- [ ] 支持其他数据源的AP50。
 
 ## 常见问题
 
@@ -58,7 +60,7 @@
 
 - 读取数据文件时，报错`Error: No HTML/JSON file found in the user's folder.`
 
-请检查是否正确保存了您的HTML/JSON数据。如果您手动保存了数据文件，请检查是否正确的放置在`b50_datas/{user_id}`文件夹。
+请检查是否在网页端正确加载了您的HTML/JSON数据。如果您手动保存了数据文件，请检查是否正确的放置在`b50_datas/{user_id}`文件夹。
 
 - 读取HTML时，报错`Error: HTML screw (type = "XXXXXX") not found.`
 
@@ -69,23 +71,26 @@
 
 该问题的大概率诱因是您的B50包含某个歌曲数据库未收录的白谱，请参考[歌曲数据库相关](#歌曲数据库相关)。
 
-- 下载视频后许多谱面都指向同一个`None-3-DX.mp4`（或相似的以None开头的名称）
-
-这是一个在`v0.3.3`版本的常见问题，原因是太新的曲目并没有一个内部id，请更新到更新版本。
-
-- 显示`已找到谱面视频的缓存`，但是不是正确的谱面
+- 显示`已找到谱面视频的缓存`，但是不是正确的谱面确认视频
 
 如果显示的缓存视频名称结构为`-XX-Y-DX.mp4`，例如`-39-3-DX.mp4`，说明这是上一次下载视频时有缺少内部id的曲目并留下了缓存视频。
 您可以删除对应文件或修改其名称，然后尝试重新下载。
 
-- B50定数显示不正确，同时控制台提示`Warning: song {chart_title} with chart type {type} not found in dataset. Skip filling details.`
+- B50定数显示不正确，同时控制台有提示`Warning: song {chart_title} with chart type {type} not found in dataset. Skip filling details.`
   
 这是由于软件本地数据库中没有对应乐曲数据导致的，请参考[歌曲数据库相关](#歌曲数据库相关)。
 
+- 下载视频后许多谱面都指向同一个`None-3-DX.mp4`（或相似的以None开头的名称）
+
+这是一个在`v0.3.3`版本的常见问题，原因是太新的曲目并没有一个内部id，请更新到更新版本。
+
 ## 歌曲数据库相关
 
-截止最后一次更新（v0.5.0），本地日服/国际服数据库使用了截止日服在**2025年4月1日**的更新内容（包括`那須どうぶつ王国ちほー`等）作为乐曲信息参考。如果这个日期太过久远，请联系作者进行更新。
-> 您也可以在下文[引用](#引用)的Github仓库中下载`songs.json`文件，替换`.\music_metadata\maimaidx`文件夹中同名文件来临时更新数据库。注意：在网页端进入首页时会自动覆写一次本地缓存的数据库，请在点击首页的`开始使用`按钮后再进行文件覆盖操作。
+截止**本文档**最后一次更新（v0.5.1），生成器的日服/国际服数据库使用了截止日服在**2025年4月11日**的更新内容（包括Phigros联动等）作为乐曲信息参考。远程数据库每周同步一次，产生的数据误差可以在数分钟内手动修改完成。
+
+如果您急需更新本地数据库，请参考下文的手动同步方式。
+
+> 您可以在下文[引用](#引用)的Github仓库中下载`songs.json`文件，替换`.\music_metadata\maimaidx`文件夹中同名文件来临时更新数据库。注意：在网页端进入首页时会自动覆写一次本地缓存的数据库，请在点击首页的`开始使用`按钮后再进行文件覆盖操作。
 
 ## 引用
 

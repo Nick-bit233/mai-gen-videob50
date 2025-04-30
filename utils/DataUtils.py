@@ -72,7 +72,7 @@ def encode_song_id(name, song_type):
     # 只取前12位哈希值作为唯一标识符
     short_hash = hash_hex[:12]
 
-    print(short_hash)
+    print("Encoded song id for ", name, song_type, ". Result:", short_hash)
     
     # 创建编码类型前缀
     type_prefix = f"t{song_type}"

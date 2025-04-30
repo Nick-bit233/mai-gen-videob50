@@ -117,7 +117,7 @@ class ChartManager:
             ds = float(chart_level.replace("+", ".6") if "+" in chart_level else f"{chart_level}.0")
             chart_json["ds"] = ds
             song_rating = compute_rating(ds, chart_json["achievements"])
-            chart_json["ra"] = str(song_rating) + "?"
+            chart_json["ra"] = song_rating
 
         if self.compute_total_rating:
             self.total_rating += song_rating
