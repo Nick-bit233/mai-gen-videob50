@@ -40,7 +40,7 @@ def try_update_config_json(content, username=""):
     if type(content) == list:
         print("存档版本过旧，转换存档到最新版本...")
         for item in content:
-            index = records.index(item)
+            index = content.index(item)
             item["clip_name"] = item.get("clip_id", "Clip")
             item["clip_id"] = f"clip_{index + 1}"
             # 将item["level_label"]转换为全大写
@@ -81,7 +81,7 @@ def load_full_config_safe(config_file, username):
         raise FileNotFoundError(f"存档文件不存在：{config_file}")
     # 检查版本号是否存在或过期
     if "version" not in content or content["version"] != DATA_CONFIG_VERSION:
-        print(f"存档版本号不匹配，当前最新版本：{DATA_CONFIG_VERSION}，文件版本：{content.get('version', 'None') or 'None'}")
+        print(f"存档版本号不匹配，当前最新版本：{DATA_CONFIG_VERSION}，文件版本：{content.get('version', 'None') if type(content) == dict else 'None'}")
         # 尝试修复存档
         content = try_update_config_json(content, username)
         # 保存更新后的存档

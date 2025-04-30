@@ -1,18 +1,38 @@
+<img src="md_res/icon.png" width="256" alt="Icon">
+
 # mai-gen-videob50
 
 自动从流媒体上搜索并构建你的舞萌DX B50视频
 
 Auto search and generate your best 50 videoes of MaimaiDX
 
+## 更新速览
+
+我们更新了`v0.5`版本，现在支持以下内容：
+- 自定义你自己的B50存档！
+- 歌曲数据全部从服务器获取！大幅减小包体体积并支持热更新歌曲数据。
+- 支持从编辑界面生成单个预览片段视频
+- 但是！因为数据格式的更新，旧版本存档可能会出现不兼容的问题（已经很努力地兼容了.jpg）
+    - 因此，建议从全新开始使用新版本，如果要迁移旧版存档，请小心使用并注意备份存档！
+    - 新版本还需要进行大量测试，如果遇到使用问题，请多多反馈bug！
+
+打个小广告：如果你觉得本项目好用的话，欢迎发电支持开发者！[爱发电](https://afdian.com/a/mai-gen-videob50)
+
+<img src="md_res/afdian.png" width="360" alt="afdian">
+
 ## 快速开始
 
-- 如果你具有基本的计算机和python知识，可以独立（或者GPT辅助）完成环境配置和脚本操作，请直接clone仓库代码，参考[使用说明](#使用说明（从源代码启动）)部分开始使用!
+- 对于大多数无编程基础的用户，请**从右侧Release页面下载最新的**打包版本。
+- 注意！从`v0.5-beta`版本开始，运行环境包已经和本体分离，要启动应用，请进行以下操作：
+    - 下载本体Release包和运行环境包（`runtime_v<版本号>.zip`），并解压
+    - 将运行环境包中的**全部文件**，复制到本体Release包解压后的目录
+    - 双击`start.bat`文件启动应用。
+    - 请不要使用旧版本的runtime运行环境，其缺少新版本的依赖
+- 请注意：**打包版本仅支持Windows10及以上操作系统**
+- 首次启动时，如果没有立刻弹出浏览器窗口，请检查控制台，如果要求输入Email，请直接回车跳过即可。
+- 遇到问题请参考[常见问题](#常见问题)一节。
 
-- 如果你没有上述经验，请**从右侧Release页面下载最新的**打包版本，参考[【教程视频】](https://www.bilibili.com/video/BV1G2kBY5Edq)开始使用。
-    - 请注意：**打包版本仅支持Windows10及以上操作系统**
-    - 要启动应用，请双击Release包内的`start.bat`文件。
-    - 首次启动时，如果没有立刻弹出浏览器窗口，请检查控制台，如果要求输入Email，请直接回车跳过即可。
-    - 使用打包版本时，**无需执行使用说明的步骤，浏览器页面弹出后即可直接使用**。遇到问题请参考[常见问题](#常见问题)一节。
+> 如果你具有基本的计算机和python知识，可以独立（或者GPT辅助）完成环境配置和脚本操作，可以直接clone仓库代码，参考[使用说明](#使用说明（从源代码启动）)部分开始使用。
 
 ## 效果预览
 
@@ -28,7 +48,7 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 - 生成视频帧效果
 
-![alt text](md_res/image.png)
+<img src="md_res/image.png" width="600" alt="preview">
 
 
 ## 特性
@@ -71,7 +91,9 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 - [x] 更好的B50数据存档系统，可以保存多个历史副本
 
-- [ ] 可自行筛选的特殊B50数据（如AP B50）
+- [x] 支持自行筛选的B50数据、自定义视频生成的列表（支持从水鱼自动获取AP B50）
+
+- [ ] 支持自定义视频背景图片、字体和字号等个性化功能
 
 - [ ] （远期）支持 中二B30/音击B45 视频生成
 
@@ -141,14 +163,7 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 - 网络链接问题
 
-    ```
-    [WinError 10060] 由于连接方在一段时间后没有正确答复或连接的主机没有反应，连接尝试失败。
-    ```
-
-    请检查网络连接。如果你使用代理，请检查是否在选择了代理开启的情况下没有打开代理，或代理服务是否正常。
-
-
-- 下载视频过程中出现RemoteProtocolError或SSLEOFError异常：
+    下载视频过程中出现RemoteProtocolError或SSLEOFError异常：
 
    - RemoteProtocolError
     ```
@@ -194,11 +209,13 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
     - 请尝试删除输入框开头的BV字母。
 
+- 手动输入视频BV号或ID进行搜索时，查询到的是其他不相干的视频：
+
+    - 这可能是由于搜索引擎的模糊语义匹配导致的，请尝试改为直接复制目标视频的标题进行搜索。
+
 ### 配置填写相关
 
-- Q：加载页面4-1时，提示图片文件或视频文件不存在
-
-    ![alt text](md_res/qa_1.png)
+- Q：加载页面4-1时，已经生成和图片和下载的视频没有正常显示
 
     请检查是否完成了第1-3步中的图片生成以及视频下载等全步骤。
     
@@ -209,7 +226,7 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
     （注意：此操作将会重置你已经填写的所有评论，如果你在还未填写任何评论的时候遇到该问题，可以进行该操作。否则，请参考下一问）
 
-    ![alt text](md_res/qa_2.png)
+    <img src="md_res/qa_2.png" width="500" alt="qa2">
 
 
 - Q：我先填写了部分评论，但是后来B50数据更新了，怎么更新评论？
@@ -243,7 +260,7 @@ Auto search and generate your best 50 videoes of MaimaiDX
     
     > 亦可手动获取对应的正确视频，替换到`./videos/downloads`文件夹下，请注意保持文件名一致。
 
-- Q：视频生成过程中中断，出现如下内存错误
+- Q：**视频生成过程中中断，报错中出现如下内存错误**
 
     ```
     _ArrayMemoryError: Unable to allocate xxx MiB for an array with shape (1920, 1080, 3) and data type float64
@@ -313,6 +330,8 @@ Auto search and generate your best 50 videoes of MaimaiDX
 - `CLIP_START_INTERVAL` ：设置生成完整视频时，每段谱面确认默认开始播放的时间随机范围，格式为`[min, max]`，单位为秒。
 
 ### 本地存档文件结构的解释
+
+> 注意：本部分内容在v0.5版本以后已经过时，有待进行更新完善，旧版内容仅供参考！
 
 - 在`./b50_datas`文件夹下是所有的用户b50存档，以及与其配对的视频搜索和生成配置文件
 

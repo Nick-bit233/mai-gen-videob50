@@ -5,17 +5,17 @@ import traceback
 
 FONT_PATH = "./font/SOURCEHANSANSSC-BOLD.OTF"
 
-def generate_one_video_clip(config, video_output_path, video_res, video_bitrate, font_path=FONT_PATH):
-    print(f"正在合成视频片段: {config['id']}")
+def generate_one_video_clip(config, video_file_name, video_output_path, video_res, video_bitrate, font_path=FONT_PATH):
+    print(f"正在合成视频片段: {video_file_name}")
     try:
         clip = create_video_segment(config, resolution=video_res, font_path=font_path)
-        clip.write_videofile(os.path.join(video_output_path, f"{config['id']}.mp4"), 
+        clip.write_videofile(os.path.join(video_output_path, video_file_name), 
                              fps=30, threads=4, preset='ultrafast', bitrate=video_bitrate)
         clip.close()
-        return {"status": "success", "info": f"合成视频片段{config['id']}成功"}
+        return {"status": "success", "info": f"合成视频片段{video_file_name}成功"}
     except Exception as e:
-        print(f"Error: 合成视频片段{config['id']}时发生异常: {traceback.print_exc()}")
-        return {"status": "error", "info": f"合成视频片段{config['id']}时发生异常: {traceback.print_exc()}"}
+        print(f"Error: 合成视频片段{video_file_name}时发生异常: {traceback.print_exc()}")
+        return {"status": "error", "info": f"合成视频片段{video_file_name}时发生异常: {traceback.print_exc()}"}
     
 def generate_complete_video(configs, username,
                             video_output_path, video_res, video_bitrate,
