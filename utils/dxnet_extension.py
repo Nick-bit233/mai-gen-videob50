@@ -114,9 +114,10 @@ class ChartManager:
             print(f"Warning: song {chart_title} with chart type {chart_json['type']} not found in dataset. Skip filling details.")
             # Default internal level as .0 or .6(+). Need extra dataset to specify.
             chart_level = chart_json["level"]
-            chart_json["ds"] = float(chart_level.replace("+", ".6") if "+" in chart_level else f"{chart_level}.0")
+            ds = float(chart_level.replace("+", ".6") if "+" in chart_level else f"{chart_level}.0")
+            chart_json["ds"] = ds
             song_rating = compute_rating(ds, chart_json["achievements"])
-            chart_json["ra"] = str(song_rating) + "?"
+            chart_json["ra"] = song_rating
 
         if self.compute_total_rating:
             self.total_rating += song_rating

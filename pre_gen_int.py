@@ -62,11 +62,11 @@ def read_b50_from_html(b50_raw_file, username):
     # Locate B35 and B15
     b35_div_names = [
         "Songs for Rating(Others)",
-        "rating対象曲（ベスト）"
+        "RATING対象曲（ベスト）"
     ]
     b15_div_names = [
         "Songs for Rating(New)",
-        "rating対象曲（新曲）"
+        "RATING対象曲（新曲）"
     ]
     b35_screw = locate_html_screw(html_tree, b35_div_names)
     b15_screw = locate_html_screw(html_tree, b15_div_names)
@@ -145,7 +145,9 @@ def parse_html_to_json(song_div, song_id_placeholder):
     # Get achievements
     score_div = song_div.xpath('.//div[contains(@class, "music_score_block")]')
     if score_div:
-        score_text = score_div[0].text.rstrip('%')
+        score_text = score_div[0].text
+        score_text = score_text.strip().replace('\xa0', '').replace('\n', '').replace('\t', '')
+        score_text = score_text.rstrip('%')
         chart["achievements"] = float(score_text)
 
     # Get song level and internal level
@@ -274,18 +276,18 @@ def generate_data_file_int(parsed_data, data_file_path, params):
 
             for i in range(len(b35_data)):
                 song = b35_data[i]
-                song['clip_name'] = f"PastBest_{i + 1}"
+                song["clip_name"] = f"PastBest_{i + 1}"
 
             for i in range(len(b15_data)):
                 song = b15_data[i]
-                song['clip_name'] = f"NewBest_{i + 1}"
+                song["clip_name"] = f"NewBest_{i + 1}"
             
             # 合并b35_data和b15_data到同一列表
             b50_data = b35_data + b15_data
             for i in range(len(b50_data)):
                 song = b50_data[i]
                 song["level_label"] = song.get("level_label", "").upper()
-                song['clip_id'] = f"clip_{i + 1}"
+                song["clip_id"] = f"clip_{i + 1}"
                 song["song_id"] = format_record_songid(song, song.get("song_id", None))
             
             config_content = {
