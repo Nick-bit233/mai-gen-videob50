@@ -62,15 +62,16 @@ def fetch_user_gamedata(raw_file_path, data_file_path, username, params, source=
             fish_data = get_data_from_fish(username, params)
         except json.JSONDecodeError:
             print("Error: 读取 JSON 文件时发生错误，请检查数据格式。")
-            return None 
-        if 'error' in fish_data:
-            raise Exception(f"Error: 从水鱼获得B50数据失败。错误信息：{fish_data['error']}")
-        if 'charts' not in fish_data:
-            raise Exception(f"Error: 从水鱼获得B50数据失败。错误信息：{fish_data}")
+            return None
         
         # 缓存，写入b50_raw_file
         with open(raw_file_path, "w", encoding="utf-8") as f:
             json.dump(fish_data, f, ensure_ascii=False, indent=4)
+
+        if 'error' in fish_data:
+            raise Exception(f"Error: 从水鱼获得B50数据失败。错误信息：{fish_data['error']}")
+        if 'msg' in fish_data:
+            raise Exception(f"Error: 从水鱼获得B50数据失败。错误信息：{fish_data['msg']}")
         
         # 生成数据文件
         generate_data_file_from_fish(fish_data, data_file_path, params)
