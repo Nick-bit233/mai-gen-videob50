@@ -2,7 +2,6 @@ import streamlit as st
 import os
 import re
 import json
-from json import JSONEncoder
 import traceback
 from copy import deepcopy
 from datetime import datetime
@@ -26,12 +25,6 @@ except ImportError:
     st.stop()
 
 st.header("编辑B50存档 / 创建自定义B50存档")
-
-class IntKeepingEncoder(JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, int):
-            return int(obj)
-        return super().default(obj)
 
 # 加载歌曲数据
 @st.cache_data
@@ -141,9 +134,35 @@ def save_config_to_file(username, save_id, config):
     save_paths = get_data_paths(username, save_id)
     save_dir = os.path.dirname(save_paths['data_file'])
     os.makedirs(save_dir, exist_ok=True)
+
+    # 保证部分字段（如song_id）为整数类型
+    def _recursive_transform(item, integer_fields):
+        if isinstance(item, dict):
+            new_dict = {}
+            for k, v_original in item.items():
+                # 先进行递归转换
+                v_transformed = _recursive_transform(v_original, integer_fields)
+                if k in integer_fields:
+                    if isinstance(v_transformed, float):
+                        new_dict[k] = int(v_transformed)
+                    elif isinstance(v_transformed, str): # 也尝试转换数字字符串
+                        try:
+                            new_dict[k] = int(float(v_transformed)) # str -> float -> int
+                        except (ValueError, TypeError):
+                            new_dict[k] = v_transformed # 转换失败则保留转换后的值（可能是原始字符串）
+                    else:
+                        new_dict[k] = v_transformed 
+                else:
+                    new_dict[k] = v_transformed 
+            return new_dict
+        elif isinstance(item, list):
+            return [_recursive_transform(elem, integer_fields) for elem in item]
+        return item
     
     with open(save_paths['data_file'], 'w', encoding='utf-8') as f:
-        json.dump(config, f, ensure_ascii=False, indent=4, cls=IntKeepingEncoder)
+        integer_fields=["song_id", "level_index"]
+        config = _recursive_transform(config, integer_fields)
+        json.dump(config, f, ensure_ascii=False, indent=4)
     
     return save_paths
 
