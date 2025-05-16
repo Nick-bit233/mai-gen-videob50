@@ -209,6 +209,9 @@ class Utils:
         Returns:
             Background (Image.Image): 处理后的成绩记录图片
         """
+        # Initialize Background as None outside the try block
+        Background = None
+        
         try:
             assert record_detail['level_index'] in range(0, 5)
             image_asset_path = os.path.join(os.getcwd(),
@@ -288,8 +291,9 @@ class Utils:
 
                 Background = Image.alpha_composite(Background, TempImage)
 
-        except FileNotFoundError as e:
-            print(e)
+        except Exception as e:
+            print(f"Error generating achievement: {e}")
+            Background = Image.new('RGBA', (1520, 500), (0, 0, 0, 255))
 
         return Background
 
@@ -311,6 +315,7 @@ def load_music_jacket(music_tag):
         jacket = download_image_data(image_path)
         # 返回 RGBA 模式图像，并强制缩放到400*400px
         return jacket.convert("RGBA").resize((400, 400), Image.LANCZOS)
+    # TODO：抛出异常，默认封面由上层处理
     except FileNotFoundError:
         print(f"获取乐曲封面{image_path}失败，将使用默认封面")
         with Image.open(f"./images/Jackets/UI_Jacket_000000.png") as jacket:
