@@ -142,9 +142,9 @@ async def download_url_from_bili(url: str, out: str, info: str):
                 f.write(chunk)
         print("Done.\n")
 
-async def bilibili_download(bvid, credential, output_name, output_path, high_res=False):
+async def bilibili_download(bvid, credential, output_name, output_path, high_res=False, p_index=0):
     v = video.Video(bvid=bvid, credential=credential)
-    download_url_data = await v.get_download_url(0)
+    download_url_data = await v.get_download_url(p_index)
     detecter = video.VideoDownloadURLDataDetecter(data=download_url_data)
 
     # 获取最佳媒体流: 返回列表中0是视频流，1是音频流
@@ -179,7 +179,7 @@ class Downloader(ABC):
         pass
 
     @abstractmethod
-    def download_video(self, video_id, output_name, output_path, high_res=False):
+    def download_video(self, video_id, output_name, output_path, high_res=False, p_index=0):
         pass
 
 class PurePytubefixDownloader(Downloader):
@@ -229,7 +229,7 @@ class PurePytubefixDownloader(Downloader):
             videos = videos[:self.search_max_results]
         return videos
     
-    def download_video(self, video_id, output_name, output_path, high_res=False):
+    def download_video(self, video_id, output_name, output_path, high_res=False, p_index=0):
         try:
             if not os.path.exists(output_path):
                 os.makedirs(output_path)
@@ -351,7 +351,7 @@ class BilibiliDownloader(Downloader):
             })
         return videos
 
-    def download_video(self, video_id, output_name, output_path, high_res=False):
+    def download_video(self, video_id, output_name, output_path, high_res=False, p_index=0):
         if not self.credential:
             print(f"Warning: 未成功配置bilibili登录凭证，下载视频可能失败！")
         # 使用异步方法下载
@@ -360,7 +360,8 @@ class BilibiliDownloader(Downloader):
                               credential=self.credential, 
                               output_name=output_name, 
                               output_path=output_path,
-                              high_res=high_res)
+                              high_res=high_res,
+                              p_index=p_index)
         )
 
 # test

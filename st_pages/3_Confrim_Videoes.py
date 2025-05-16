@@ -168,17 +168,36 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
                                             key=f"search_replace_id_{song['clip_id']}",
                                             disabled=dl_instance is None or replace_id == "")
             if extra_search_button:
+                # TODO：如果是b站api，不再搜索而是从api中获取
                 videos = dl_instance.search_video(replace_id.replace("BV", ""))
                 if len(videos) == 0:
                     st.error("未找到有效的视频，请重试")
                 else:
                     to_replace_video_info = videos[0]
+                    print(videos[0])
                     st.success(f"已使用视频{to_replace_video_info['id']}替换匹配信息，详情：")
                     st.markdown(f"【{to_replace_video_info['title']}】({to_replace_video_info['duration']}秒) [🔗{to_replace_video_info['id']}]({to_replace_video_info['url']})")
                     song['video_info_match'] = to_replace_video_info
                     save_record_config(b50_config_file, config)
                     st.toast("配置已保存！")
                     update_match_info(match_info_placeholder, song['video_info_match'])
+
+            # 分P指定测试
+            customer_cid = st.number_input(
+                "手动输入视频的分P序号", 
+                min_value=0,
+                step=1,
+                key=f"customer_cid_{song['clip_id']}")
+            if st.button("确认更新为分p号", key=f"confirm_cid_{song['clip_id']}"):
+                if customer_cid >= 0:
+                    # 更新视频信息
+                    song['video_info_match']['cid'] = customer_cid
+                    save_record_config(b50_config_file, config)
+                    st.toast("配置已保存！")
+                    update_match_info(match_info_placeholder, song['video_info_match'])
+                else:
+                    st.error("请输入有效的分P序号！")
+
 
 # 尝试读取缓存下载器
 if 'downloader' in st.session_state and 'downloader_type' in st.session_state:
