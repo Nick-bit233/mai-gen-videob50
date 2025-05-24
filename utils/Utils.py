@@ -179,7 +179,7 @@ class Utils:
                 dx_stars = 0
             case _ if max_dx_score * 0.85 <= user_dx_score < max_dx_score * 0.9:
                 dx_stars = 1
-            case _ if max_dx_score * 0.9 <= user_dx_score < max_dx_score * 0.92:
+            case _ if max_dx_score * 0.9 <= user_dx_score < max_dx_score * 0.93:
                 dx_stars = 2
             case _ if max_dx_score * 0.93 <= user_dx_score < max_dx_score * 0.95:
                 dx_stars = 3
