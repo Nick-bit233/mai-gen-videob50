@@ -245,7 +245,7 @@ def download_one_video(downloader, song, video_download_path, high_res=False):
                               clip_name, 
                               video_download_path, 
                               high_res=high_res,
-                              p_index=video_info.get('cid', 0))
+                              p_index=video_info.get('p_index', 0))
     return {"status": "success", "info": f"下载{clip_name}完成"}
 
 

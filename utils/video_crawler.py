@@ -22,6 +22,7 @@ else:
 
 FFMPEG_PATH = 'ffmpeg'
 MAX_LOGIN_RETRIES = 3
+BILIBILI_URL_PREFIX = "https://www.bilibili.com/video/"
 
 def custom_po_token_verifier() -> Tuple[str, str]:
 
@@ -340,15 +341,11 @@ class BilibiliDownloader(Downloader):
             print(results)
             return []
         res_list = results['result']
+
         for each in res_list:
-            videos.append({
-                'id': each['bvid'],  # 使用bilibili-api时，video_id是bvid字符串或aid
-                'aid': each['aid'],
-                'cid': each['cid'] if 'cid' in each else 0,
-                'title': remove_html_tags_and_invalid_chars(each['title']),  # 去除特殊字符
-                'url': each['arcurl'],
-                'duration': convert_duration_to_seconds(each['duration']),  # 转换为总秒数
-            })
+            vid = each['bvid'] # 只取bvid，然后通过视频接口获取信息，这样可以得到分p信息
+            match_info = self.get_video_info(vid)
+            videos.append(match_info)
         return videos
 
     def download_video(self, video_id, output_name, output_path, high_res=False, p_index=0):
@@ -363,6 +360,41 @@ class BilibiliDownloader(Downloader):
                               high_res=high_res,
                               p_index=p_index)
         )
+
+    def get_video_info(self, video_id):
+        # 获取视频信息
+        v = video.Video(bvid=video_id, credential=self.credential)
+        info = sync(v.get_info())
+
+        # 返回符合存档格式的match_info信息
+        match_info = {
+            "id": info.get("bvid", ""),
+            "aid": info.get("aid", 0),
+            "title": info.get("title", ""),
+            "duration": info.get("duration", 0),
+            "page_count": len(info.get("pages", [])),
+            "p_index": info.get("p_index", 0),
+            "url": BILIBILI_URL_PREFIX + info.get("bvid", ""),
+        }
+        return match_info
+
+    def get_video_pages(self, video_id):
+        # 获取视频分p信息
+        v = video.Video(bvid=video_id, credential=self.credential)
+        pages = sync(v.get_pages())
+        
+        page_info = []
+
+        for each in pages:
+            page_info.append({
+                "cid": each.get("cid", 0),
+                "page": each.get("page", 0),
+                "part": remove_html_tags_and_invalid_chars(each.get("part", "")),
+                "duration": each.get("duration", 0),
+                "first_frame": each.get("first_frame", ""),
+            })
+
+        return page_info
 
 # test
 if __name__ == "__main__":
