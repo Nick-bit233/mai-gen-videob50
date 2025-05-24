@@ -90,6 +90,31 @@ def st_download_video(placeholder, dl_instance, G_config, b50_config):
 
             st.success("下载完成！请点击下一步按钮核对视频素材的详细信息。")
 
+@st.dialog("分p视频指定", width="large")
+def change_video_page(config, cur_clip_index, cur_p_index, b50_config_file):
+    st.write("分P视频指定")
+
+    page_info = dl_instance.get_video_pages(config[cur_clip_index]['video_info_match']['id'])
+    page_options = []
+    for i, page in enumerate(page_info):
+        if 'part' in page and 'duration' in page:
+            page_options.append(f"P{i + 1}: {page['part']} ({page['duration']}秒)")
+
+    selected_p_index = st.radio(
+        "请选择:",
+        options=range(len(page_options)),
+        format_func=lambda x: page_options[x],
+        index=cur_p_index,
+        key=f"radio_select_page_{song['clip_id']}",
+        label_visibility="visible"
+    )
+
+    if st.button("确定更新分p", key=f"confirm_selected_page_{song['clip_id']}"):
+        config[cur_clip_index]['video_info_match']['p_index'] = selected_p_index
+        save_record_config(b50_config_file, config)
+        st.rerun()
+    
+
 # 在显示数据框之前，将数据转换为兼容的格式
 def convert_to_compatible_types(data):
     if isinstance(data, list):
@@ -99,25 +124,42 @@ def convert_to_compatible_types(data):
     return data
 
 def update_editor(placeholder, config, current_index, dl_instance=None):
-    def show_video_info(video_info: dict, width: int = 800) -> None:
-        # 只取需要展示的字段
-        show_info = {k: video_info[k] for k in ['id', 'title', 'url', 'duration']}
-        
-        # 转换数据类型以确保兼容性
-        converted_info = {k: str(v) if isinstance(v, (int, float)) else v 
-                        for k, v in show_info.items()}
-        
-        # 使用streamlit的dataframe组件展示数据
-        st.dataframe(convert_to_compatible_types(converted_info), width=width)
 
-    def update_match_info(placeholder, v_info_match):
+    def update_match_info(placeholder, video_info):
         with placeholder.container(border=True):
-            st.markdown(f"""<p style="color: #00BFFF;">当前记录的谱面信息 : {song['title']} ({song['type']}) [{song['level_label']}]</p>"""
+            st.markdown(f"""<p style="color: #00BFFF;"><b>当前记录的谱面信息 : </b>{song['title']} ({song['type']}) [{song['level_label']}]</p>"""
                         , unsafe_allow_html=True)
             # 使用markdown添加带颜色的标题
-            st.markdown("""<p style="color: #28a745;">当前匹配的视频信息 :</p>""", unsafe_allow_html=True)
+            st.markdown("""<p style="color: #28a745;"><b>当前匹配的视频信息 :</b></p>""", unsafe_allow_html=True)
             # 使用封装的函数展示视频信息
-            show_video_info(v_info_match)
+            id = video_info['id']
+            title = video_info['title']
+            st.markdown(f"- 视频标题：{title}")
+            st.markdown(f"- 链接：[🔗{id}]({video_info['url']}), 总时长: {video_info['duration']}秒")
+            page_info = dl_instance.get_video_pages(id)
+            if page_info and 'p_index' in video_info:
+                page_count = video_info['page_count']
+                p_index = video_info['p_index']
+                st.text(f"此视频具有{page_count}个分p，目前确认的分p序号为【{p_index + 1}】，子标题：【{page_info[p_index]['part']}】")
+
+                col_config = {
+                    "page": st.column_config.NumberColumn("序号", width="small"),
+                    "part": st.column_config.TextColumn("分P标题", width="large"),
+                    "duration": st.column_config.NumberColumn("时长(s)", width="small"),
+                    "first_frame": st.column_config.ImageColumn("预览图", width="small", help="为了减少对性能的影响，分p数量过多(>5)时，不加载预览图"),
+                }
+                     
+                with st.expander("查看分p信息", expanded=page_count < 2):
+                    if isinstance(page_info, list):
+                        st.dataframe(
+                            page_info, 
+                            column_order=['page', 'part', 'duration', 'first_frame'],
+                            column_config=col_config,
+                            hide_index=True,
+                        )
+                    else:
+                        st.write("没有找到分p信息")
+                
 
     with placeholder.container(border=True):
         song = config[current_index]
@@ -125,17 +167,25 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
         st.subheader(f"片段ID: {song['clip_id']}，标题名称: {song['clip_name']}")
 
         match_info_placeholder = st.empty()
-        update_match_info(match_info_placeholder, song['video_info_match'])
+        video_info = song['video_info_match']
+        update_match_info(match_info_placeholder, video_info=video_info)
+        if "p_index" in video_info:
+            p_index = video_info['p_index']   
+            if st.button("修改分p序号", key=f"change_page_{song['clip_id']}"):
+                change_video_page(config, current_index, p_index, b50_config_file)
+
 
         # 获取当前所有搜索得到的视频信息
         st.write("请检查上述视频信息与谱面是否匹配。如果有误，请从下方备选结果中选择正确的视频。")
         to_match_videos = song['video_info_list']
         
-        # 为每个视频创建一个格式化的标签，包含可点击的链接
-        video_options = [
-            f"[{i+1}] 【{video['title']}】({video['duration']}秒) [🔗{video['id']}]({video['url']})"
-            for i, video in enumerate(to_match_videos)
-        ]
+        # 视频链接指定
+        video_options = []
+        for i, video in enumerate(to_match_videos):
+            page_count_str = f"    【分p总数：{video['page_count']}】" if 'page_count' in video else ""
+            video_options.append(
+                f"[{i+1}] {video['title']}({video['duration']}秒) [🔗{video['id']}]({video['url']}) {page_count_str}"
+            )
         
         selected_index = st.radio(
             "搜索备选结果:",
@@ -144,11 +194,6 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
             key=f"radio_select_{song['clip_id']}",
             label_visibility="visible"
         )
-
-        # 显示选中视频的详细信息
-        if selected_index is not None:
-            with st.expander("查看选中视频的详细信息"):
-                show_video_info(to_match_videos[selected_index])
 
         if st.button("确定使用该信息", key=f"confirm_selected_match_{song['clip_id']}"):
             song['video_info_match'] = to_match_videos[selected_index]
@@ -159,7 +204,7 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
         # 如果搜索结果均不符合，手动输入地址：
         with st.container(border=True):
             st.markdown('<p style="color: #ffc107;">以上都不对？手动输入正确的谱面确认视频id：</p>', unsafe_allow_html=True)
-            replace_id = st.text_input("谱面确认视频的 youtube ID 或 BV号)", 
+            replace_id = st.text_input("谱面确认视频的 youtube ID 或 BV号", 
                                        key=f"replace_id_{song['clip_id']}")
 
             # 搜索手动输入的id
@@ -189,24 +234,6 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
                     save_record_config(b50_config_file, config)
                     st.toast("配置已保存！")
                     update_match_info(match_info_placeholder, song['video_info_match'])
-
-
-            # 分P指定测试
-            customer_page_id = st.number_input(
-                "手动输入视频的分P序号", 
-                min_value=0,
-                step=1,
-                key=f"customer_page_id_{song['clip_id']}")
-            if st.button("确认更新为分p号", key=f"confirm_page_id_{song['clip_id']}"):
-                if customer_page_id >= 0:
-                    # 更新视频信息
-                    song['video_info_match']['p_index'] = customer_page_id
-                    save_record_config(b50_config_file, config)
-                    st.toast("配置已保存！")
-                    update_match_info(match_info_placeholder, song['video_info_match'])
-                else:
-                    st.error("请输入有效的分P序号！")
-
 
 # 尝试读取缓存下载器
 if 'downloader' in st.session_state and 'downloader_type' in st.session_state:

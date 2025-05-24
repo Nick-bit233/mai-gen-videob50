@@ -187,3 +187,5 @@ cython_debug/
 test_html.txt
 test_dxrating.txt
 develop_token.txt
+# streamlit temp resources
+static/thumbnails

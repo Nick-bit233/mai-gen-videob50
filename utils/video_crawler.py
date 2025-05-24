@@ -1,5 +1,6 @@
 from pytubefix import YouTube, Search
 from bilibili_api import login, user, search, video, Credential, sync, HEADERS
+from utils.PageUtils import download_temp_image_to_static
 from typing import Tuple
 from abc import ABC, abstractmethod
 import os
@@ -386,12 +387,20 @@ class BilibiliDownloader(Downloader):
         page_info = []
 
         for each in pages:
+            static_frame = len(pages) <= 5
+            static_path = None
+            if static_frame:
+                # 尝试下载视频的首帧图像
+                fframe_url = each.get("first_frame", "")
+                static_path = download_temp_image_to_static(fframe_url)
+
             page_info.append({
                 "cid": each.get("cid", 0),
                 "page": each.get("page", 0),
                 "part": remove_html_tags_and_invalid_chars(each.get("part", "")),
                 "duration": each.get("duration", 0),
-                "first_frame": each.get("first_frame", ""),
+                "static_frame": static_frame,
+                "first_frame": static_path
             })
 
         return page_info

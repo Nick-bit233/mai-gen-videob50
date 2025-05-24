@@ -1,6 +1,9 @@
 import os
 import re
 import json
+import shutil
+from urllib.parse import urlparse
+import requests
 import yaml
 import subprocess
 import platform
@@ -198,4 +201,48 @@ def change_theme(theme_dict):
         else:
             f.write("")  # 清空文件以使用默认主题
 
+def download_temp_image_to_static(image_url, local_dir="./static/thumbnails"):
+    """
+    下载图片到streamlit静态托管的本地目录。
+    """
+    if not image_url:
+        print("Warning: 图片URL为空，无法下载视频预览图。")
+        return None
 
+    try:
+        # 确保本地目录存在，如果不存在则创建
+        if not os.path.exists(local_dir):
+            os.makedirs(local_dir)
+            print(f"目录 '{local_dir}' 已创建。")
+
+        # 从URL中提取文件名
+        parsed_url = urlparse(image_url)
+        # 获取路径的最后一部分作为文件名
+        filename = os.path.basename(parsed_url.path)
+
+        local_file_path = os.path.join(local_dir, filename)
+        ret_file_path = f"/app/static/thumbnails/{filename}"
+
+        # 发送GET请求获取图片内容
+        # 添加headers模拟浏览器访问，有时可以避免一些简单的反爬虫机制
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.get(image_url, stream=True, headers=headers, timeout=10) # 设置超时
+        response.raise_for_status()  # 如果请求失败 (例如 404, 403)，则抛出HTTPError异常
+
+        # 以二进制写模式打开本地文件，并将图片内容写入文件
+        with open(local_file_path, 'wb') as f:
+            # response.raw.decode_content = True # 确保内容被正确解码
+            shutil.copyfileobj(response.raw, f)
+        return ret_file_path
+
+    except requests.exceptions.RequestException as e:
+        print(f"下载图片时发生错误 (URL: {image_url}): {e}")
+        return None
+    except IOError as e:
+        print(f"写入文件时发生错误 (路径: {local_file_path}): {e}")
+        return None
+    except Exception as e:
+        print(f"发生未知错误: {e}")
+        return None
