@@ -73,7 +73,7 @@ st_init_cache_pathes()
 
 # 初始化视频模板样式配置
 if not os.path.exists(DEFAULT_STYLE_CONFIG_FILE_PATH):
-    default_style_config = DEFAULT_STYLES['Buddies']
+    default_style_config = DEFAULT_STYLES['Prism']
     with open(DEFAULT_STYLE_CONFIG_FILE_PATH, "w") as f:
         json.dump(default_style_config, f, indent=4)
 

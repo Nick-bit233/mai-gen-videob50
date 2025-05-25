@@ -48,8 +48,8 @@ DEFAULT_STYLES = {
             "intro_text_bg": os.path.join(default_static_dir, "images/intro_base_maimai_prism.png"),
             "content_bg": os.path.join(default_static_dir, "images/content_default_bg_maimai_prism.png"),
             "intro_bgm": os.path.join(default_static_dir, "audios/intro_maimai_prism.mp3"),
-            "ui_font": os.path.join(default_static_dir, "fonts/SOURCEHANSANSSC-MEDIUM.OTF"),
-            "comment_font": os.path.join(default_static_dir, "fonts/SOURCEHANSANSSC-MEDIUM.OTF"),
+            "ui_font": os.path.join(default_static_dir, "fonts/FOT_NewRodin_Pro_EB.otf"),
+            "comment_font": os.path.join(default_static_dir, "fonts/SOURCEHANSANSSC-BOLD.OTF"),
         },
         "options": {
             "override_content_default_bg": False,

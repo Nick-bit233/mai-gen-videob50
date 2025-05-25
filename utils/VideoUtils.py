@@ -127,7 +127,7 @@ def normalize_audio_volume(clip, target_dbfs=-20):
 def create_info_segment(clip_config, style_config, resolution, text_size=44, inline_max_len=52):
     print(f"正在合成视频片段: {clip_config['id']}")
 
-    font_path = style_config['asset_paths']['content_font_path']
+    font_path = style_config['asset_paths']['comment_font']
     intro_video_bg_path = style_config['asset_paths']['intro_video_bg']
     intro_text_bg_path = style_config['asset_paths']['intro_text_bg']
     intro_bgm_path = style_config['asset_paths']['intro_bgm']
@@ -183,7 +183,7 @@ def create_info_segment(clip_config, style_config, resolution, text_size=44, inl
 def create_video_segment(clip_config, style_config, resolution, text_size=28, inline_max_len=48):
     print(f"正在合成视频片段: {clip_config['id']}")
     
-    font_path = style_config['asset_paths']['content_font_path']
+    font_path = style_config['asset_paths']['comment_font']
 
     # 默认的底部背景
     default_bg_path = style_config['asset_paths']['content_bg']
