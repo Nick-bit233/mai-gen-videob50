@@ -10,6 +10,7 @@ import platform
 from moviepy import VideoFileClip
 from utils.DataUtils import download_metadata, encode_song_id, CHART_TYPE_MAP_MAIMAI
 
+DEFAULT_STYLE_CONFIG_FILE_PATH = "./static/video_style_config.json"
 DATA_CONFIG_VERSION = "0.5"
 LEVEL_LABELS = {
     0: "BASIC",
@@ -18,6 +19,44 @@ LEVEL_LABELS = {
     3: "MASTER",
     4: "RE:MASTER",
 }
+
+default_static_dir = "./static/assets"
+DEFAULT_STYLES = {
+    "Buddies": {
+        "type": "maimai",
+        "asset_paths":{
+            "score_image_assets_path": os.path.join(default_static_dir, "images"),
+            "score_image_base": os.path.join(default_static_dir, "images/content_base_maimai.png"),
+            "intro_video_bg": os.path.join(default_static_dir, "bg_clips/opening_bg_maimai_buddies.mp4"),
+            "intro_text_bg": os.path.join(default_static_dir, "images/intro_base_maimai_buddies.png"),
+            "content_bg": os.path.join(default_static_dir, "images/content_default_bg_maimai_buddies.png"),
+            "intro_bgm": os.path.join(default_static_dir, "audios/intro_maimai_buddies.mp3"),
+            "ui_font": os.path.join(default_static_dir, "fonts/FOT_NewRodin_Pro_EB.otf"),
+            "comment_font": os.path.join(default_static_dir, "fonts/SOURCEHANSANSSC-BOLD.OTF"),
+        },
+        "options":{
+            "override_content_default_bg": False,
+        }        
+
+    },
+    "Prism": {
+        "type": "maimai",
+        "asset_paths": {
+            "score_image_assets_path": os.path.join(default_static_dir, "images"),
+            "score_image_base": os.path.join(default_static_dir, "images/content_base_maimai.png"),
+            "intro_video_bg": os.path.join(default_static_dir, "bg_clips/opening_bg_maimai_prism.mp4"),
+            "intro_text_bg": os.path.join(default_static_dir, "images/intro_base_maimai_prism.png"),
+            "content_bg": os.path.join(default_static_dir, "images/content_default_bg_maimai_prism.png"),
+            "intro_bgm": os.path.join(default_static_dir, "audios/intro_maimai_prism.mp3"),
+            "ui_font": os.path.join(default_static_dir, "fonts/SOURCEHANSANSSC-MEDIUM.OTF"),
+            "comment_font": os.path.join(default_static_dir, "fonts/SOURCEHANSANSSC-MEDIUM.OTF"),
+        },
+        "options": {
+            "override_content_default_bg": False,
+        }
+    }
+}
+
 
 def remove_invalid_chars(text: str) -> str:
     # 去除非法字符，使用re.sub
@@ -148,6 +187,12 @@ def save_video_config(config_file, config_data):
     with open(config_file, 'w', encoding='utf-8') as f:
         json.dump(config_data, f, ensure_ascii=False, indent=4)
 
+# r/w video_style_config.json
+def load_style_config(config_file=DEFAULT_STYLE_CONFIG_FILE_PATH):
+    if os.path.exists(config_file):
+        with open(config_file, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return None
 
 # r/w gloabl_config.yaml
 def read_global_config():

@@ -6,6 +6,7 @@ from PIL import Image, ImageFilter
 from moviepy import VideoFileClip, ImageClip, TextClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip, concatenate_videoclips
 from moviepy import vfx, afx
 from utils.ImageUtils import load_music_jacket
+from utils.PageUtils import load_style_config
 
 
 def get_splited_text(text, text_max_bytes=60):
@@ -123,12 +124,18 @@ def normalize_audio_volume(clip, target_dbfs=-20):
         return clip
 
 
-def create_info_segment(clip_config, resolution, font_path, text_size=44, inline_max_len=52):
+def create_info_segment(clip_config, style_config, resolution, text_size=44, inline_max_len=52):
     print(f"正在合成视频片段: {clip_config['id']}")
-    bg_image = ImageClip("./images/IntroBase.png").with_duration(clip_config['duration'])
+
+    font_path = style_config['asset_paths']['content_font_path']
+    intro_video_bg_path = style_config['asset_paths']['intro_video_bg']
+    intro_text_bg_path = style_config['asset_paths']['intro_text_bg']
+    intro_bgm_path = style_config['asset_paths']['intro_bgm']
+
+    bg_image = ImageClip(intro_text_bg_path).with_duration(clip_config['duration'])
     bg_image = bg_image.with_effects([vfx.Resize(width=resolution[0])])
 
-    bg_video = VideoFileClip("./images/BgClips/bg.mp4")
+    bg_video = VideoFileClip(intro_video_bg_path)
     bg_video = bg_video.with_effects([vfx.Loop(duration=clip_config['duration']), 
                                       vfx.MultiplyColor(0.5),
                                       vfx.Resize(width=resolution[0])])
@@ -166,20 +173,22 @@ def create_info_segment(clip_config, resolution, font_path, text_size=44, inline
     )
 
     # 为整个composite_clip添加bgm
-    bg_audio = AudioFileClip("./images/Audioes/intro_bgm.mp3")
+    bg_audio = AudioFileClip(intro_bgm_path)
     bg_audio = bg_audio.with_effects([afx.AudioLoop(duration=clip_config['duration'])])
     composite_clip = composite_clip.with_audio(bg_audio)
 
     return composite_clip.with_duration(clip_config['duration'])
 
 
-def create_video_segment(clip_config, resolution, font_path, text_size=28, inline_max_len=48):
+def create_video_segment(clip_config, style_config, resolution, text_size=28, inline_max_len=48):
     print(f"正在合成视频片段: {clip_config['id']}")
     
-    # 默认的底部背景
-    default_bg_path = "./images/VideoUnderBase.png"
+    font_path = style_config['asset_paths']['content_font_path']
 
-    bg_video = VideoFileClip("./images/BgClips/black_bg.mp4")
+    # 默认的底部背景
+    default_bg_path = style_config['asset_paths']['content_bg']
+
+    bg_video = VideoFileClip("./static/assets/bg_clips/black_bg.mp4")
     bg_video = bg_video.with_effects([vfx.Loop(duration=clip_config['duration']), 
                                       vfx.Resize(width=resolution[0])])
     
@@ -308,14 +317,15 @@ def add_clip_with_transition(clips, new_clip, set_start=False, trans_time=1):
     clips.append(new_clip)
 
 
-def create_full_video(resources, resolution, font_path, auto_add_transition=True, trans_time=1, full_last_clip=False):
+def create_full_video(resources, style_config, resolution,
+                      auto_add_transition=True, trans_time=1, full_last_clip=False):
     clips = []
     ending_clips = []
 
     # 处理开场片段
     if 'intro' in resources:
         for clip_config in resources['intro']:
-            clip = create_info_segment(clip_config, resolution, font_path)
+            clip = create_info_segment(clip_config, style_config, resolution)
             clip = normalize_audio_volume(clip)
             add_clip_with_transition(clips, clip, 
                                     set_start=True, 
@@ -337,13 +347,13 @@ def create_full_video(resources, resolution, font_path, auto_add_transition=True
             clip_config['duration'] = full_clip_duration - start_time
             clip_config['end'] = full_clip_duration
 
-            clip = create_video_segment(clip_config, resolution, font_path)  
+            clip = create_video_segment(clip_config, style_config, resolution)  
             clip = normalize_audio_volume(clip)
 
             combined_start_time = clips[-1].end - trans_time
             ending_clips.append(clip)     
         else:
-            clip = create_video_segment(clip_config, resolution, font_path)  
+            clip = create_video_segment(clip_config, style_config, resolution)  
             clip = normalize_audio_volume(clip)
 
             add_clip_with_transition(clips, clip, 
@@ -353,7 +363,7 @@ def create_full_video(resources, resolution, font_path, auto_add_transition=True
     # 处理结尾片段
     if 'ending' in resources:
         for clip_config in resources['ending']:
-            clip = create_info_segment(clip_config, resolution, font_path)
+            clip = create_info_segment(clip_config, style_config, resolution)
             clip = normalize_audio_volume(clip)
             if full_last_clip:
                 ending_clips.append(clip)
@@ -418,13 +428,13 @@ def combine_full_video_from_existing_clips(video_clip_path, resolution, trans_ti
     return final_video
 
 
-def gene_pure_black_video(duration, resolution):
+def gene_pure_black_video(output_path, duration, resolution):
     """
     生成一个纯黑色的视频
     """
     black_frame = create_blank_image(resolution[0], resolution[1], color=(0, 0, 0, 1))
     clip = ImageClip(black_frame).with_duration(duration)
-    clip.write_videofile("./videos/black_bg.mp4", fps=30)
+    clip.write_videofile(output_path, fps=30)
 
 
 def get_combined_ending_clip(ending_clips, combined_start_time, trans_time):
@@ -491,7 +501,8 @@ def get_combined_ending_clip(ending_clips, combined_start_time, trans_time):
     return combined_clip
 
 
-def render_all_video_clips(resources, video_output_path, resolution, v_bitrate_kbps, font_path,
+def render_all_video_clips(resources, style_config,
+                           video_output_path, resolution, v_bitrate_kbps,
                            auto_add_transition=True, trans_time=1, force_render=False):
     vfile_prefix = 0
 
@@ -527,27 +538,27 @@ def render_all_video_clips(resources, video_output_path, resolution, v_bitrate_k
 
     if 'intro' in resources:
         for clip_config in resources['intro']:
-            clip = create_info_segment(clip_config, resolution, font_path)
+            clip = create_info_segment(clip_config, style_config, resolution)
             clip = modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time)
             vfile_prefix += 1
 
     for clip_config in resources['main']:
-        clip = create_video_segment(clip_config, resolution, font_path)
+        clip = create_video_segment(clip_config, style_config, resolution)
         clip = modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time)
 
         vfile_prefix += 1
 
     if 'ending' in resources:
         for clip_config in resources['ending']:
-            clip = create_info_segment(clip_config, resolution, font_path)
+            clip = create_info_segment(clip_config, style_config, resolution)
             clip = modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time)
             vfile_prefix += 1
 
 
-def render_one_video_clip(config, video_file_name, video_output_path, video_res, video_bitrate, font_path):
+def render_one_video_clip(config, style_config, video_file_name, video_output_path, video_res, video_bitrate):
     print(f"正在合成视频片段: {video_file_name}")
     try:
-        clip = create_video_segment(config, resolution=video_res, font_path=font_path)
+        clip = create_video_segment(config, style_config, video_res)
         clip.write_videofile(os.path.join(video_output_path, video_file_name), 
                              fps=30, threads=4, preset='ultrafast', bitrate=video_bitrate)
         clip.close()
@@ -557,17 +568,18 @@ def render_one_video_clip(config, video_file_name, video_output_path, video_res,
         return {"status": "error", "info": f"合成视频片段{video_file_name}时发生异常: {traceback.print_exc()}"}
    
     
-def render_complete_full_video(configs, username,
+def render_complete_full_video(configs, style_config, username,
                             video_output_path, video_res, video_bitrate,
-                            video_trans_enable, video_trans_time, full_last_clip,
-                            font_path):
+                            video_trans_enable, video_trans_time, full_last_clip):
     print(f"正在合成完整视频")
     try:
-        final_video = create_full_video(configs, resolution=video_res, font_path=font_path, 
+        final_video = create_full_video(configs, 
+                                        style_config,
+                                        resolution=video_res, 
                                         auto_add_transition=video_trans_enable, 
                                         trans_time=video_trans_time, 
                                         full_last_clip=full_last_clip)
-        final_video.write_videofile(os.path.join(video_output_path, f"{username}_B50.mp4"), 
+        final_video.write_videofile(os.path.join(video_output_path, f"{username}_FULL_VIDEO.mp4"), 
                                     fps=30, threads=4, preset='ultrafast', bitrate=video_bitrate)
         final_video.close()
         return {"status": "success", "info": f"合成完整视频成功"}

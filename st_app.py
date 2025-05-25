@@ -4,6 +4,10 @@ homepage = st.Page("st_pages/Homepage.py",
                 title="首页",
                 icon=":material/home:",
                 default=True)
+custom_video_style = st.Page("st_pages/Custom_Video_Style_Config.py",
+                title="自定义视频模板",
+                icon=":material/format_paint:")
+
 setup = st.Page("st_pages/Setup_Achievements.py",
                 title="获取/管理查分器B50数据",
                 icon=":material/leaderboard:")
@@ -33,7 +37,7 @@ composite = st.Page("st_pages/Composite_Videos.py",
 
 pg = st.navigation(
     {
-        "Home": [homepage],
+        "Home": [homepage, custom_video_style],
         "Save-manage": [setup, custom_setup],
         "Pre-generation": [img_gen, search, download],
         "Edit-video": [edit_comment, edit_intro_ending],

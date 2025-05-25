@@ -2,17 +2,17 @@ import streamlit as st
 import os
 import traceback
 from datetime import datetime
-from utils.PageUtils import LEVEL_LABELS, open_file_explorer, get_video_duration, load_full_config_safe, load_video_config, save_video_config, read_global_config
+from utils.PageUtils import LEVEL_LABELS, load_style_config, open_file_explorer, get_video_duration, load_full_config_safe, load_video_config, save_video_config, read_global_config
 from utils.PathUtils import get_data_paths, get_user_versions
 from utils.WebAgentUtils import st_gene_resource_config
 from utils.VideoUtils import render_one_video_clip
 
 DEFAULT_VIDEO_MAX_DURATION = 180
-DEFAULT_FONT_PATH = "./font/SOURCEHANSANSSC-BOLD.OTF"
 
 st.header("Step 4-1: 视频内容编辑")
 
 G_config = read_global_config()
+style_config = load_style_config()
 
 ### Savefile Management - Start ###
 if "username" in st.session_state:
@@ -222,6 +222,10 @@ except Exception as e:
     st.error(f"读取存档配置文件失败: {e}")
     st.stop()
 
+st.info("在编辑前，您可以选择前往视频模板样式设置页面配置背景图片、背景音乐和字体等素材。")
+if st.button("视频模板样式设置", key="style_button"):
+    st.switch_page("st_pages/Custom_Video_Style_Config.py")
+
 video_config = load_video_config(video_config_output_file)
 if not video_config or 'main' not in video_config:
     st.warning("该存档还没有视频内容的配置文件。请先点击下方按钮，生成配置后方可编辑。")
@@ -308,11 +312,11 @@ if video_config:
             with st.spinner(f"正在导出视频片段{target_video_filename} ……"):
                 res = render_one_video_clip(
                     config=target_config,
+                    style_config=style_config,
                     video_file_name=target_video_filename,
                     video_output_path=video_output_path,
                     video_res=v_res,
-                    video_bitrate=v_bitrate_kbps,
-                    font_path=DEFAULT_FONT_PATH
+                    video_bitrate=v_bitrate_kbps
                 )
             if res['status'] == 'success':
                 st.success(res['info'])
