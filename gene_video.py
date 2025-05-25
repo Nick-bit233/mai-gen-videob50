@@ -4,7 +4,7 @@ import subprocess
 from PIL import Image, ImageFilter
 from moviepy import VideoFileClip, ImageClip, TextClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip, concatenate_videoclips
 from moviepy import vfx, afx
-from utils.Utils import load_music_jacket
+from utils.ImageUtils import load_music_jacket
 
 def get_splited_text(text, text_max_bytes=60):
     """

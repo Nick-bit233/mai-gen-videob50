@@ -1,12 +1,12 @@
 import os
 
 from PIL import Image, ImageDraw, ImageFont
-from utils.Utils import Utils
+from utils.ImageUtils import MaiImageGenerater
 from copy import deepcopy
 
 
 def generate_single_image(background_path, record_detail, output_path, title_text):
-    function = Utils()
+    function = MaiImageGenerater()
     with Image.open(background_path) as background:
         # 生成并调整单个成绩图片
         single_image = function.GenerateOneAchievement(record_detail)

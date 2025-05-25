@@ -369,4 +369,4 @@ with st.expander("额外设置和配置文件管理"):
             st.info("当前还没有下载任何视频")
 
 if st.button("进行下一步"):
-    st.switch_page("st_pages/5_Edit_OpEd_Content.py")
+    st.switch_page("st_pages/Edit_OpEd_Content.py")

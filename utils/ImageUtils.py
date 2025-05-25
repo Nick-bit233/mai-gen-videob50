@@ -5,7 +5,7 @@ from utils.DataUtils import download_image_data, CHART_TYPE_MAP_MAIMAI
 from utils.PageUtils import load_music_metadata
 from PIL import Image, ImageDraw, ImageFont
 
-class Utils:
+class MaiImageGenerater:
     def __init__(self, InputUserID: int = 0):
         UserId = InputUserID
         if UserId != 0:

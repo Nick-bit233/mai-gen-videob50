@@ -74,7 +74,7 @@ st_init_cache_pathes()
 st.write("单击下面的按钮开始")
 
 if st.button("开始使用"):
-    st.switch_page("st_pages/1_Setup_Achivments.py")
+    st.switch_page("st_pages/Setup_Achievements.py")
 
 st.write("更新乐曲数据库")
 with st.container(border=True):

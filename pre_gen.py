@@ -6,53 +6,55 @@ from utils.PageUtils import DATA_CONFIG_VERSION, format_record_songid
 from utils.DataUtils import get_data_from_fish
 from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
 
-# def merge_b50_data(new_b50_data, old_b50_data):
-#     """
-#     合并两份b50数据，使用新数据的基本信息但保留旧数据中的视频相关信息
+@DeprecationWarning
+def merge_b50_data(new_b50_data, old_b50_data):
+    """
+    合并两份b50数据，使用新数据的基本信息但保留旧数据中的视频相关信息
     
-#     Args:
-#         new_b50_data (list): 新的b50数据（不含video_info_list和video_info_match）
-#         old_b50_data (list): 旧的b50数据（youtube版或bilibili版）
+    Args:
+        new_b50_data (list): 新的b50数据（不含video_info_list和video_info_match）
+        old_b50_data (list): 旧的b50数据（youtube版或bilibili版）
     
-#     Returns:
-#         tuple: (合并后的b50数据列表, 更新计数)
-#     """
-#     # 检查数据长度是否一致
-#     if len(new_b50_data) != len(old_b50_data):
-#         print(f"Warning: 新旧b50数据长度不一致，将使用新数据替换旧数据。")
-#         return new_b50_data, 0
+    Returns:
+        tuple: (合并后的b50数据列表, 更新计数)
+    """
+    # 检查数据长度是否一致
+    if len(new_b50_data) != len(old_b50_data):
+        print(f"Warning: 新旧b50数据长度不一致，将使用新数据替换旧数据。")
+        return new_b50_data, 0
     
-#     # 创建旧数据的复合键映射表
-#     old_song_map = {
-#         (song['song_id'], song['level_index'], song['type']): song 
-#         for song in old_b50_data
-#     }
+    # 创建旧数据的复合键映射表
+    old_song_map = {
+        (song['song_id'], song['level_index'], song['type']): song 
+        for song in old_b50_data
+    }
     
-#     # 按新数据的顺序创建合并后的列表
-#     merged_b50_data = []
-#     keep_count = 0
-#     for new_song in new_b50_data:
-#         song_key = (new_song['song_id'], new_song['level_index'], new_song['type'])
-#         if song_key in old_song_map:
-#             # 如果记录已存在，使用新数据但保留原有的视频信息
-#             cached_song = old_song_map[song_key]
-#             new_song['video_info_list'] = cached_song.get('video_info_list', [])
-#             new_song['video_info_match'] = cached_song.get('video_info_match', {})
-#             if new_song == cached_song:
-#                 keep_count += 1
-#         else:
-#             new_song['video_info_list'] = []
-#             new_song['video_info_match'] = {}
-#         merged_b50_data.append(new_song)
+    # 按新数据的顺序创建合并后的列表
+    merged_b50_data = []
+    keep_count = 0
+    for new_song in new_b50_data:
+        song_key = (new_song['song_id'], new_song['level_index'], new_song['type'])
+        if song_key in old_song_map:
+            # 如果记录已存在，使用新数据但保留原有的视频信息
+            cached_song = old_song_map[song_key]
+            new_song['video_info_list'] = cached_song.get('video_info_list', [])
+            new_song['video_info_match'] = cached_song.get('video_info_match', {})
+            if new_song == cached_song:
+                keep_count += 1
+        else:
+            new_song['video_info_list'] = []
+            new_song['video_info_match'] = {}
+        merged_b50_data.append(new_song)
 
-#     update_count = len(new_b50_data) - keep_count
-#     return merged_b50_data, update_count
+    update_count = len(new_b50_data) - keep_count
+    return merged_b50_data, update_count
+
 
 def fetch_user_gamedata(raw_file_path, data_file_path, username, params, source="fish"):
     # params = {
     #     "type": maimai / chuni / ...,
     #     "query": all / best /
-    #     "filiter": {
+    #     "filter": {
     #         "tag": "ap",
     #         "top": 50,
     #     },
@@ -80,7 +82,7 @@ def fetch_user_gamedata(raw_file_path, data_file_path, username, params, source=
 def generate_data_file_from_fish(fish_data, data_file_path, params):
     type = params.get("type", "maimai")
     query = params.get("query", "best")
-    filiter = params.get("filiter", None)
+    filter = params.get("filter", None)
     if type == "maimai":
         if query == "best":
             # 解析fish b50数据  TODO: 模块化这段逻辑
@@ -114,13 +116,13 @@ def generate_data_file_from_fish(fish_data, data_file_path, params):
                 "records": b50_data,
             }
         else:
-            if not filiter:
-                raise ValueError("Error: 查询类型为all时，必须提供filiter参数。")
+            if not filter:
+                raise ValueError("Error: 查询类型为all时，必须提供filter参数。")
             else:
-                tag = filiter.get("tag", None)
-                top_len = filiter.get("top", 50)
+                tag = filter.get("tag", None)
+                top_len = filter.get("top", 50)
                 if tag == "ap":
-                    data_list = filit_maimai_ap_data(fish_data, top_len)
+                    data_list = filter_maimai_ap_data(fish_data, top_len)
                     if len(data_list) < top_len:
                         print(f"Warning: 仅找到{len(data_list)}条AP数据，生成实际数据长度小于top_len={top_len}的配置。")
                     config_content = {
@@ -143,7 +145,7 @@ def generate_data_file_from_fish(fish_data, data_file_path, params):
         raise ValueError("Only MAIMAI DX is supported for now")
 
 
-def filit_maimai_ap_data(fish_data, top_len=50):
+def filter_maimai_ap_data(fish_data, top_len=50):
     charts_data = fish_data['records']
 
     # 解析AP数据

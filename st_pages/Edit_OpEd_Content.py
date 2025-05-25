@@ -151,7 +151,7 @@ if config:
 
     st.write("配置完毕后，请点击下面按钮进入视频生成步骤")
     if st.button("进行下一步"):
-        st.switch_page("st_pages/6_Compostie_Videoes.py")
+        st.switch_page("st_pages/Composite_Videos.py")
 else:
     st.warning("未找到视频生成生成配置！请检查是否完成了4-1步骤！")
 

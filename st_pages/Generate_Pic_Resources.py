@@ -118,4 +118,4 @@ if data_loaded:
             open_file_explorer(absolute_path)
         st.info("如果你已经生成过背景图片，且无需更新，可以跳过，请点击进行下一步按钮。")
         if st.button("进行下一步"):
-            st.switch_page("st_pages/2_Search_For_Videoes.py")
+            st.switch_page("st_pages/Search_For_Videos.py")

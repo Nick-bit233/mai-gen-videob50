@@ -347,7 +347,7 @@ if st.session_state.get('config_saved', False):
                         params={
                             "type": "maimai",
                             "query": "all",
-                            "filiter": {
+                            "filter": {
                                 "tag": "ap",
                                 "top": 50
                             },
