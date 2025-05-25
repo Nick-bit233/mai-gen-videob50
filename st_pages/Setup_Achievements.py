@@ -3,8 +3,7 @@ import os
 import json
 import traceback
 from datetime import datetime
-from pre_gen import fetch_user_gamedata
-from pre_gen_int import update_b50_data_int
+from utils.user_gamedata_handlers import fetch_user_gamedata, update_b50_data_int
 from utils.PageUtils import *
 from utils.PathUtils import *
 import glob

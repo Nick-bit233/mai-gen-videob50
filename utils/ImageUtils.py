@@ -298,6 +298,37 @@ class MaiImageGenerater:
         return Background
 
 
+def generate_single_image(background_path, record_detail, output_path, title_text):
+    function = MaiImageGenerater()
+    with Image.open(background_path) as background:
+        # 生成并调整单个成绩图片
+        single_image = function.GenerateOneAchievement(record_detail)
+        new_size = (int(single_image.width * 0.55), int(single_image.height * 0.55))
+        single_image = single_image.resize(new_size, Image.LANCZOS)
+        
+        # 粘贴图片
+        background.paste(single_image, (940, 170), single_image.convert("RGBA"))
+        
+        # 添加文字
+        draw = ImageDraw.Draw(background)
+        # TODO：配置字体路径
+        font = ImageFont.truetype("./font/FOT_NewRodin_Pro_EB.otf", 50)
+        draw.text((940, 100), title_text, fill=(255, 255, 255), font=font)
+        
+        # 保存图片
+        background.save(output_path)
+        # background.save(f"./b50_images/{user_id}/{prefix}_{index + 1}.png")
+
+
+def check_mask_waring(acc_string, cnt, warned=False):
+    if len(acc_string.split('.')[1]) >= 4 and acc_string.split('.')[1][-3:] == "000":
+        cnt = cnt + 1
+        if cnt > 5 and not warned:
+            print(f"Warning： 检测到多个仅有一位小数精度的成绩，请尝试取消查分器设置的成绩掩码以获取精确成绩。特殊情况请忽略。")
+            warned = True
+    return cnt, warned
+
+
 def load_music_jacket(music_tag):
     if type(music_tag) == int:
         image_path = f"jackets/maimaidx/Jacket_{music_tag}.jpg"
@@ -330,7 +361,6 @@ def find_single_song_metadata(all_metadata, record_detail):
             # 对于未知id的新曲，必须使用曲名和谱面类型匹配
             song_name = record_detail['title']
             song_type = record_detail['type']
-            if song_name == music['name'] and \
-               CHART_TYPE_MAP_MAIMAI[song_type] == music['type']:
+            if song_name == music['name'] and CHART_TYPE_MAP_MAIMAI[song_type] == music['type']:
                 return music
     return None

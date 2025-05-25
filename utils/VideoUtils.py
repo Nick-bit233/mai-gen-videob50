@@ -1,10 +1,12 @@
 import os
 import numpy as np
 import subprocess
+import traceback
 from PIL import Image, ImageFilter
 from moviepy import VideoFileClip, ImageClip, TextClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip, concatenate_videoclips
 from moviepy import vfx, afx
 from utils.ImageUtils import load_music_jacket
+
 
 def get_splited_text(text, text_max_bytes=60):
     """
@@ -542,6 +544,38 @@ def render_all_video_clips(resources, video_output_path, resolution, v_bitrate_k
             vfile_prefix += 1
 
 
+def render_one_video_clip(config, video_file_name, video_output_path, video_res, video_bitrate, font_path):
+    print(f"正在合成视频片段: {video_file_name}")
+    try:
+        clip = create_video_segment(config, resolution=video_res, font_path=font_path)
+        clip.write_videofile(os.path.join(video_output_path, video_file_name), 
+                             fps=30, threads=4, preset='ultrafast', bitrate=video_bitrate)
+        clip.close()
+        return {"status": "success", "info": f"合成视频片段{video_file_name}成功"}
+    except Exception as e:
+        print(f"Error: 合成视频片段{video_file_name}时发生异常: {traceback.print_exc()}")
+        return {"status": "error", "info": f"合成视频片段{video_file_name}时发生异常: {traceback.print_exc()}"}
+   
+    
+def render_complete_full_video(configs, username,
+                            video_output_path, video_res, video_bitrate,
+                            video_trans_enable, video_trans_time, full_last_clip,
+                            font_path):
+    print(f"正在合成完整视频")
+    try:
+        final_video = create_full_video(configs, resolution=video_res, font_path=font_path, 
+                                        auto_add_transition=video_trans_enable, 
+                                        trans_time=video_trans_time, 
+                                        full_last_clip=full_last_clip)
+        final_video.write_videofile(os.path.join(video_output_path, f"{username}_B50.mp4"), 
+                                    fps=30, threads=4, preset='ultrafast', bitrate=video_bitrate)
+        final_video.close()
+        return {"status": "success", "info": f"合成完整视频成功"}
+    except Exception as e:
+        print(f"Error: 合成完整视频时发生异常: {traceback.print_exc()}")
+        return {"status": "error", "info": f"合成完整视频时发生异常: {traceback.print_exc()}"}
+
+
 def combine_full_video_direct(video_clip_path):
     print("[Info] --------------------开始拼接视频-------------------")
     video_files = [f for f in os.listdir(video_clip_path) if f.endswith(".mp4")]
@@ -642,3 +676,4 @@ def combine_full_video_ffmpeg_concat_gl(video_clip_path, resolution, trans_name=
     os.system(cmd)
 
     return output_path
+

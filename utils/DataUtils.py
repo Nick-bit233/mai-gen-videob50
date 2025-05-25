@@ -1,12 +1,9 @@
-import json
-import os
 from typing import List
 import requests
 import base64
 import hashlib
 import struct
 from PIL import Image
-import re
 
 BUCKET_ENDPOINT = "https://nickbit-maigen-images.oss-cn-shanghai.aliyuncs.com"
 FC_PROXY_ENDPOINT = "https://fish-usta-proxy-efexqrwlmf.cn-shanghai.fcapp.run"
@@ -164,60 +161,6 @@ def find_song_by_id(encoded_id, songs_data):
     except Exception as e:
         print(f"查找歌曲时出错: {e}")
         return None
-
-
-def get_data_from_fish(username, params=None):
-    """从水鱼获取数据"""
-    if params is None:
-        params = {}
-    type = params.get("type", "maimai")
-    query = params.get("query", "best")
-    # MAIMAI DX 的请求
-    if type == "maimai":
-        if query == "best":
-            url = "https://www.diving-fish.com/api/maimaidxprober/query/player"
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "username": username,
-                "b50": "1"
-            }
-            response = requests.post(url, headers=headers, json=payload)
-            if response.status_code == 200:
-                return response.json()
-            elif response.status_code == 400 or response.status_code == 403:
-                msg = response.json().get("message", None)
-                if not msg:
-                    msg = response.json().get("msg", "水鱼端未知错误")
-                return {"error": f"用户校验失败，返回消息：{msg}"}
-            else:
-                return {"error": f"请求水鱼数据失败，状态码: {response.status_code}，返回消息：{response.json()}"}
-            
-        elif query == "all":
-            # get all data from thrid party function call
-            response = requests.get(FC_PROXY_ENDPOINT, params={"username": username}, timeout=60)
-            response.raise_for_status()
-
-            return json.loads(response.text)
-        elif query == "test_all":
-            url = "https://www.diving-fish.com/api/maimaidxprober/player/test_data"
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                "Content-Type": "application/json"
-            }
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-
-            return response.json()
-        else:
-            raise ValueError("Invalid filter type for MAIMAI DX")
-        
-    elif type == "chuni":
-        raise NotImplementedError("Only MAIMAI DX is supported for now")
-    else:
-        raise ValueError("Invalid game data type for diving-fish.com")
 
 
 def search_songs(query, songs_data) -> List[tuple[str, dict]]:

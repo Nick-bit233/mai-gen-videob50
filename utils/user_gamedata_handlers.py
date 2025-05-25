@@ -2,11 +2,192 @@ import glob
 import json
 from lxml import etree
 import os
+import re
+import json
+import requests
 
 from utils.dxnet_extension import ChartManager
 from utils.PageUtils import DATA_CONFIG_VERSION, format_record_songid
 
 LEVEL_LABEL = ["Basic", "Advanced", "Expert", "Master", "Re:MASTER"]
+
+################################################
+# Query B50 data from diving-fish.com
+################################################
+def get_data_from_fish(username, params=None):
+    """从水鱼获取数据"""
+    if params is None:
+        params = {}
+    type = params.get("type", "maimai")
+    query = params.get("query", "best")
+    # MAIMAI DX 的请求
+    if type == "maimai":
+        if query == "best":
+            url = "https://www.diving-fish.com/api/maimaidxprober/query/player"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "username": username,
+                "b50": "1"
+            }
+            response = requests.post(url, headers=headers, json=payload)
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 400 or response.status_code == 403:
+                msg = response.json().get("message", None)
+                if not msg:
+                    msg = response.json().get("msg", "水鱼端未知错误")
+                return {"error": f"用户校验失败，返回消息：{msg}"}
+            else:
+                return {"error": f"请求水鱼数据失败，状态码: {response.status_code}，返回消息：{response.json()}"}
+            
+        elif query == "all":
+            # get all data from thrid party function call
+            response = requests.get(FC_PROXY_ENDPOINT, params={"username": username}, timeout=60)
+            response.raise_for_status()
+
+            return json.loads(response.text)
+        elif query == "test_all":
+            url = "https://www.diving-fish.com/api/maimaidxprober/player/test_data"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                "Content-Type": "application/json"
+            }
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+
+            return response.json()
+        else:
+            raise ValueError("Invalid filter type for MAIMAI DX")
+        
+    elif type == "chuni":
+        raise NotImplementedError("Only MAIMAI DX is supported for now")
+    else:
+        raise ValueError("Invalid game data type for diving-fish.com")
+    
+################################################
+# Maimai B50 data handlers from diving-fish.com
+################################################
+def fetch_user_gamedata(raw_file_path, data_file_path, username, params, source="fish"):
+    # params = {
+    #     "type": maimai / chuni / ...,
+    #     "query": all / best /
+    #     "filter": {
+    #         "tag": "ap",
+    #         "top": 50,
+    #     },
+    #}
+    if source == "fish":
+        try:
+            fish_data = get_data_from_fish(username, params)
+        except json.JSONDecodeError:
+            print("Error: 读取 JSON 文件时发生错误，请检查数据格式。")
+            return None
+        
+        # 缓存，写入b50_raw_file
+        with open(raw_file_path, "w", encoding="utf-8") as f:
+            json.dump(fish_data, f, ensure_ascii=False, indent=4)
+
+        if 'error' in fish_data:
+            raise Exception(f"Error: 从水鱼获得B50数据失败。错误信息：{fish_data['error']}")
+        if 'msg' in fish_data:
+            raise Exception(f"Error: 从水鱼获得B50数据失败。错误信息：{fish_data['msg']}")
+        
+        # 生成数据文件
+        generate_config_file_from_fish(fish_data, data_file_path, params)
+
+
+def generate_config_file_from_fish(fish_data, data_file_path, params):
+    type = params.get("type", "maimai")
+    query = params.get("query", "best")
+    filter = params.get("filter", None)
+    if type == "maimai":
+        if query == "best":
+            # 解析fish b50数据  TODO: 模块化这段逻辑
+            charts_data = fish_data['charts']
+            b35_data = charts_data['sd']
+            b15_data = charts_data['dx']
+
+            for i in range(len(b35_data)):
+                song = b35_data[i]
+                song['clip_name'] = f"PastBest_{i + 1}"
+
+            for i in range(len(b15_data)):
+                song = b15_data[i]
+                song['clip_name'] = f"NewBest_{i + 1}"
+            
+            # 合并b35_data和b15_data到同一列表
+            b50_data = b35_data + b15_data
+            for i in range(len(b50_data)):
+                song = b50_data[i]
+                song["level_label"] = song.get("level_label", "").upper()
+                song['clip_id'] = f"clip_{i + 1}"
+                song["song_id"] = format_record_songid(song, song.get("song_id", None))
+
+            config_content = {
+                "version": DATA_CONFIG_VERSION,
+                "type": type,
+                "sub_type": "best",
+                "username": fish_data['username'],
+                "rating": fish_data['rating'],
+                "length_of_content": len(b50_data),
+                "records": b50_data,
+            }
+        else:
+            if not filter:
+                raise ValueError("Error: 查询类型为all时，必须提供filter参数。")
+            else:
+                tag = filter.get("tag", None)
+                top_len = filter.get("top", 50)
+                if tag == "ap":
+                    data_list = filter_maimai_ap_data(fish_data, top_len)
+                    if len(data_list) < top_len:
+                        print(f"Warning: 仅找到{len(data_list)}条AP数据，生成实际数据长度小于top_len={top_len}的配置。")
+                    config_content = {
+                        "version": DATA_CONFIG_VERSION,
+                        "type": type,
+                        "sub_type": tag,
+                        "username": fish_data['username'],
+                        "rating": fish_data['rating'],
+                        "length_of_content": len(data_list),
+                        "records": data_list,
+                    }
+                else:
+                    raise ValueError("Error: 目前仅支持tag为ap的查询类型。")
+                
+        # 写入b50_data_file
+        with open(data_file_path, "w", encoding="utf-8") as f:
+            json.dump(config_content, f, ensure_ascii=False, indent=4)
+        return config_content
+    else:
+        raise ValueError("Only MAIMAI DX is supported for now")
+
+
+def filter_maimai_ap_data(fish_data, top_len=50):
+    charts_data = fish_data['records']
+
+    # 解析AP数据
+    ap_data = []
+    for song in charts_data:
+        fc_flag = song.get('fc', '').lower()
+        if 'ap' in fc_flag or 'app' in fc_flag:
+            ap_data.append(song)
+
+    # 按照ra值降序排序，如果ra值相同，按照ds定数降序排序
+    ap_data.sort(key=lambda x: (x.get('ra', 0), x.get('ds', 0)), reverse=True)
+    ap_data = ap_data[:top_len]
+
+    for song in ap_data:
+        index = ap_data.index(song) + 1
+        # 将level_label转换为全大写
+        song["level_label"] = song.get("level_label", "").upper()
+        # 添加clip_id字段
+        song['clip_name'] = f"APBest_{index}"
+        song['clip_id'] = f"clip_{index}"
+
+    return ap_data
 
 ################################################
 # Origin B50 data file finders
@@ -112,7 +293,6 @@ def locate_html_screw(html_tree, div_names):
         if screw:
             return screw[0]
     raise Exception(f"Error: HTML screw (type = \"{div_names[0]}\") not found.")
-
 
 def iterate_songs(div_screw):
     current_div = div_screw
@@ -306,3 +486,50 @@ def generate_data_file_int(parsed_data, data_file_path, params):
         return config_content
     else:
         raise ValueError("Only MAIMAI DX is supported for now")
+    
+################################################
+# Deprecated: data merger
+################################################
+
+@DeprecationWarning
+def merge_b50_data(new_b50_data, old_b50_data):
+    """
+    合并两份b50数据，使用新数据的基本信息但保留旧数据中的视频相关信息
+    
+    Args:
+        new_b50_data (list): 新的b50数据（不含video_info_list和video_info_match）
+        old_b50_data (list): 旧的b50数据（youtube版或bilibili版）
+    
+    Returns:
+        tuple: (合并后的b50数据列表, 更新计数)
+    """
+    # 检查数据长度是否一致
+    if len(new_b50_data) != len(old_b50_data):
+        print(f"Warning: 新旧b50数据长度不一致，将使用新数据替换旧数据。")
+        return new_b50_data, 0
+    
+    # 创建旧数据的复合键映射表
+    old_song_map = {
+        (song['song_id'], song['level_index'], song['type']): song 
+        for song in old_b50_data
+    }
+    
+    # 按新数据的顺序创建合并后的列表
+    merged_b50_data = []
+    keep_count = 0
+    for new_song in new_b50_data:
+        song_key = (new_song['song_id'], new_song['level_index'], new_song['type'])
+        if song_key in old_song_map:
+            # 如果记录已存在，使用新数据但保留原有的视频信息
+            cached_song = old_song_map[song_key]
+            new_song['video_info_list'] = cached_song.get('video_info_list', [])
+            new_song['video_info_match'] = cached_song.get('video_info_match', {})
+            if new_song == cached_song:
+                keep_count += 1
+        else:
+            new_song['video_info_list'] = []
+            new_song['video_info_match'] = {}
+        merged_b50_data.append(new_song)
+
+    update_count = len(new_b50_data) - keep_count
+    return merged_b50_data, update_count

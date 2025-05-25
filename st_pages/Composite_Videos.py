@@ -5,8 +5,7 @@ import os
 from datetime import datetime
 from utils.PageUtils import open_file_explorer, load_video_config, read_global_config, write_global_config
 from utils.PathUtils import get_data_paths, get_user_versions
-from main_gen import generate_complete_video
-from gene_video import render_all_video_clips, combine_full_video_direct, combine_full_video_ffmpeg_concat_gl
+from utils.VideoUtils import render_all_video_clips, combine_full_video_direct, combine_full_video_ffmpeg_concat_gl, render_complete_full_video
 
 st.header("Step 5: 视频生成")
 
@@ -147,14 +146,15 @@ if st.button("开始生成视频"):
                 st.info("请注意，生成完整视频通常需要一定时间，您可以在控制台窗口中查看进度")
                 st.warning("生成过程中请不要手动跳转到其他页面，或刷新本页面，否则可能导致生成失败！")
                 with st.spinner("正在生成完整视频……"):
-                    output_info = generate_complete_video(configs=video_configs, 
+                    output_info = render_complete_full_video(configs=video_configs, 
                                                     username=username,
                                                     video_output_path=video_output_path, 
                                                     video_res=video_res, 
                                                     video_bitrate=v_bitrate_kbps,
                                                     video_trans_enable=trans_enable, 
                                                     video_trans_time=trans_time, 
-                                                    full_last_clip=False)
+                                                    full_last_clip=False,
+                                                    font_path=FONT_PATH)
                     st.write(f"【{output_info['info']}")
             st.success("完整视频生成结束！点击下方按钮打开视频所在文件夹")
         except Exception as e:

@@ -6,7 +6,7 @@ import streamlit as st
 from datetime import datetime
 from utils.PageUtils import load_record_config, save_record_config, read_global_config
 from utils.PathUtils import get_data_paths, get_user_versions
-from pre_gen import download_one_video
+from utils.WebAgentUtils import download_one_video
 
 G_config = read_global_config()
 
@@ -257,7 +257,7 @@ b50_config = load_record_config(b50_config_file, username)
 
 if b50_config:
     for song in b50_config:
-        if not song['video_info_match'] or not song['video_info_list'] or not song['clip_id']:
+        if not (song.get('video_info_list') and song.get('video_info_match')):
             st.error(f"未找到有效视频下载信息，请检查上一页步骤是否完成！")
             st.stop()
 

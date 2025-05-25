@@ -4,10 +4,11 @@ import traceback
 from datetime import datetime
 from utils.PageUtils import LEVEL_LABELS, open_file_explorer, get_video_duration, load_full_config_safe, load_video_config, save_video_config, read_global_config
 from utils.PathUtils import get_data_paths, get_user_versions
-from pre_gen import st_gene_resource_config
-from main_gen import generate_one_video_clip
+from utils.WebAgentUtils import st_gene_resource_config
+from utils.VideoUtils import render_one_video_clip
 
 DEFAULT_VIDEO_MAX_DURATION = 180
+DEFAULT_FONT_PATH = "./font/SOURCEHANSANSSC-BOLD.OTF"
 
 st.header("Step 4-1: 视频内容编辑")
 
@@ -305,12 +306,13 @@ if video_config:
         if st.button("导出视频"):
             save_video_config(video_config_output_file, video_config)
             with st.spinner(f"正在导出视频片段{target_video_filename} ……"):
-                res = generate_one_video_clip(
+                res = render_one_video_clip(
                     config=target_config,
                     video_file_name=target_video_filename,
                     video_output_path=video_output_path,
                     video_res=v_res,
-                    video_bitrate=v_bitrate_kbps
+                    video_bitrate=v_bitrate_kbps,
+                    font_path=DEFAULT_FONT_PATH
                 )
             if res['status'] == 'success':
                 st.success(res['info'])

@@ -3,7 +3,7 @@ import os
 import traceback
 from copy import deepcopy
 from datetime import datetime
-from gene_images import generate_single_image, check_mask_waring
+from utils.ImageUtils import generate_single_image, check_mask_waring
 from utils.PageUtils import open_file_explorer, load_record_config
 from utils.PathUtils import get_data_paths, get_user_versions
 
