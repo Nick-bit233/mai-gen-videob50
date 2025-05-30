@@ -9,9 +9,10 @@ tqdm>=4.0.0
 Pillow==10.4.0
 pytubefix>=8.5.0
 pyyaml>=6.0.1
-bilibili-api-python>=16.3.0
+bilibili-api-python~=16.3.0
 flask>=3.1.0
 streamlit>=1.40.0
 lxml>=5.3.0
 streamlit_sortables>=0.3.1
 streamlit_searchbox>=0.1.22
+httpx

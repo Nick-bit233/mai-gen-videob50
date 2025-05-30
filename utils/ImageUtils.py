@@ -279,7 +279,7 @@ class MaiImageGenerater:
 
                 # 游玩次数（暂无获取方式，b50data中若有手动填写即可显示）
                 if "playCount" in record_detail:
-                    PlayCount = record_detail["playCount"]
+                    PlayCount = int(record_detail["playCount"])
                 else:
                     PlayCount = 0
                 if PlayCount >= 1:

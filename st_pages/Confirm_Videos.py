@@ -85,7 +85,7 @@ def st_download_video(placeholder, dl_instance, G_config, b50_config):
                 write_container.write(f"【{i}/50】{result['info']}")
 
                 # 等待几秒，以减少被检测为bot的风险
-                if search_wait_time[0] > 0 and search_wait_time[1] > search_wait_time[0]:
+                if search_wait_time[0] > 0 and search_wait_time[1] > search_wait_time[0] and result['status'] == 'success':
                     time.sleep(random.randint(search_wait_time[0], search_wait_time[1]))
 
             st.success("下载完成！请点击下一步按钮核对视频素材的详细信息。")
