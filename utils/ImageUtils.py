@@ -1,5 +1,6 @@
 import json
 import os.path
+import traceback
 
 from utils.DataUtils import download_image_data, CHART_TYPE_MAP_MAIMAI
 from utils.PageUtils import load_music_metadata
@@ -288,6 +289,7 @@ class MaiImageGenerater:
 
         except Exception as e:
             print(f"Error generating achievement: {e}")
+            print(traceback.format_exc())
             Background = Image.new('RGBA', (1520, 500), (0, 0, 0, 255))
 
         return Background

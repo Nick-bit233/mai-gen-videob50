@@ -124,7 +124,7 @@ def normalize_audio_volume(clip, target_dbfs=-20):
         return clip
 
 
-def create_info_segment(clip_config, style_config, resolution, text_size=44, inline_max_len=52):
+def create_info_segment(clip_config, style_config, resolution):
     print(f"正在合成视频片段: {clip_config['id']}")
 
     font_path = style_config['asset_paths']['comment_font']
@@ -132,12 +132,22 @@ def create_info_segment(clip_config, style_config, resolution, text_size=44, inl
     intro_text_bg_path = style_config['asset_paths']['intro_text_bg']
     intro_bgm_path = style_config['asset_paths']['intro_bgm']
 
+    text_size = style_config['intro_text_style']['font_size']
+    inline_max_len = style_config['intro_text_style']['inline_max_chara'] * 2
+    interline_size = style_config['intro_text_style']['interline']
+    horizontal_align = style_config['intro_text_style']['horizontal_align']
+    text_color = style_config['intro_text_style']['font_color']
+    enable_stroke = style_config['intro_text_style']['enable_stroke']
+    if enable_stroke:
+        stroke_color = style_config['intro_text_style']['stroke_color']
+        stroke_width = style_config['intro_text_style']['stroke_width']
+
     bg_image = ImageClip(intro_text_bg_path).with_duration(clip_config['duration'])
     bg_image = bg_image.with_effects([vfx.Resize(width=resolution[0])])
 
     bg_video = VideoFileClip(intro_video_bg_path)
     bg_video = bg_video.with_effects([vfx.Loop(duration=clip_config['duration']), 
-                                      vfx.MultiplyColor(0.5),
+                                      vfx.MultiplyColor(0.75),
                                       vfx.Resize(width=resolution[0])])
 
     # 创建文字
@@ -146,9 +156,12 @@ def create_info_segment(clip_config, style_config, resolution, text_size=44, inl
                         method = "label",
                         font_size=text_size,
                         margin=(20, 20),
-                        interline=6.5,
+                        interline=interline_size,
+                        horizontal_align=horizontal_align,
                         vertical_align="top",
-                        color="white",
+                        color=text_color,
+                        stroke_color = None if not enable_stroke else stroke_color,
+                        stroke_width = 0 if not enable_stroke else stroke_width,
                         duration=clip_config['duration'])
     
     addtional_text = "【本视频由mai-genVb50视频生成器生成】"
@@ -180,19 +193,30 @@ def create_info_segment(clip_config, style_config, resolution, text_size=44, inl
     return composite_clip.with_duration(clip_config['duration'])
 
 
-def create_video_segment(clip_config, style_config, resolution, text_size=28, inline_max_len=48):
+def create_video_segment(clip_config, style_config, resolution):
     print(f"正在合成视频片段: {clip_config['id']}")
     
+    # 配置文字样式选项
     font_path = style_config['asset_paths']['comment_font']
+    text_size = style_config['content_text_style']['font_size']
+    inline_max_len = style_config['content_text_style']['inline_max_chara'] * 2
+    interline_size = style_config['content_text_style']['interline']
+    horizontal_align = style_config['content_text_style']['horizontal_align']
+    text_color = style_config['content_text_style']['font_color']
+    enable_stroke = style_config['content_text_style']['enable_stroke']
+    if enable_stroke:
+        stroke_color = style_config['content_text_style']['stroke_color']
+        stroke_width = style_config['content_text_style']['stroke_width']
 
-    # 默认的底部背景
+    # 配置底部背景选项
     default_bg_path = style_config['asset_paths']['content_bg']
+    override_content_bg = style_config['options'].get('override_content_default_bg', False)
 
     bg_video = VideoFileClip("./static/assets/bg_clips/black_bg.mp4")
     bg_video = bg_video.with_effects([vfx.Loop(duration=clip_config['duration']), 
                                       vfx.Resize(width=resolution[0])])
     
-    # 检查背景图片是否存在
+    # 检查成绩图片是否存在
     if 'main_image' in clip_config and os.path.exists(clip_config['main_image']):
         main_image = ImageClip(clip_config['main_image']).with_duration(clip_config['duration'])
         main_image = main_image.with_effects([vfx.Resize(width=resolution[0])])
@@ -200,22 +224,30 @@ def create_video_segment(clip_config, style_config, resolution, text_size=28, in
         print(f"Video Generator Warning: {clip_config['id']} 没有对应的成绩图, 请检查成绩图资源是否已生成")
         main_image = ImageClip(create_blank_image(resolution[0], resolution[1])).with_duration(clip_config['duration'])
 
-    # 读取song_id，并获取预览图jacket
-    music_tag = clip_config['song_id']
-    jacket_raw = load_music_jacket(music_tag)
-    
-    if jacket_raw:
-        # 高斯模糊处理图片
-        jacket_array = blur_image(jacket_raw, blur_radius=5)
-        # 创建 ImageClip
-        jacket_image = ImageClip(jacket_array).with_duration(clip_config['duration'])
-        # 将jacket图片按视频分辨率宽度等比例缩放，以填充整个背景
+    jacket_image_offset = (0, 0)  # 默认偏移位置
+    if override_content_bg:
+        # 使用自定义背景图片，跳过获取曲绘jacket的步骤
+        jacket_image = ImageClip(default_bg_path).with_duration(clip_config['duration'])
         jacket_image = jacket_image.with_effects([vfx.Resize(width=resolution[0])])
     else:
-        print(f"Video Generator Warning: {clip_config['id']} 载入远程曲绘失败, 将使用默认背景")
-        jacket_image = ImageClip(default_bg_path).with_duration(clip_config['duration'])
+        # 读取song_id，并获取预览图jacket
+        music_tag = clip_config['song_id']
+        jacket_raw = load_music_jacket(music_tag)
+        
+        if jacket_raw:
+            # 高斯模糊处理图片
+            jacket_array = blur_image(jacket_raw, blur_radius=5)
+            # 创建 ImageClip
+            jacket_image = ImageClip(jacket_array).with_duration(clip_config['duration'])
+            # 将jacket图片按视频分辨率宽度等比例缩放，以填充整个背景
+            jacket_image = jacket_image.with_effects([vfx.Resize(width=resolution[0])])
+            # 设置偏移位置
+            jacket_image_offset = (0, -0.5)
+        else:
+            print(f"Video Generator Warning: {clip_config['id']} 载入远程曲绘失败, 将使用默认背景")
+            jacket_image = ImageClip(default_bg_path).with_duration(clip_config['duration'])
 
-    jacket_image = jacket_image.with_effects([vfx.MultiplyColor(0.65)])
+    jacket_image = jacket_image.with_effects([vfx.MultiplyColor(0.8)])
 
     # 检查视频是否存在
     if 'video' in clip_config and os.path.exists(clip_config['video']):
@@ -261,18 +293,20 @@ def create_video_segment(clip_config, style_config, resolution, text_size=28, in
     text_list = get_splited_text(clip_config['text'], text_max_bytes=inline_max_len)
     txt_clip = TextClip(font=font_path, text="\n".join(text_list),
                         method = "label",
-                        # size=(text_max_width, text_max_height), 
                         font_size=text_size,
                         margin=(20, 20),
-                        interline=6.5,
+                        interline=interline_size,
+                        horizontal_align=horizontal_align,
                         vertical_align="top",
-                        color="white",
+                        color=text_color,
+                        stroke_color = None if not enable_stroke else stroke_color,
+                        stroke_width = 0 if not enable_stroke else stroke_width,
                         duration=clip_config['duration'])
 
     # 视频叠放顺序，从下往上：背景底图，谱面预览，图片（带有透明通道），文字
     composite_clip = CompositeVideoClip([
             bg_video.with_position((0, 0)),  # 使用一个pure black的视频作为背景（此背景用于避免透明素材的通道的bug问题）
-            jacket_image.with_position((0, -0.5), relative=True),
+            jacket_image.with_position(jacket_image_offset, relative=True),
             video_clip.with_position((video_pos[0], video_pos[1])),
             main_image.with_position((0, 0)),
             txt_clip.with_position((text_pos[0], text_pos[1]))
@@ -282,6 +316,20 @@ def create_video_segment(clip_config, style_config, resolution, text_size=28, in
     )
 
     return composite_clip.with_duration(clip_config['duration'])
+
+
+def get_video_preview_frame(clip_config, style_config, resolution, type="maimai", part="intro"):
+    if type == "maimai":
+        if part == "intro":
+            preview_clip = create_info_segment(clip_config, style_config, resolution)
+        elif part == "content":
+            preview_clip = create_video_segment(clip_config, style_config, resolution)
+        
+        frame = preview_clip.get_frame(t=1)
+        pil_img = Image.fromarray(frame.astype("uint8"))
+        return pil_img
+    else:
+        raise ValueError(f"Unsupported video type: {type}. Currently only 'maimai' is supported.")
 
 
 def add_clip_with_transition(clips, new_clip, set_start=False, trans_time=1):

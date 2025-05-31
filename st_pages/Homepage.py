@@ -1,6 +1,6 @@
 import streamlit as st
-from utils.PageUtils import change_theme, update_music_metadata, DEFAULT_STYLES, DEFAULT_STYLE_CONFIG_FILE_PATH
-from utils.themes import THEME_COLORS
+from utils.PageUtils import change_theme, update_music_metadata, DEFAULT_STYLE_CONFIG_FILE_PATH
+from utils.themes import THEME_COLORS, DEFAULT_STYLES
 from utils.WebAgentUtils import st_init_cache_pathes
 import datetime
 import os

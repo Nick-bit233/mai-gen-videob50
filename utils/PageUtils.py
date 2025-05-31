@@ -20,43 +20,6 @@ LEVEL_LABELS = {
     4: "RE:MASTER",
 }
 
-default_static_dir = "./static/assets"
-DEFAULT_STYLES = {
-    "Buddies": {
-        "type": "maimai",
-        "asset_paths":{
-            "score_image_assets_path": os.path.join(default_static_dir, "images"),
-            "score_image_base": os.path.join(default_static_dir, "images/content_base_maimai.png"),
-            "intro_video_bg": os.path.join(default_static_dir, "bg_clips/opening_bg_maimai_buddies.mp4"),
-            "intro_text_bg": os.path.join(default_static_dir, "images/intro_base_maimai_buddies.png"),
-            "content_bg": os.path.join(default_static_dir, "images/content_default_bg_maimai_buddies.png"),
-            "intro_bgm": os.path.join(default_static_dir, "audios/intro_maimai_buddies.mp3"),
-            "ui_font": os.path.join(default_static_dir, "fonts/FOT_NewRodin_Pro_EB.otf"),
-            "comment_font": os.path.join(default_static_dir, "fonts/SOURCEHANSANSSC-BOLD.OTF"),
-        },
-        "options":{
-            "override_content_default_bg": False,
-        }        
-
-    },
-    "Prism": {
-        "type": "maimai",
-        "asset_paths": {
-            "score_image_assets_path": os.path.join(default_static_dir, "images"),
-            "score_image_base": os.path.join(default_static_dir, "images/content_base_maimai.png"),
-            "intro_video_bg": os.path.join(default_static_dir, "bg_clips/opening_bg_maimai_prism.mp4"),
-            "intro_text_bg": os.path.join(default_static_dir, "images/intro_base_maimai_prism.png"),
-            "content_bg": os.path.join(default_static_dir, "images/content_default_bg_maimai_prism.png"),
-            "intro_bgm": os.path.join(default_static_dir, "audios/intro_maimai_prism.mp3"),
-            "ui_font": os.path.join(default_static_dir, "fonts/FOT_NewRodin_Pro_EB.otf"),
-            "comment_font": os.path.join(default_static_dir, "fonts/SOURCEHANSANSSC-BOLD.OTF"),
-        },
-        "options": {
-            "override_content_default_bg": False,
-        }
-    }
-}
-
 
 def remove_invalid_chars(text: str) -> str:
     # 去除非法字符，使用re.sub
@@ -76,6 +39,7 @@ def format_record_songid(record, raw_song_id):
             return encoded_id
         else:
             raise ValueError("Invalid song_id or song_name/song_type in record detail.")
+
 
 def try_update_config_json(content, username=""):
     # v0.4以下
@@ -113,6 +77,7 @@ def try_update_config_json(content, username=""):
         return content
     else:
         raise ValueError("无法匹配存档版本，请检查存档文件")
+
 
 def load_full_config_safe(config_file, username):
     # 尝试读取存档文件，如果不存在则返回None
@@ -165,6 +130,7 @@ def load_record_config(config_file, username=""):
     except FileNotFoundError:
         return None
 
+
 def save_record_config(config_file, config_data):
     if os.path.exists(config_file):
         with open(config_file, 'r', encoding='utf-8') as f:
@@ -182,6 +148,7 @@ def load_video_config(config_file):
         with open(config_file, 'r', encoding='utf-8') as f:
             return json.load(f)
     return None
+
 
 def save_video_config(config_file, config_data):
     with open(config_file, 'w', encoding='utf-8') as f:
@@ -202,12 +169,14 @@ def read_global_config():
     else:
         raise FileNotFoundError("global_config.yaml not found")
 
+
 def write_global_config(config):
     try:
         with open("global_config.yaml", "w", encoding='utf-8') as f:
             yaml.dump(config, f)
     except Exception as e:
         print(f"Error writing global config: {e}")
+
 
 def get_video_duration(video_path):
     """Returns the duration of a video file in seconds"""
@@ -217,6 +186,7 @@ def get_video_duration(video_path):
     except Exception as e:
         print(f"Error getting video duration: {e}")
         return -1
+
 
 def open_file_explorer(path):
     try:
@@ -233,6 +203,7 @@ def open_file_explorer(path):
     except Exception as e:
         return False
     
+
 def change_theme(theme_dict):
     st_config_path = os.path.join(os.getcwd(), ".streamlit", "config.toml")
     if not os.path.exists(st_config_path):
@@ -245,6 +216,7 @@ def change_theme(theme_dict):
                 f.write(f'{key}="{value}"\n')
         else:
             f.write("")  # 清空文件以使用默认主题
+
 
 def download_temp_image_to_static(image_url, local_dir="./static/thumbnails"):
     """
