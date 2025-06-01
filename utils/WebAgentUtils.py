@@ -95,3 +95,91 @@ def st_init_cache_pathes():
     for path in cache_pathes:
         if not os.path.exists(path):
             os.makedirs(path)
+
+
+@DeprecationWarning
+def st_gene_resource_config(records, config_sub_type,
+                            images_path, videoes_path, output_file,
+                            clip_start_interval, clip_play_time, default_comment_placeholders):
+    intro_clip_data = {
+        "id": "intro_1",
+        "duration": 10,
+        "text": "【请填写前言部分】" if default_comment_placeholders else ""
+    }
+
+    ending_clip_data = {
+        "id": "ending_1",
+        "duration": 10,
+        "text": "【请填写后记部分】" if default_comment_placeholders else ""
+    }
+
+    video_config_data = {
+        "enable_re_modify": False,
+        "intro": [intro_clip_data],
+        "ending": [ending_clip_data],
+        "main": [],
+    }
+
+    main_clips = []
+
+    if clip_start_interval[0] > clip_start_interval[1]:
+        print(f"Error: 视频开始时间区间设置错误，请检查global_config.yaml文件中的CLIP_START_INTERVAL配置。")
+        clip_start_interval = (clip_start_interval[1], clip_start_interval[1])
+
+    for song in records:
+        if not song['clip_id']:
+            print(f"Error: 没有找到 {song['title']}-{song['level_label']}-{song['type']} 的clip_id，请检查数据格式，跳过该片段。")
+            continue
+        id = song['clip_id']
+        clip_name = song.get('clip_name', id)
+        video_name = f"{song['song_id']}-{song['level_index']}-{song['type']}"
+        __image_path = os.path.join(images_path, id + ".png")
+        __image_path = os.path.normpath(__image_path)
+        if not os.path.exists(__image_path):
+            print(f"Error: 没有找到 {id}.png 图片，请检查本地缓存数据。")
+            __image_path = ""
+
+        __video_path = os.path.join(videoes_path, video_name + ".mp4")
+        __video_path = os.path.normpath(__video_path)
+        if not os.path.exists(__video_path):
+            print(f"Error: 没有找到 {video_name}.mp4 视频，请检查本地缓存数据。")
+            __video_path = ""
+
+        duration = clip_play_time
+        start = random.randint(clip_start_interval[0], clip_start_interval[1])
+        end = start + duration
+
+        main_clip_data = {
+            "id": id,
+            "clip_name": clip_name,
+            "achievement_title": song['title'],
+            "song_id": song['song_id'],
+            "level_index": song['level_index'],
+            "type": song['type'],
+            "main_image": __image_path,
+            "video": __video_path,
+            "duration": duration,
+            "start": start,
+            "end": end,
+            "text": "【请填写b50评价】" if default_comment_placeholders else "",
+        }
+        main_clips.append(main_clip_data)
+
+    # 根据配置文件中的sub_type类型进行排序（b50/apb50等需要翻转排序，其余正序）
+    match config_sub_type:
+        case "best":
+            main_clips.reverse()
+        case "ap":
+            main_clips.reverse()
+        case "custom":
+            pass
+        case _:
+            print(f"Error: 不支持的sub_type类型 {config_sub_type}，将使用默认正序。")
+            pass
+
+    video_config_data["main"] = main_clips
+
+    with open(output_file, 'w', encoding="utf-8") as file:
+        json.dump(video_config_data, file, ensure_ascii=False, indent=4)
+
+    return video_config_data
