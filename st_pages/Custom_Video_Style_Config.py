@@ -28,9 +28,6 @@ os.makedirs(os.path.join(user_static_dir, "bg_clips"), exist_ok=True)
 # 读取全局配置
 G_config = read_global_config()
 
-# 从配置中读取当前样式设定，若没有则使用默认样式
-has_custom_style = G_config.get("USE_CUSTOM_VIDEO_STYLE", False)
-
 solips = """现在的孩子冲到机厅就是把其他人从机子上赶下来 
 然后投币扫码 上机 选择模式 选区域 
 旅行伙伴 跳过功能票 然后选中solips开始游戏
@@ -55,15 +52,14 @@ def save_style_config(style_config, is_custom_style):
     with open(video_style_config_path, "w") as f:
         json.dump(style_config, f, indent=4)
     
-    # 更新全局配置
-    G_config["USE_CUSTOM_VIDEO_STYLE"] = is_custom_style
-    write_global_config(G_config)
-    st.rerun()
+    st.success("样式配置已保存！", icon="✅")
+
 
 def format_file_path(file_path):
     # if file_path.startswith("./static/"):
     #     return file_path.replace("./static/", "/app/static/")
     return file_path
+
 
 def save_uploaded_file(uploaded_file, directory):
     """保存上传的文件并返回保存路径"""
@@ -81,6 +77,7 @@ def save_uploaded_file(uploaded_file, directory):
         f.write(uploaded_file.getbuffer())
     
     return file_path
+
 
 @st.dialog("确认重置自定义样式")
 def reset_custom_style_dialog():
@@ -104,6 +101,7 @@ def reset_custom_style_dialog():
 
         st.success("已重置所有自定义样式！")
         st.rerun()
+
 
 def update_preview_images(style_config, placeholder, test_string):
 
@@ -147,6 +145,8 @@ def update_preview_images(style_config, placeholder, test_string):
     }
     
     with placeholder.container(border=True):
+        st.info("提示：此效果仅供预览您的自定义样式修改，需要点击下方按钮保存方可生效！")
+
         # Render Preview 1
         pil_img1 = get_video_preview_frame(
             clip_config=intro_template,
@@ -180,6 +180,55 @@ def update_preview_images(style_config, placeholder, test_string):
         st.image(pil_img2, caption="预览图2(正片)")
 
 
+def show_current_style_preview(to_preview_style=None):
+    with st.container(border=True):
+        st.subheader("当前样式预览")
+
+        st.info("如果上传了自定义素材文件，请在保存样式后点击下方按钮刷新预览。")
+        if st.button("刷新预览"):
+            st.rerun()
+
+        current_asset_config = to_preview_style["asset_paths"]
+        
+        # 创建两列布局
+        preview_col1, preview_col2 = st.columns(2)
+        
+        with preview_col1:
+            st.write("视频素材")
+
+            st.write("- 背景视频预览")
+            intro_video_bg_path = current_asset_config["intro_video_bg"]
+            if os.path.exists(intro_video_bg_path):
+                st.video(intro_video_bg_path, format="video/mp4")
+            else:
+                st.error(f"找不到片头视频背景：{intro_video_bg_path}")
+
+            st.write("- 背景图片预览")
+            intro_text_bg_path = current_asset_config["intro_text_bg"]
+            if os.path.exists(intro_text_bg_path):
+                st.image(intro_text_bg_path, caption="片头片尾文字背景图片")
+            else:
+                st.error(f"找不到片头片尾文字背景图片：{intro_text_bg_path}")
+
+            content_bg_path = current_asset_config["content_bg"]
+            if os.path.exists(content_bg_path):
+                st.image(content_bg_path, caption="正片内容背景图片")
+            else:
+                st.error(f"找不到正片内容背景图片：{content_bg_path}")
+
+        with preview_col2:
+            st.write("片头片尾背景音乐")
+
+            intro_bgm_path = current_asset_config["intro_bgm"]
+            if os.path.exists(intro_bgm_path):
+                st.audio(intro_bgm_path, format="audio/mp3")
+            else:
+                st.error(f"找不到背景音乐：{intro_bgm_path}")
+            
+            st.write("字体文件")
+            st.write(f"片头片尾字体: {os.path.basename(current_asset_config['ui_font'])}")
+            st.write(f"评论文本字体: {os.path.basename(current_asset_config['comment_font'])}")
+
 # UI部分
 st.write("在这里配置视频生成时使用的背景图片、背景音乐、字体等素材。")
 
@@ -206,8 +255,15 @@ with st.container(border=True):
         else:
             st.error(f"未找到预设样式资源：{selected_style_name}")
 
-# 如果选择自定义样式，显示上传文件区域
-with st.container(border=True):
+custom_setting_area = st.container(border=True)
+custom_preview_area = st.container(border=True)
+
+# 预览区域（先刷新但是后显示）
+with custom_preview_area:
+    show_current_style_preview(current_style)
+
+# 自定义区域
+with custom_setting_area:
     st.subheader("自定义视频样式")
 
     # 添加上传文件的版权声明，用户自己对上传的内容负责
@@ -225,25 +281,34 @@ with st.container(border=True):
     with col1:
         st.write("视频素材设置")
         # 片头背景上传
-        uploaded_intro_text_bg = st.file_uploader("片头片尾文字背景图片", type=["png", "jpg", "jpeg"], key="intro_bg")
-        if uploaded_intro_text_bg:
-            file_path = save_uploaded_file(uploaded_intro_text_bg, os.path.join(user_static_dir, "backgrounds"))
-            if file_path:
-                current_asset_config["intro_text_bg"] = format_file_path(file_path)
-                st.success(f"已上传：{uploaded_intro_text_bg.name}")
-
-        uploaded_intro_video_bg = st.file_uploader("片头片尾背景视频", type=["mp4", "mov"], key="intro_video_bg")
+        uploaded_intro_video_bg = st.file_uploader("片头片尾背景视频",
+                                                   help="片头/片尾时位于视频最底层的动态背景，若不指定则使用预设的背景视频",
+                                                   type=["mp4", "mov"], key="intro_video_bg")
         if uploaded_intro_video_bg:
             file_path = save_uploaded_file(uploaded_intro_video_bg, os.path.join(user_static_dir, "bg_clips"))
             if file_path:
                 current_asset_config["intro_video_bg"] = format_file_path(file_path)
                 st.success(f"已上传：{uploaded_intro_video_bg.name}")
 
+        uploaded_intro_text_bg = st.file_uploader("片头片尾文本框图片",
+                                                  help="放置于片头片尾视频的中央作为文本框的背景图片。\
+                                                    注意：因为该图片直接叠放在视频上方，所以只有其四周为透明背景的情况下才不会遮挡背景视频，如自定义制作，请使用png格式。\
+                                                    若不指定则使用预设的背景图片",
+                                                  type=["png"], key="intro_bg")
+        if uploaded_intro_text_bg:
+            file_path = save_uploaded_file(uploaded_intro_text_bg, os.path.join(user_static_dir, "backgrounds"))
+            if file_path:
+                current_asset_config["intro_text_bg"] = format_file_path(file_path)
+                st.success(f"已上传：{uploaded_intro_text_bg.name}")
+                
+
         st.info("注意：上传的素材默认将被拉伸到16:9比例；如果同时上传了片头/片尾的背景图片和视频，图片将被叠放在视频上方。")
         
         st.divider()
         # 正片背景上传
-        uploaded_content_bg = st.file_uploader("正片默认背景图片", type=["png", "jpg", "jpeg"], key="video_bg")
+        uploaded_content_bg = st.file_uploader("自定义正片背景图片",
+                                               help="如果确定所有正片背景都需要使用自定义图片，请在此上传，并同时勾选下方选项。",
+                                               type=["png", "jpg", "jpeg"], key="video_bg")
         if uploaded_content_bg:
             file_path = save_uploaded_file(uploaded_content_bg, os.path.join(user_static_dir, "backgrounds"))
             if file_path:
@@ -251,7 +316,8 @@ with st.container(border=True):
                 st.success(f"已上传：{uploaded_content_bg.name}")
         
         current_options["override_content_default_bg"] = st.checkbox(
-            label="使用此背景图片替换正片中所有默认曲绘背景",
+            label="使用自定义背景图片替换正片中的所有默认曲绘背景",
+            help="默认情况下，正片背景图片采用模糊处理的曲绘。如果勾选了下方选项，将使用 版本预设 / 自定义上传 的背景图片替换正片中所有默认曲绘背景。",
             value=current_options.get("override_content_default_bg", False),
             key="enable_custom_content_bg")
 
@@ -267,7 +333,7 @@ with st.container(border=True):
         st.divider()
         # 预览调整
         test_str = st.text_area("【测试】样式预览", 
-                                placeholder="输入任意文本，以预览素材/文本样式调整效果", 
+                                placeholder="输入任意文本，以预览素材/文本样式调整的效果", 
                                 height=480,
                                 help=f"需要文案？{solips}",
                                 key="comment_preview_text")
@@ -344,58 +410,9 @@ with st.container(border=True):
     if st.button("保存自定义样式"):
         # 保存当前样式配置
         save_style_config(current_style, is_custom_style=True)
-        st.success("自定义样式已保存！")
 
     # 重置自定义样式按钮
     if st.button("重置所有自定义样式"):
         reset_custom_style_dialog()
 
 
-# 显示当前样式预览
-# TODO: 区域手动刷新
-with st.container(border=True):
-    st.subheader("当前样式预览")
-
-    current_asset_config = current_style["asset_paths"]
-    
-    # 创建两列布局
-    preview_col1, preview_col2 = st.columns(2)
-    
-    with preview_col1:
-        st.write("视频素材")
-
-        st.write("- 背景视频预览")
-        intro_video_bg_path = current_asset_config["intro_video_bg"]
-        if os.path.exists(intro_video_bg_path):
-            st.video(intro_video_bg_path, format="video/mp4")
-        else:
-            st.error(f"找不到片头视频背景：{intro_video_bg_path}")
-
-        st.write("- 背景图片预览")
-        intro_text_bg_path = current_asset_config["intro_text_bg"]
-        if os.path.exists(intro_text_bg_path):
-            st.image(intro_text_bg_path, caption="片头片尾文字背景图片")
-        else:
-            st.error(f"找不到片头片尾文字背景图片：{intro_text_bg_path}")
-
-        content_bg_path = current_asset_config["content_bg"]
-        if os.path.exists(content_bg_path):
-            st.image(content_bg_path, caption="正片内容背景图片")
-        else:
-            st.error(f"找不到正片内容背景图片：{content_bg_path}")
-
-    with preview_col2:
-        st.write("片头片尾背景音乐")
-
-        intro_bgm_path = current_asset_config["intro_bgm"]
-        if os.path.exists(intro_bgm_path):
-            st.audio(intro_bgm_path, format="audio/mp3")
-        else:
-            st.error(f"找不到背景音乐：{intro_bgm_path}")
-        
-        st.write("字体文件")
-        st.write(f"片头片尾字体: {os.path.basename(current_asset_config['ui_font'])}")
-        st.write(f"评论文本字体: {os.path.basename(current_asset_config['comment_font'])}")
-
-st.markdown("---")
-st.info("提示：修改的样式将应用于下一次视频生成。如果您已经生成过视频片段，可能需要重新生成才能看到效果。")

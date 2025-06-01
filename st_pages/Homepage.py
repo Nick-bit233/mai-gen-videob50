@@ -77,7 +77,7 @@ if not os.path.exists(DEFAULT_STYLE_CONFIG_FILE_PATH):
     with open(DEFAULT_STYLE_CONFIG_FILE_PATH, "w") as f:
         json.dump(default_style_config, f, indent=4)
 
-st.write("单击下面的按钮开始")
+st.write("单击下面的按钮开始。在开始制作前，您也可以考虑先自定义视频模板的样式。")
 
 col1, col2 = st.columns(2)
 with col1:
