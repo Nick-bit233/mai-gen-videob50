@@ -1,23 +1,17 @@
 import json
 import os.path
+import traceback
 
 from utils.DataUtils import download_image_data, CHART_TYPE_MAP_MAIMAI
 from utils.PageUtils import load_music_metadata
 from PIL import Image, ImageDraw, ImageFont
 
 class MaiImageGenerater:
-    def __init__(self, InputUserID: int = 0):
-        UserId = InputUserID
-        if UserId != 0:
-            try:
-                with open(f"./b50_datas/{UserId}_B50.json") as file:
-                    UserB50Data = json.load(file)
-            except FileNotFoundError:
-                print("错误：未找到 JSON 文件。")
-                return {}
-            except json.JSONDecodeError:
-                print("错误：JSON 解码失败。")
-                return {}
+    def __init__(self, style_config=None):
+        self.asset_paths = style_config.get("asset_paths", {})
+        self.image_root_path = self.asset_paths.get("score_image_assets_path", "./static/assets/images/")
+        self.font_path = self.asset_paths.get("ui_font", "static/assets/fonts/FOT_NewRodin_Pro_EB.otf")
+
 
     def DsLoader(self, level: int = 0, Ds: float = 0.0):
         if Ds >= 20 or Ds < 1:
@@ -35,15 +29,15 @@ class MaiImageGenerater:
 
         # 加载数字
         if len(IntegerPart) == 1:
-            with Image.open(f'./images/Numbers/{str(level)}/{IntegerPart}.png') as Number:
+            with Image.open(f'{self.image_root_path}/Numbers/{str(level)}/{IntegerPart}.png') as Number:
                 Background.paste(Number, (48, 60), Number)
         else:
-            with Image.open(f'./images/Numbers/{str(level)}/1.png') as FirstNumber:
+            with Image.open(f'{self.image_root_path}/Numbers/{str(level)}/1.png') as FirstNumber:
                 Background.paste(FirstNumber, (18, 60), FirstNumber)
-            with Image.open(f'./images/Numbers/{str(level)}/{IntegerPart[1]}.png') as SecondNumber:
+            with Image.open(f'{self.image_root_path}/Numbers/{str(level)}/{IntegerPart[1]}.png') as SecondNumber:
                 Background.paste(SecondNumber, (48, 60), SecondNumber)
         if len(DecimalPart) == 1:
-            with Image.open(f'./images/Numbers/{str(level)}/{DecimalPart}.png') as Number:
+            with Image.open(f'{self.image_root_path}/Numbers/{str(level)}/{DecimalPart}.png') as Number:
                 Number = Number.resize((32, 40), Image.LANCZOS)
                 Background.paste(Number, (100, 79), Number)
         else:
@@ -51,14 +45,14 @@ class MaiImageGenerater:
 
         # 加载加号
         if int(DecimalPart) >= 7:
-            with Image.open(f"./images/Numbers/{str(level)}/plus.png") as PlusMark:
+            with Image.open(f"{self.image_root_path}/Numbers/{str(level)}/plus.png") as PlusMark:
                 Background.paste(PlusMark, (75, 50), PlusMark)
 
         return Background
 
     def TypeLoader(self, Type: str = "SD"):
         _type = Type
-        with Image.open(f"./images/Types/{_type}.png") as _Type:
+        with Image.open(f"{self.image_root_path}/Types/{_type}.png") as _Type:
             _Type = _Type.resize((180, 50), Image.BICUBIC)
             return _Type.copy()
 
@@ -70,11 +64,11 @@ class MaiImageGenerater:
         Background.convert("RGBA")
 
         for __index, __digit in enumerate(IntegerPart):
-            with Image.open(f"./images/Numbers/AchievementNumber/{__digit}.png") as Number:
+            with Image.open(f"{self.image_root_path}/Numbers/AchievementNumber/{__digit}.png") as Number:
                 Background.paste(Number, (__index * 78 + (3 - len(IntegerPart)) * 78, 0), Number)
 
         for __index, __digit in enumerate(DecimalPart):
-            with Image.open(f"./images/Numbers/AchievementNumber/{__digit}.png") as Number:
+            with Image.open(f"{self.image_root_path}/Numbers/AchievementNumber/{__digit}.png") as Number:
                 ScalLevel = 0.75
                 Number = Number.resize((int(86 * ScalLevel), int(118 * ScalLevel)), Image.LANCZOS)
                 Background.paste(Number, (270 + __index * int(86 * ScalLevel - 5), int(118 * (1 - ScalLevel) - 3)),
@@ -85,16 +79,16 @@ class MaiImageGenerater:
     def StarLoader(self, Star: int = 0):
         match Star:
             case _ if Star == 0:
-                with Image.open("./images/Stars/0.png") as _star:
+                with Image.open(f"{self.image_root_path}/Stars/0.png") as _star:
                     return _star.copy()
             case _ if Star == 1 or Star == 2:
-                with Image.open("./images/Stars/1.png") as _star:
+                with Image.open(f"{self.image_root_path}/Stars/1.png") as _star:
                     return _star.copy()
             case _ if Star == 3 or Star == 4:
-                with Image.open("./images/Stars/3.png") as _star:
+                with Image.open(f"{self.image_root_path}/Stars/3.png") as _star:
                     return _star.copy()
             case _ if Star == 5:
-                with Image.open("./images/Stars/5.png") as _star:
+                with Image.open(f"{self.image_root_path}/Stars/5.png") as _star:
                     return _star.copy()
 
     def ComboStatusLoader(self, ComboStatus: int = 0):
@@ -102,16 +96,16 @@ class MaiImageGenerater:
             case _ if ComboStatus == '' or ComboStatus is None:
                 return Image.new('RGBA', (80, 80), (0, 0, 0, 0))
             case _ if ComboStatus == 'fc':
-                with Image.open("./images/ComboStatus/1.png") as _comboStatus:
+                with Image.open(f"{self.image_root_path}/ComboStatus/1.png") as _comboStatus:
                     return _comboStatus.copy()
             case _ if ComboStatus == 'fcp':
-                with Image.open("./images/ComboStatus/2.png") as _comboStatus:
+                with Image.open(f"{self.image_root_path}/ComboStatus/2.png") as _comboStatus:
                     return _comboStatus.copy()
             case _ if ComboStatus == 'ap':
-                with Image.open("./images/ComboStatus/3.png") as _comboStatus:
+                with Image.open(f"{self.image_root_path}/ComboStatus/3.png") as _comboStatus:
                     return _comboStatus.copy()
             case _ if ComboStatus == 'app':
-                with Image.open("./images/ComboStatus/4.png") as _comboStatus:
+                with Image.open(f"{self.image_root_path}/ComboStatus/4.png") as _comboStatus:
                     return _comboStatus.copy()
 
     def SyncStatusLoader(self, SyncStatus: int = 0):
@@ -119,19 +113,19 @@ class MaiImageGenerater:
             case _ if SyncStatus == '' or SyncStatus is None:
                 return Image.new('RGBA', (80, 80), (0, 0, 0, 0))
             case _ if SyncStatus == 'fs':
-                with Image.open("./images/SyncStatus/1.png") as _syncStatus:
+                with Image.open(f"{self.image_root_path}/SyncStatus/1.png") as _syncStatus:
                     return _syncStatus.copy()
             case _ if SyncStatus == 'fsp':
-                with Image.open("./images/SyncStatus/2.png") as _syncStatus:
+                with Image.open(f"{self.image_root_path}/SyncStatus/2.png") as _syncStatus:
                     return _syncStatus.copy()
             case _ if SyncStatus == 'fsd':
-                with Image.open("./images/SyncStatus/3.png") as _syncStatus:
+                with Image.open(f"{self.image_root_path}/SyncStatus/3.png") as _syncStatus:
                     return _syncStatus.copy()
             case _ if SyncStatus == 'fsdp':
-                with Image.open("./images/SyncStatus/4.png") as _syncStatus:
+                with Image.open(f"{self.image_root_path}/SyncStatus/4.png") as _syncStatus:
                     return _syncStatus.copy()
             case _ if SyncStatus == 'sync':
-                with Image.open("./images/SyncStatus/5.png") as _syncStatus:
+                with Image.open(f"{self.image_root_path}/SyncStatus/5.png") as _syncStatus:
                     return _syncStatus.copy()
 
     def TextDraw(self, Image, Text: str = "", Position: tuple = (0, 0)):
@@ -139,7 +133,7 @@ class MaiImageGenerater:
 
         # 载入文字元素
         Draw = ImageDraw.Draw(Image)
-        FontPath = "./font/FOT_NewRodin_Pro_EB.otf"
+        FontPath = self.font_path
         FontSize = 32
         FontColor = (255, 255, 255)
         Font = ImageFont.truetype(FontPath, FontSize)
@@ -215,7 +209,7 @@ class MaiImageGenerater:
         try:
             assert record_detail['level_index'] in range(0, 5)
             image_asset_path = os.path.join(os.getcwd(),
-                                            f"images/AchievementBase/{record_detail['level_index']}.png")
+                                            f"{self.image_root_path}/AchievementBase/{record_detail['level_index']}.png")
             dx_stars = self.count_dx_stars(record_detail)
             with Image.open(image_asset_path) as Background:
                 Background = Background.convert("RGBA")
@@ -226,6 +220,8 @@ class MaiImageGenerater:
                 # 加载乐曲封面
                 JacketPosition = (44, 53)
                 Jacket = load_music_jacket(music_tag=record_detail["song_id"])
+                if Jacket is None:
+                    Jacket = Image.open(f"{self.image_root_path}/Jackets/UI_Jacket_000000.png")
                 TempImage.paste(Jacket, JacketPosition, Jacket)
 
                 # 加载类型
@@ -283,7 +279,7 @@ class MaiImageGenerater:
                 else:
                     PlayCount = 0
                 if PlayCount >= 1:
-                    with Image.open("./images/Playcount/PlayCountBase.png") as PlayCountBase:
+                    with Image.open(f"{self.image_root_path}/Playcount/PlayCountBase.png") as PlayCountBase:
                         TempImage.paste(PlayCountBase, (1170, 420), PlayCountBase)
                     TextCentralPosition = (1435, 458)
                     PlayCountText = str(PlayCount)
@@ -293,13 +289,17 @@ class MaiImageGenerater:
 
         except Exception as e:
             print(f"Error generating achievement: {e}")
+            print(traceback.format_exc())
             Background = Image.new('RGBA', (1520, 500), (0, 0, 0, 255))
 
         return Background
 
 
-def generate_single_image(background_path, record_detail, output_path, title_text):
-    function = MaiImageGenerater()
+def generate_single_image(style_config, record_detail, output_path, title_text):
+    if style_config is None or not isinstance(style_config, dict):
+            raise ValueError("No valid style_config provided. Please provide a dictionary.")
+    function = MaiImageGenerater(style_config=style_config)
+    background_path = style_config["asset_paths"]["score_image_base"]
     with Image.open(background_path) as background:
         # 生成并调整单个成绩图片
         single_image = function.GenerateOneAchievement(record_detail)
@@ -311,13 +311,11 @@ def generate_single_image(background_path, record_detail, output_path, title_tex
         
         # 添加文字
         draw = ImageDraw.Draw(background)
-        # TODO：配置字体路径
-        font = ImageFont.truetype("./font/FOT_NewRodin_Pro_EB.otf", 50)
+        font = ImageFont.truetype(function.font_path, 50)
         draw.text((940, 100), title_text, fill=(255, 255, 255), font=font)
         
         # 保存图片
         background.save(output_path)
-        # background.save(f"./b50_images/{user_id}/{prefix}_{index + 1}.png")
 
 
 def check_mask_waring(acc_string, cnt, warned=False):
@@ -346,11 +344,10 @@ def load_music_jacket(music_tag):
         jacket = download_image_data(image_path)
         # 返回 RGBA 模式图像，并强制缩放到400*400px
         return jacket.convert("RGBA").resize((400, 400), Image.LANCZOS)
-    # TODO：抛出异常，默认封面由上层处理
+    # 抛出异常，默认封面由上层处理
     except FileNotFoundError:
-        print(f"获取乐曲封面{image_path}失败，将使用默认封面")
-        with Image.open(f"./images/Jackets/UI_Jacket_000000.png") as jacket:
-            return jacket.convert("RGBA")
+        print(f"乐曲封面{image_path}不存在")
+        return None
 
 
 def find_single_song_metadata(all_metadata, record_detail):

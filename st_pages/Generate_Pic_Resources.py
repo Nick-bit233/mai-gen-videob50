@@ -4,13 +4,16 @@ import traceback
 from copy import deepcopy
 from datetime import datetime
 from utils.ImageUtils import generate_single_image, check_mask_waring
-from utils.PageUtils import open_file_explorer, load_record_config
+from utils.PageUtils import load_style_config, open_file_explorer, load_record_config
 from utils.PathUtils import get_data_paths, get_user_versions
 
 
 def st_generate_b50_images(placeholder, user_id, save_paths):
     # read b50_data
     b50_data = load_record_config(save_paths['data_file'], user_id)
+    # read style_config
+    style_config = load_style_config()
+
     with placeholder.container(border=True):
         pb = st.progress(0, text="正在生成B50成绩背景图片...")
         mask_check_cnt = 0
@@ -35,9 +38,8 @@ def st_generate_b50_images(placeholder, user_id, save_paths):
                 title_text = record_detail['clip_name']
             # 图片名称与配置文件中的clip_id一致（唯一key）
             image_save_path = os.path.join(save_paths['image_dir'], f"{record_detail['clip_id']}.png")
-            # TODO：base image path should be configurable
             generate_single_image(
-                "./images/B50ViedoBase.png",
+                style_config,
                 record_for_gene_image,
                 image_save_path,
                 title_text
