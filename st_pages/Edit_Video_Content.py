@@ -301,8 +301,10 @@ if video_config:
         st.success("配置已保存！")
 
     with st.expander("导出当前编辑片段的预览视频"):
-        st.info("如需修改视频生成参数，请在第6步页面中设置")
+        st.info("如需修改视频生成参数，请在【5.合成视频】页面中设置")
         video_output_path = current_paths['output_video_dir']
+        if not os.path.exists(video_output_path):
+            os.makedirs(video_output_path, exist_ok=True)
         v_res = G_config['VIDEO_RES']
         v_bitrate_kbps = f"{G_config['VIDEO_BITRATE']}k"
         target_config = video_config["main"][st.session_state.current_index]
