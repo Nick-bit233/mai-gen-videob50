@@ -1,10 +1,12 @@
 import streamlit as st
 import os
+import random
 import traceback
 from datetime import datetime
-from utils.PageUtils import LEVEL_LABELS, load_style_config, open_file_explorer, get_video_duration, load_full_config_safe, load_video_config, save_video_config, read_global_config
-from utils.PathUtils import get_data_paths, get_user_versions
-from utils.WebAgentUtils import st_gene_resource_config
+
+from database.VideoContents import VideoContents
+from utils.PageUtils import LEVEL_LABELS, load_style_config, open_file_explorer, get_video_duration, load_full_config_safe, read_global_config
+from utils.PathUtils import get_data_paths, get_user_versions, get_main_image_path
 from utils.VideoUtils import render_one_video_clip
 
 DEFAULT_VIDEO_MAX_DURATION = 180
@@ -71,24 +73,51 @@ video_config_output_file = current_paths['video_config']
 video_download_path = f"./videos/downloads"
 
 # 通过向empty容器添加新的container，更新预览
-def update_preview(preview_placeholder, config, current_index):
+def update_preview(preview_placeholder, config, song_record):
     with preview_placeholder.container(border=True):
         # 获取当前视频的配置信息
-        item = config['main'][current_index]
+        item = config.get_item(song_record)
 
-        # 检查是否存在图片和视频：
-        if not os.path.exists(item['main_image']):
-            st.error(f"图片文件不存在: {item['main_image']}，请检查前置步骤是否正常完成！")
+        # 为当前成绩创建一个新的记录
+        if not item:
+            # 谱面视频文件路径
+            video_name = f"{song_record['song_id']}-{song_record['level_index']}-{song_record['type']}"
+            __video_path = os.path.join(video_download_path, video_name + ".mp4")
+            __video_path = os.path.normpath(__video_path)
+            if not os.path.exists(__video_path):
+                print(f"Error: 没有找到 {video_name}.mp4 视频，请检查本地缓存数据。")
+                __video_path = ""
+
+            # 截取片段的起止点
+            duration = G_config['CLIP_PLAY_TIME']
+            start = random.randint(G_config['CLIP_START_INTERVAL'][0], G_config['CLIP_START_INTERVAL'][1])
+            end = start + duration
+
+            item = {
+                "song_id": song_record['song_id'],
+                "level_index": song_record['level_index'],
+                "video": __video_path,
+                "duration": duration,
+                "start": start,
+                "end": end,
+                "text": ""
+            }
+            config.update_item(song_record, item)
+
+        # 背景图像路径
+        image_path = get_main_image_path(image_output_path, song_record['clip_id'])
+        if not os.path.exists(image_path):
+            st.error(f"图片文件不存在: {image_path}，请检查前置步骤是否正常完成！")
             return
 
         # 显示当前视频片段的内容
-        clip_id = item['id']
-        clip_name = item.get('clip_name', clip_id)
+        clip_id = song_record['clip_id']
+        clip_name = song_record.get('clip_name', clip_id)
         st.subheader(f"当前预览: {clip_name}")
 
         info_col1, info_col2 = st.columns(2)
         with info_col1:
-            st.text(f"谱面名称：{item['achievement_title']} ({item['type']}) [{LEVEL_LABELS[item['level_index']]}]")
+            st.text(f"谱面名称：{song_record['title']} ({song_record['type']}) [{LEVEL_LABELS[song_record['level_index']]}]")
         with info_col2:
             absolute_path = os.path.abspath(os.path.dirname(item['video']))
             st.text(f"谱面确认视频文件：{os.path.basename(item['video'])}")
@@ -96,7 +125,7 @@ def update_preview(preview_placeholder, config, current_index):
                 open_file_explorer(absolute_path)
         main_col1, main_col2 = st.columns(2)
         with main_col1:
-            st.image(item['main_image'], caption="成绩图片")
+            st.image(image_path, caption="成绩图片")
         with main_col2:
             
             @st.dialog("删除视频确认")
@@ -145,7 +174,7 @@ def update_preview(preview_placeholder, config, current_index):
             return start, end
 
         # 获取有效的时间范围
-        start_time, end_time = get_valid_time_range(config['main'][current_index])
+        start_time, end_time = get_valid_time_range(item)
         show_start_minutes = int(start_time // 60)
         show_start_seconds = int(start_time % 60)
         show_end_minutes = int(end_time // 60)
@@ -206,10 +235,7 @@ else:
     downloader_type = G_config['DOWNLOADER']
 
 # 读取存档的b50 config文件
-if downloader_type == "youtube":
-    b50_config_file = current_paths['config_yt']
-elif downloader_type == "bilibili":
-    b50_config_file = current_paths['config_bi']
+b50_config_file = current_paths['data_file']
 if not os.path.exists(b50_config_file):
     st.error(f"未找到存档配置文件{b50_config_file}，请检查B50存档的数据完整性！")
     st.stop()
@@ -218,34 +244,37 @@ try:
     b50_config = load_full_config_safe(b50_config_file, username)
     config_subtype = b50_config.get('sub_type', 'best')
     records = b50_config.get('records', [])
+    if config_subtype == "best":
+        records.reverse()
 except Exception as e:
     st.error(f"读取存档配置文件失败: {e}")
     st.stop()
+
+video_config = VideoContents(video_config_output_file)
 
 st.info("在编辑前，您可以选择前往视频模板样式设置页面配置背景图片、背景音乐和字体等素材。")
 if st.button("视频模板样式设置", key="style_button"):
     st.switch_page("st_pages/Custom_Video_Style_Config.py")
 
-video_config = load_video_config(video_config_output_file)
-if not video_config or 'main' not in video_config:
-    st.warning("该存档还没有视频内容的配置文件。请先点击下方按钮，生成配置后方可编辑。")
-    if st.button("生成视频内容配置"):
-        st.toast("正在生成……")
-        try:
-            video_config = st_gene_resource_config(records, config_subtype,
-                                            image_output_path, video_download_path, video_config_output_file,
-                                            G_config['CLIP_START_INTERVAL'], G_config['CLIP_PLAY_TIME'], G_config['DEFAULT_COMMENT_PLACEHOLDERS'])
-            st.success("视频配置生成完成！")
-            st.rerun()
-        except Exception as e:
-            st.error(f"视频配置生成失败，请检查步骤1-3是否正常完成！")
-            st.error(f"详细错误信息: {traceback.format_exc()}")
-            video_config = None
+# if not video_config or 'main' not in video_config:
+#     st.warning("该存档还没有视频内容的配置文件。请先点击下方按钮，生成配置后方可编辑。")
+#     if st.button("生成视频内容配置"):
+#         st.toast("正在生成……")
+#         try:
+#             video_config = st_gene_resource_config(records, config_subtype,
+#                                             image_output_path, video_download_path, video_config_output_file,
+#                                             G_config['CLIP_START_INTERVAL'], G_config['CLIP_PLAY_TIME'], G_config['DEFAULT_COMMENT_PLACEHOLDERS'])
+#             st.success("视频配置生成完成！")
+#             st.rerun()
+#         except Exception as e:
+#             st.error(f"视频配置生成失败，请检查步骤1-3是否正常完成！")
+#             st.error(f"详细错误信息: {traceback.format_exc()}")
+#             video_config = None
 
-if video_config:
+if video_config and records:
     # 获取所有视频片段的ID
-    video_ids = [f"{item['id']}: {item['achievement_title']} ({item['type']}) [{LEVEL_LABELS[item['level_index']]}]" \
-                 for item in video_config['main']]
+    video_ids = [f"{item['clip_id']}: {item['title']} ({item['type']}) [{LEVEL_LABELS[item['level_index']]}]" \
+                 for item in records]
     # 使用session_state来存储当前选择的视频片段索引
     if 'current_index' not in st.session_state:
         st.session_state.current_index = 0
@@ -255,18 +284,20 @@ if video_config:
 
     # 片段预览和编辑组件，使用empty容器
     preview_placeholder = st.empty()
-    update_preview(preview_placeholder, video_config, st.session_state.current_index)
+    update_preview(preview_placeholder, video_config, records[st.session_state.current_index])
+    video_config.dump_to_file()
 
     # 快速跳转组件的实现
     def on_jump_to_clip(target_index):
         print(f"跳转到视频片段: {target_index}")
         if target_index != st.session_state.current_index:
             # 保存当前配置
-            save_video_config(video_config_output_file, video_config)
+            video_config.dump_to_file()
             st.toast("配置已保存！")
             # 更新session_state
             st.session_state.current_index = target_index
-            update_preview(preview_placeholder, video_config, st.session_state.current_index)
+            update_preview(preview_placeholder, video_config, records[st.session_state.current_index])
+            video_config.dump_to_file()
         else:
             st.toast("已经是当前视频片段！")
     
@@ -297,7 +328,7 @@ if video_config:
     
     # 保存配置按钮
     if st.button("保存配置"):
-        save_video_config(video_config_output_file, video_config)
+        video_config.dump_to_file()
         st.success("配置已保存！")
 
     with st.expander("导出当前编辑片段的预览视频"):
@@ -307,10 +338,10 @@ if video_config:
             os.makedirs(video_output_path, exist_ok=True)
         v_res = G_config['VIDEO_RES']
         v_bitrate_kbps = f"{G_config['VIDEO_BITRATE']}k"
-        target_config = video_config["main"][st.session_state.current_index]
-        target_video_filename = get_output_video_name_with_timestamp(target_config['id'])
+        target_config = video_config.get_item(records[st.session_state.current_index])
+        target_video_filename = get_output_video_name_with_timestamp(records[st.session_state.current_index]['clip_id'])
         if st.button("导出视频"):
-            save_video_config(video_config_output_file, video_config)
+            video_config.dump_to_file()
             with st.spinner(f"正在导出视频片段{target_video_filename} ……"):
                 res = render_one_video_clip(
                     config=target_config,

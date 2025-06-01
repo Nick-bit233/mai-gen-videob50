@@ -33,3 +33,8 @@ def get_user_versions(username):
     versions = [d for d in os.listdir(base_dir) 
                if os.path.isdir(os.path.join(base_dir, d))]
     return sorted(versions, reverse=True)
+
+def get_main_image_path(image_dir: str, clip_id: str):
+    ret = os.path.join(image_dir, clip_id + ".png")
+    ret = os.path.normpath(ret)
+    return ret
