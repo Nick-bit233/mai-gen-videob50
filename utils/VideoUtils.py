@@ -5,6 +5,7 @@ import traceback
 from PIL import Image, ImageFilter
 from moviepy import VideoFileClip, ImageClip, TextClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip, concatenate_videoclips
 from moviepy import vfx, afx
+
 from utils.ImageUtils import load_music_jacket
 
 
@@ -313,8 +314,8 @@ def create_full_video(resources, resolution, font_path, auto_add_transition=True
     ending_clips = []
 
     # 处理开场片段
-    if 'intro' in resources:
-        for clip_config in resources['intro']:
+    if hasattr(resources, 'intro'):
+        for clip_config in resources.intro:
             clip = create_info_segment(clip_config, resolution, font_path)
             clip = normalize_audio_volume(clip)
             add_clip_with_transition(clips, clip, 
@@ -322,14 +323,14 @@ def create_full_video(resources, resolution, font_path, auto_add_transition=True
                                     trans_time=trans_time)
 
     combined_start_time = 0
-    if not 'main' in resources:
+    if not hasattr(resources, 'main'):
         print("Error: 没有找到主视频片段的合成！请检查配置文件！")
         return
     
     # 处理主要视频片段
-    for clip_config in resources['main']:
+    for index, clip_config in enumerate(resources.main):
         # 判断是否是最后一个片段
-        if clip_config['id'] == resources['main'][-1]['id'] and full_last_clip:
+        if index == len(resources.main) - 1 and full_last_clip:
             start_time = clip_config['start']
             # 获取原始视频的长度（不是配置文件中配置的duration）
             full_clip_duration = VideoFileClip(clip_config['video']).duration - 5
@@ -351,8 +352,8 @@ def create_full_video(resources, resolution, font_path, auto_add_transition=True
                                     trans_time=trans_time)
 
     # 处理结尾片段
-    if 'ending' in resources:
-        for clip_config in resources['ending']:
+    if hasattr(resources, 'ending'):
+        for clip_config in resources.ending:
             clip = create_info_segment(clip_config, resolution, font_path)
             clip = normalize_audio_volume(clip)
             if full_last_clip:
@@ -521,24 +522,24 @@ def render_all_video_clips(resources, video_output_path, resolution, v_bitrate_k
         # 强制垃圾回收
         del clip
 
-    if not 'main' in resources:
+    if not hasattr(resources, 'main'):
         print("Error: 没有找到主视频片段的配置！请检查配置文件！")
         return
 
-    if 'intro' in resources:
-        for clip_config in resources['intro']:
+    if hasattr(resources, 'intro'):
+        for clip_config in resources.intro:
             clip = create_info_segment(clip_config, resolution, font_path)
             clip = modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time)
             vfile_prefix += 1
 
-    for clip_config in resources['main']:
+    for clip_config in resources.main:
         clip = create_video_segment(clip_config, resolution, font_path)
         clip = modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time)
 
         vfile_prefix += 1
 
-    if 'ending' in resources:
-        for clip_config in resources['ending']:
+    if hasattr(resources, 'ending'):
+        for clip_config in resources.ending:
             clip = create_info_segment(clip_config, resolution, font_path)
             clip = modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time)
             vfile_prefix += 1

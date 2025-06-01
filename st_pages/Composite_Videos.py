@@ -1,10 +1,11 @@
 import streamlit as st
 import traceback
 import os
-
 from datetime import datetime
-from utils.PageUtils import open_file_explorer, load_video_config, read_global_config, write_global_config
-from utils.PathUtils import get_data_paths, get_user_versions
+
+from database.VideoContents import VideoContents
+from utils.PageUtils import open_file_explorer, load_full_config_safe, read_global_config, write_global_config
+from utils.PathUtils import get_data_paths, get_user_versions, get_main_image_path
 from utils.VideoUtils import render_all_video_clips, combine_full_video_direct, combine_full_video_ffmpeg_concat_gl, render_complete_full_video
 
 st.header("Step 5: 视频生成")
@@ -105,12 +106,37 @@ video_output_path = current_paths['output_video_dir']
 if not os.path.exists(video_output_path):
     os.makedirs(video_output_path)
 
+# 读取存档的b50 config文件
+b50_config_file = current_paths['data_file']
+if not os.path.exists(b50_config_file):
+    st.error(f"未找到存档配置文件{b50_config_file}，请检查B50存档的数据完整性！")
+    st.stop()
+
+try:
+    b50_config = load_full_config_safe(b50_config_file, username)
+    config_subtype = b50_config.get('sub_type', 'best')
+    records = b50_config.get('records', [])
+    if config_subtype == "best":
+        records.reverse()
+except Exception as e:
+    st.error(f"读取存档配置文件失败: {e}")
+    st.stop()
+
+
 # 读取存档的video config文件
 video_config_file = current_paths['video_config']
 if not os.path.exists(video_config_file):
     st.error(f"未找到视频内容配置文件{video_config_file}，请检查前置步骤是否完成，以及B50存档的数据完整性！")
     st.stop()
-video_configs = load_video_config(video_config_file)
+video_configs = VideoContents(video_config_file)
+
+main_part = []
+for record in records:
+    clip_info = video_configs.get_item(record)
+    clip_info['id'] = record['clip_id']
+    clip_info['main_image'] = get_main_image_path(current_paths['image_dir'], record['clip_id'])
+    main_part.append(clip_info)
+video_configs.main = main_part
 
 def save_video_render_config():
     # 保存配置

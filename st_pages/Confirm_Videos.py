@@ -4,7 +4,9 @@ import traceback
 import os
 import streamlit as st
 from datetime import datetime
-from utils.PageUtils import load_record_config, save_record_config, read_global_config
+
+from database.SearchResults import SearchResults
+from utils.PageUtils import load_record_config, read_global_config
 from utils.PathUtils import get_data_paths, get_user_versions
 from utils.WebAgentUtils import download_one_video
 
@@ -62,7 +64,7 @@ with st.expander("更换B50存档"):
         st.stop()
 ### Savefile Management - End ###
 
-def st_download_video(placeholder, dl_instance, G_config, b50_config):
+def st_download_video(placeholder, dl_instance, G_config, b50_config, search_results):
     search_wait_time = G_config['SEARCH_WAIT_TIME']
     download_high_res = G_config['DOWNLOAD_HIGH_RES']
     video_download_path = f"./videos/downloads"
@@ -73,15 +75,16 @@ def st_download_video(placeholder, dl_instance, G_config, b50_config):
             i = 0
             for song in b50_config:
                 i += 1
-                if 'video_info_match' not in song or not song['video_info_match']:
+                download_video = search_results.get_item(song)
+                if 'video_info_match' not in download_video or not download_video['video_info_match']:
                     st.warning(f"没有找到({i}/50): {song['title']} 的视频信息，无法下载，请检查前置步骤是否完成")
                     write_container.write(f"跳过({i}/50): {song['title']} ，没有视频信息")
                     continue
                 
-                video_info = song['video_info_match']
+                video_info = download_video['video_info_match']
                 progress_bar.progress(i / 50, text=f"正在下载视频({i}/50): {video_info['title']}")
                 
-                result = download_one_video(dl_instance, song, video_download_path, download_high_res)
+                result = download_one_video(dl_instance, song, video_info, video_download_path, download_high_res)
                 write_container.write(f"【{i}/50】{result['info']}")
 
                 # 等待几秒，以减少被检测为bot的风险
@@ -91,10 +94,10 @@ def st_download_video(placeholder, dl_instance, G_config, b50_config):
             st.success("下载完成！请点击下一步按钮核对视频素材的详细信息。")
 
 @st.dialog("分p视频指定", width="large")
-def change_video_page(config, cur_clip_index, cur_p_index, b50_config_file):
+def change_video_page(video_info, cur_p_index):
     st.write("分P视频指定")
 
-    page_info = dl_instance.get_video_pages(config[cur_clip_index]['video_info_match']['id'])
+    page_info = dl_instance.get_video_pages(video_info['id'])
     page_options = []
     for i, page in enumerate(page_info):
         if 'part' in page and 'duration' in page:
@@ -110,8 +113,7 @@ def change_video_page(config, cur_clip_index, cur_p_index, b50_config_file):
     )
 
     if st.button("确定更新分p", key=f"confirm_selected_page_{song['clip_id']}"):
-        config[cur_clip_index]['video_info_match']['p_index'] = selected_p_index
-        save_record_config(b50_config_file, config)
+        video_info['p_index'] = selected_p_index
         st.rerun()
     
 
@@ -123,7 +125,7 @@ def convert_to_compatible_types(data):
         return {k: str(v) if isinstance(v, (int, float)) else v for k, v in data.items()}
     return data
 
-def update_editor(placeholder, config, current_index, dl_instance=None):
+def update_editor(placeholder, config, search_results, current_index, dl_instance=None):
 
     def update_match_info(placeholder, video_info):
         with placeholder.container(border=True):
@@ -167,17 +169,19 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
         st.subheader(f"片段ID: {song['clip_id']}，标题名称: {song['clip_name']}")
 
         match_info_placeholder = st.empty()
-        video_info = song['video_info_match']
+        search_result = search_results.get_item(song)
+        video_info = search_result['video_info_match']
         update_match_info(match_info_placeholder, video_info=video_info)
         if "p_index" in video_info:
             p_index = video_info['p_index']   
             if st.button("修改分p序号", key=f"change_page_{song['clip_id']}"):
-                change_video_page(config, current_index, p_index, b50_config_file)
+                change_video_page(video_info, p_index)
+                search_results.dump_to_file()  # 保存修改后的结果到文件
 
 
         # 获取当前所有搜索得到的视频信息
         st.write("请检查上述视频信息与谱面是否匹配。如果有误，请从下方备选结果中选择正确的视频。")
-        to_match_videos = song['video_info_list']
+        to_match_videos = search_result['video_info_list']
         
         # 视频链接指定
         video_options = []
@@ -196,10 +200,10 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
         )
 
         if st.button("确定使用该信息", key=f"confirm_selected_match_{song['clip_id']}"):
-            song['video_info_match'] = to_match_videos[selected_index]
-            save_record_config(b50_config_file, config)
+            search_result['video_info_match'] = to_match_videos[selected_index]
+            search_results.dump_to_file()  # 保存修改后的结果到文件
             st.toast("配置已保存！")
-            update_match_info(match_info_placeholder, song['video_info_match'])
+            update_match_info(match_info_placeholder, to_match_videos[selected_index])
         
         # 如果搜索结果均不符合，手动输入地址：
         with st.container(border=True):
@@ -230,10 +234,10 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
                 if to_replace_video_info:
                     st.success(f"已使用视频{to_replace_video_info['id']}替换匹配信息，详情：")
                     st.markdown(f"【{to_replace_video_info['title']}】({to_replace_video_info['duration']}秒) [🔗{to_replace_video_info['id']}]({to_replace_video_info['url']})")
-                    song['video_info_match'] = to_replace_video_info
-                    save_record_config(b50_config_file, config)
+                    search_result['video_info_match'] = to_replace_video_info
+                    search_results.dump_to_file()  # 保存修改后的结果到文件
                     st.toast("配置已保存！")
-                    update_match_info(match_info_placeholder, song['video_info_match'])
+                    update_match_info(match_info_placeholder, to_replace_video_info)
 
 # 尝试读取缓存下载器
 if 'downloader' in st.session_state and 'downloader_type' in st.session_state:
@@ -245,7 +249,14 @@ else:
     st.error("未找到缓存的下载器，无法进行手动搜索和下载视频！请回到上一页先进行一次搜索！")
     st.stop()
 
-# 读取存档的b50 config文件
+# 获取当前用户的 B50 路径
+b50_data_file = current_paths['data_file']
+if not os.path.exists(b50_data_file):
+    st.error(f"未找到配置文件{b50_data_file}，请检查B50存档的数据完整性！")
+    st.stop()
+b50_config = load_record_config(b50_data_file, username)
+
+# 读取搜索结果缓存文件
 if downloader_type == "youtube":
     b50_config_file = current_paths['config_yt']
 elif downloader_type == "bilibili":
@@ -253,11 +264,13 @@ elif downloader_type == "bilibili":
 if not os.path.exists(b50_config_file):
     st.error(f"未找到配置文件{b50_config_file}，请检查B50存档的数据完整性！")
     st.stop()
-b50_config = load_record_config(b50_config_file, username)
+
+search_results = SearchResults(b50_config_file, username)
 
 if b50_config:
     for song in b50_config:
-        if not (song.get('video_info_list') and song.get('video_info_match')):
+        search_result = search_results.get_item(song)
+        if search_result is None or not (search_result.get('video_info_list') and search_result.get('video_info_match')):
             st.error(f"未找到有效视频下载信息，请检查上一页步骤是否完成！")
             st.stop()
 
@@ -272,14 +285,14 @@ if b50_config:
 
     # 片段预览和编辑组件，使用empty容器
     link_editor_placeholder = st.empty()
-    update_editor(link_editor_placeholder, b50_config, st.session_state.current_index, dl_instance)
+    update_editor(link_editor_placeholder, b50_config, search_results, st.session_state.current_index, dl_instance)
 
     # 快速跳转组件的实现
     def on_jump_to_record():
         target_index = record_ids.index(clip_selector)
         if target_index != st.session_state.current_index:
             st.session_state.current_index = target_index
-            update_editor(link_editor_placeholder, b50_config, st.session_state.current_index, dl_instance)
+            update_editor(link_editor_placeholder, b50_config, search_results, st.session_state.current_index, dl_instance)
         else:
             st.toast("已经是当前记录！")
     
@@ -303,7 +316,7 @@ if b50_config:
                 # st.toast("配置已保存！")
                 # 切换到上一个视频片段
                 st.session_state.current_index -= 1
-                update_editor(link_editor_placeholder, b50_config, st.session_state.current_index, dl_instance)
+                update_editor(link_editor_placeholder, b50_config, search_results, st.session_state.current_index, dl_instance)
             else:
                 st.toast("已经是第一个记录！")
     with col2:
@@ -314,20 +327,20 @@ if b50_config:
                 # st.toast("配置已保存！")
                 # 切换到下一个视频片段
                 st.session_state.current_index += 1
-                update_editor(link_editor_placeholder, b50_config, st.session_state.current_index, dl_instance)
+                update_editor(link_editor_placeholder, b50_config, search_results, st.session_state.current_index, dl_instance)
             else:
                 st.toast("已经是最后一个记录！")
     
     # 保存配置按钮
     if st.button("保存配置"):
-        save_record_config(b50_config_file, b50_config)
+        search_results.dump_to_file()
         st.success("配置已保存！")
 
     download_info_placeholder = st.empty()
     st.session_state.download_completed = False
     if st.button("确认当前配置，开始下载视频", disabled=not dl_instance):
         try:
-            st_download_video(download_info_placeholder, dl_instance, G_config, b50_config)
+            st_download_video(download_info_placeholder, dl_instance, G_config, b50_config, search_results)
             st.session_state.download_completed = True  # Reset error flag if successful
         except Exception as e:
             st.session_state.download_completed = False

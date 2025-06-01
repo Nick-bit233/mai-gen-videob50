@@ -2,6 +2,8 @@ import streamlit as st
 import os
 import traceback
 from datetime import datetime
+
+from database.VideoContents import VideoContents
 from utils.PageUtils import load_video_config, save_video_config, read_global_config
 from utils.PathUtils import get_data_paths, get_user_versions
 
@@ -22,13 +24,13 @@ current_paths = None
 data_loaded = False
 
 @st.fragment
-def edit_context_widget(name, config, config_file_path):
+def edit_context_widget(name, config):
     # 创建一个container来容纳所有组件
     container = st.container(border=True)
     
     # 在session_state中存储当前配置列表
     if f"{name}_items" not in st.session_state:
-        st.session_state[f"{name}_items"] = config[name]
+        st.session_state[f"{name}_items"] = getattr(config, name)
     
     items = st.session_state[f"{name}_items"]
     
@@ -77,9 +79,9 @@ def edit_context_widget(name, config, config_file_path):
         if st.button("保存更改", key=f"save_{name}"):
             try:
                 # 更新配置
-                config[name] = items
+                setattr(config, name, items)
                 ## 保存当前配置
-                save_video_config(config_file_path, config)
+                config.dump_to_file()
                 st.success("配置已保存！")
             except Exception as e:
                 st.error(f"保存失败：{str(e)}")
@@ -107,9 +109,9 @@ if save_id:
         st.error(f"未找到视频内容配置文件{video_config_file}，请检查前置步骤是否完成，以及B50存档的数据完整性！")
         config = None
     else:
-        config = load_video_config(video_config_file)
-        for name in ["intro", "ending"]:
-            st.session_state[f"{name}_items"] = config[name]
+        config = VideoContents(video_config_file)
+        st.session_state['intro_items'] = config.intro
+        st.session_state['ending_items'] = config.ending
 else:
     st.warning("未索引到存档，请先加载存档数据！")
 
@@ -144,10 +146,10 @@ if config:
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("片头配置")
-        edit_context_widget("intro", config, video_config_file)
+        edit_context_widget("intro", config)
     with col2:
         st.subheader("片尾配置")
-        edit_context_widget("ending", config, video_config_file)
+        edit_context_widget("ending", config)
 
     st.write("配置完毕后，请点击下面按钮进入视频生成步骤")
     if st.button("进行下一步"):

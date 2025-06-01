@@ -160,7 +160,7 @@ def save_config_to_file(username, save_id, config):
         return item
     
     with open(save_paths['data_file'], 'w', encoding='utf-8') as f:
-        integer_fields=["song_id", "level_index"]
+        integer_fields=["song_id", "level_index", "playCount"]
         config = _recursive_transform(config, integer_fields)
         json.dump(config, f, ensure_ascii=False, indent=4)
     

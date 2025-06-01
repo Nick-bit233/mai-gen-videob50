@@ -5,10 +5,11 @@ import random
 import traceback
 import streamlit as st
 from datetime import datetime
-from utils.PageUtils import load_record_config, save_record_config, read_global_config, write_global_config
+from utils.PageUtils import load_record_config, read_global_config, write_global_config
 from utils.PathUtils import get_data_paths, get_user_versions
 from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
 from utils.WebAgentUtils import search_one_video
+from database.SearchResults import SearchResults
 
 G_config = read_global_config()
 _downloader = G_config.get('DOWNLOADER', 'bilibili')
@@ -186,33 +187,21 @@ def st_init_downloader():
 
 # b50 config文件位置
 b50_data_file = current_paths['data_file']
+if not os.path.exists(b50_data_file):
+    st.error("未找到b50数据文件，请检查B50存档的数据完整性！")
+    st.stop()
+
 # 根据下载器类型的b50_config副本
 if downloader == "youtube":
     b50_config_file = current_paths['config_yt']
 elif downloader == "bilibili":
     b50_config_file = current_paths['config_bi']
 
-if not os.path.exists(b50_data_file):
-    st.error("未找到b50数据文件，请检查B50存档的数据完整性！")
-    st.stop()
-
-if not os.path.exists(b50_config_file):
-    # 复制b50_data_file到b50_config_file
-    shutil.copy(b50_data_file, b50_config_file)
-    st.toast(f"已生成平台{downloader}的b50索引文件")
-
-# 对比以及合并b50_data_file和b50_config_file
-# TODO: 修改为用户主动更新数据与合并
-# b50_data = load_record_config(b50_data_file)
-# b50_config = load_record_config(b50_config_file)
-# merged_b50_config, update_count = merge_b50_data(b50_data, b50_config)
-# save_record_config(b50_config_file, merged_b50_config)
-# if update_count > 0:
-#     st.toast(f"已加载平台{downloader}的b50索引，共更新{update_count}条数据")
+search_results = SearchResults(b50_config_file)
 
 def st_search_b50_videoes(dl_instance, placeholder, search_wait_time):
     # read b50_data
-    b50_records = load_record_config(b50_config_file)
+    b50_records = load_record_config(b50_data_file)
     song_count = len(b50_records)
 
     with placeholder.container(border=True, height=560):
@@ -223,16 +212,21 @@ def st_search_b50_videoes(dl_instance, placeholder, search_wait_time):
             for song in b50_records:
                 i += 1
                 progress_bar.progress(i / song_count, text=f"正在搜索({i}/{song_count}): {song['title']}")
-                if 'video_info_match' in song and song['video_info_match']:
+
+                # 先在 search_cache 中检索对应记录
+                search_result = search_results.get_item(song)
+
+                if search_result and 'video_info_match' in search_result and search_result['video_info_match']:
                     write_container.write(f"跳过({i}/{song_count}): {song['title']} ，已储存有相关视频信息")
                     continue
                 
-                song_data, ouput_info = search_one_video(dl_instance, song)
+                search_result, ouput_info = search_one_video(dl_instance, song)
                 write_container.write(f"【{i}/{song_count}】{ouput_info}")
 
                 # 每次搜索后都写入b50_data_file
-                save_record_config(b50_config_file, b50_records)
-                
+                search_results.update_item(song, search_result)
+                search_results.dump_to_file()
+
                 # 等待几秒，以减少被检测为bot的风险
                 if search_wait_time[0] > 0 and search_wait_time[1] > search_wait_time[0]:
                     time.sleep(random.randint(search_wait_time[0], search_wait_time[1]))
