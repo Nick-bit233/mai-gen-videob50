@@ -1,6 +1,6 @@
 import streamlit as st
-from utils.PageUtils import change_theme, update_music_metadata
-from utils.themes import THEME_COLORS
+from utils.PageUtils import change_theme, update_music_metadata, DEFAULT_STYLE_CONFIG_FILE_PATH
+from utils.themes import THEME_COLORS, DEFAULT_STYLES
 from utils.WebAgentUtils import st_init_cache_pathes
 import datetime
 import os
@@ -56,7 +56,7 @@ st.image("md_res/icon.png", width=256)
 
 st.title("Mai-gen Videob50 视频生成器")
 
-st.write("当前版本: v0.5.1")
+st.write("当前版本: v0.6.0")
 
 st.markdown(
     """
@@ -71,10 +71,21 @@ st.success("使用过程中遇到任何问题，可以前往Github页面发起is
 
 st_init_cache_pathes()
 
-st.write("单击下面的按钮开始")
+# 初始化视频模板样式配置
+if not os.path.exists(DEFAULT_STYLE_CONFIG_FILE_PATH):
+    default_style_config = DEFAULT_STYLES['Prism']
+    with open(DEFAULT_STYLE_CONFIG_FILE_PATH, "w") as f:
+        json.dump(default_style_config, f, indent=4)
 
-if st.button("开始使用"):
-    st.switch_page("st_pages/Setup_Achievements.py")
+st.write("单击下面的按钮开始。在开始制作前，您也可以考虑先自定义视频模板的样式。")
+
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("开始使用", key="start_button"):
+        st.switch_page("st_pages/Setup_Achievements.py")
+with col2:
+    if st.button("视频模板样式设置", key="style_button"):
+        st.switch_page("st_pages/Custom_Video_Style_Config.py")
 
 st.write("更新乐曲数据库")
 with st.container(border=True):

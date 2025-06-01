@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 
 from database.VideoContents import VideoContents
-from utils.PageUtils import open_file_explorer, load_full_config_safe, read_global_config, write_global_config
+from utils.PageUtils import load_style_config, open_file_explorer, load_full_config_safe, read_global_config, write_global_config
 from utils.PathUtils import get_data_paths, get_user_versions, get_main_image_path
 from utils.VideoUtils import render_all_video_clips, combine_full_video_direct, combine_full_video_ffmpeg_concat_gl, render_complete_full_video
 
@@ -13,7 +13,7 @@ st.header("Step 5: 视频生成")
 st.info("在执行视频生成前，请确保已经完成了4-1和4-2步骤，并且检查所有填写的配置无误。")
 
 G_config = read_global_config()
-FONT_PATH = "./font/SOURCEHANSANSSC-BOLD.OTF"
+style_config = load_style_config()
 
 ### Savefile Management - Start ###
 if "username" in st.session_state:
@@ -158,9 +158,14 @@ if st.button("开始生成视频"):
             with placeholder.container(border=True, height=560):
                 st.warning("生成过程中请不要手动跳转到其他页面，或刷新本页面，否则可能导致生成失败！")
                 with st.spinner("正在生成所有视频片段……"):
-                    render_all_video_clips(video_configs, video_output_path, video_res, v_bitrate_kbps, 
-                                        font_path=FONT_PATH, auto_add_transition=False, trans_time=trans_time,
-                                        force_render=force_render_clip)
+                    render_all_video_clips(resources=video_configs,
+                                           style_config=style_config,
+                                           video_output_path=video_output_path,
+                                           video_res=video_res,
+                                           video_bitrate=v_bitrate_kbps,
+                                           auto_add_transition=False,
+                                           trans_time=trans_time,
+                                           force_render=force_render_clip)
                     st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
             st.success("视频片段生成结束！点击下方按钮打开视频所在文件夹")
         except Exception as e:
@@ -173,14 +178,14 @@ if st.button("开始生成视频"):
                 st.warning("生成过程中请不要手动跳转到其他页面，或刷新本页面，否则可能导致生成失败！")
                 with st.spinner("正在生成完整视频……"):
                     output_info = render_complete_full_video(configs=video_configs, 
-                                                    username=username,
-                                                    video_output_path=video_output_path, 
-                                                    video_res=video_res, 
-                                                    video_bitrate=v_bitrate_kbps,
-                                                    video_trans_enable=trans_enable, 
-                                                    video_trans_time=trans_time, 
-                                                    full_last_clip=False,
-                                                    font_path=FONT_PATH)
+                                                             style_config=style_config,
+                                                             username=username,
+                                                             video_output_path=video_output_path, 
+                                                             video_res=video_res, 
+                                                             video_bitrate=v_bitrate_kbps,
+                                                             video_trans_enable=trans_enable, 
+                                                             video_trans_time=trans_time, 
+                                                             full_last_clip=False)
                     st.write(f"【{output_info['info']}")
             st.success("完整视频生成结束！点击下方按钮打开视频所在文件夹")
         except Exception as e:
@@ -203,9 +208,16 @@ with st.container(border=True):
         save_video_render_config()
         video_res = (v_res_width, v_res_height)
         with st.spinner("正在生成所有视频片段……"):
-            render_all_video_clips(video_configs, video_output_path, video_res, v_bitrate_kbps, 
-                                   font_path=FONT_PATH, auto_add_transition=trans_enable, trans_time=trans_time,
-                                   force_render=force_render_clip)
+            render_all_video_clips(
+                resources=video_configs, 
+                style_config=style_config,
+                video_output_path=video_output_path, 
+                video_res=video_res, 
+                video_bitrate=v_bitrate_kbps,
+                auto_add_transition=trans_enable, 
+                trans_time=trans_time,
+                force_render=force_render_clip
+            )
             st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
         with st.spinner("正在拼接视频……"):
             combine_full_video_direct(video_output_path)
@@ -232,9 +244,16 @@ with st.container(border=True):
             save_video_render_config()
             video_res = (v_res_width, v_res_height)
             with st.spinner("正在生成所有视频片段……"):
-                render_all_video_clips(video_configs, video_output_path, video_res, v_bitrate_kbps, 
-                                       font_path=FONT_PATH, auto_add_transition=False, trans_time=trans_time,
-                                       force_render=force_render_clip)
+                render_all_video_clips(
+                    resources=video_configs, 
+                    style_config=style_config,
+                    video_output_path=video_output_path, 
+                    video_res=video_res, 
+                    video_bitrate=v_bitrate_kbps,
+                    auto_add_transition=trans_enable,
+                    trans_time=trans_time,
+                    force_render=force_render_clip
+                )
                 st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
             with st.spinner("正在拼接视频……"):
                 combine_full_video_ffmpeg_concat_gl(video_output_path, video_res, trans_name, trans_time)
