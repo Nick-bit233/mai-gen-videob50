@@ -71,18 +71,19 @@ def st_download_video(placeholder, dl_instance, G_config, b50_config):
             progress_bar = st.progress(0)
             write_container = st.container(border=True, height=400)
             i = 0
+            record_len = len(b50_config)
             for song in b50_config:
                 i += 1
                 if 'video_info_match' not in song or not song['video_info_match']:
-                    st.warning(f"没有找到({i}/50): {song['title']} 的视频信息，无法下载，请检查前置步骤是否完成")
-                    write_container.write(f"跳过({i}/50): {song['title']} ，没有视频信息")
+                    st.warning(f"没有找到({i}/{record_len}): {song['title']} 的视频信息，无法下载，请检查前置步骤是否完成")
+                    write_container.write(f"跳过({i}/{record_len}): {song['title']} ，没有视频信息")
                     continue
                 
                 video_info = song['video_info_match']
-                progress_bar.progress(i / 50, text=f"正在下载视频({i}/50): {video_info['title']}")
+                progress_bar.progress(i / record_len, text=f"正在下载视频({i}/50): {video_info['title']}")
                 
                 result = download_one_video(dl_instance, song, video_download_path, download_high_res)
-                write_container.write(f"【{i}/50】{result['info']}")
+                write_container.write(f"【{i}/{record_len}】{result['info']}")
 
                 # 等待几秒，以减少被检测为bot的风险
                 if search_wait_time[0] > 0 and search_wait_time[1] > search_wait_time[0] and result['status'] == 'success':
