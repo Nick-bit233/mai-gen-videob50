@@ -550,7 +550,7 @@ def get_combined_ending_clip(ending_clips, combined_start_time, trans_time):
 
 
 def render_all_video_clips(resources, style_config,
-                           video_output_path, resolution, v_bitrate_kbps,
+                           video_output_path, video_res, video_bitrate,
                            auto_add_transition=True, trans_time=1, force_render=False):
     vfile_prefix = 0
 
@@ -575,7 +575,7 @@ def render_all_video_clips(resources, style_config,
             ])
         # 直接渲染clip为视频文件
         print(f"正在合成视频片段: {prefix}_{config['id']}.mp4")
-        clip.write_videofile(output_file, fps=30, threads=4, preset='ultrafast', bitrate=v_bitrate_kbps)
+        clip.write_videofile(output_file, fps=30, threads=4, preset='ultrafast', bitrate=video_bitrate)
         clip.close()
         # 强制垃圾回收
         del clip
@@ -586,19 +586,19 @@ def render_all_video_clips(resources, style_config,
 
     if 'intro' in resources:
         for clip_config in resources['intro']:
-            clip = create_info_segment(clip_config, style_config, resolution)
+            clip = create_info_segment(clip_config, style_config, video_res)
             clip = modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time)
             vfile_prefix += 1
 
     for clip_config in resources['main']:
-        clip = create_video_segment(clip_config, style_config, resolution)
+        clip = create_video_segment(clip_config, style_config, video_res)
         clip = modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time)
 
         vfile_prefix += 1
 
     if 'ending' in resources:
         for clip_config in resources['ending']:
-            clip = create_info_segment(clip_config, style_config, resolution)
+            clip = create_info_segment(clip_config, style_config, video_res)
             clip = modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time)
             vfile_prefix += 1
 
