@@ -160,6 +160,7 @@ Auto search and generate your best 50 videoes of MaimaiDX
 ### 视频抓取相关
 
 - 搜索视频步骤中，扫码登录后出现如下报错：
+
     <img src="md_res/qa_6.jpg" width="400" alt="qa6">
 
     请检查任务栏是否有未关闭的二维码扫描窗口，如果有，关闭该窗口后尝试重新开始搜索。如果弹出了新的二维码窗口请重新扫描登陆。如果没有，请尝试重新整个程序重试。
@@ -350,19 +351,20 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
         ```json
         "version": "0.5",
-        "type": "maimai", // 存档的游戏类型（未来支持中二预留）
-        "sub_type": "best", // 存档的排序方式（best 倒序，customer 正序）
-        "username": "xxxxxx", // 用户名
-        "rating": 10000, // 存档对应的rating
-        "length_of_content": 50, // 存档的记录长度
-        "records": [ // 具体成绩数据
+        "type": "maimai", # 存档的游戏类型（未来支持中二预留）
+        "sub_type": "best", # 存档的排序方式（best 倒序，customer 正序）
+        "username": "xxxxxx", # 用户名
+        "rating": 10000, # 存档对应的rating
+        "length_of_content": 50, # 存档的记录长度
+        "records": # 具体成绩数据
+        [
             {
                 "song_id": 11447,
                 "title": "エゴロック",
                 "type": "DX",
-                "clip_name": "PastBest_1", // 显示在视频标题的文字（下划线代指空格）
-                "clip_id": "clip_1", // 索引记录的id
-                ... // 其他成绩数据
+                "clip_name": "PastBest_1", # 显示在视频标题的文字（下划线代指空格）
+                "clip_id": "clip_1", # 索引记录的id
+                ... # 其他成绩数据
             },
             ...
         ]
