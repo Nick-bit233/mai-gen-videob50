@@ -8,6 +8,7 @@ import requests
 
 from utils.dxnet_extension import ChartManager
 from utils.PageUtils import DATA_CONFIG_VERSION, format_record_songid
+from utils.DataUtils import FC_PROXY_ENDPOINT
 
 LEVEL_LABEL = ["Basic", "Advanced", "Expert", "Master", "Re:MASTER"]
 

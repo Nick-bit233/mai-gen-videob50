@@ -363,7 +363,7 @@ with custom_setting_area:
                 
 
         with st.expander("片头片尾文本样式调整"):
-            current_itext["font_size"] = st.slider("片头片尾文本字体大小", min_value=10, max_value=80,
+            current_itext["font_size"] = st.number_input("片头片尾文本字体大小", min_value=10, max_value=400,
                         value=current_itext.get("font_size", 44), key="intro_font_size")
             current_itext["interline"] = st.slider("片头片尾文本字体行距", min_value=1.0, max_value=20.0, step=0.1,
                         value=current_itext.get("interline", 6.5), key="intro_line_spacing")
@@ -374,7 +374,7 @@ with custom_setting_area:
             )
             current_itext["inline_max_chara"] = st.number_input("片头片尾文本每行最大字数", min_value=1, max_value=100,
                             help="每行文本的最大字符数，超过此长度将自动换行。注意：此项设置过大可能导致文本超出画面",
-                            value=current_itext.get("inline_max_chara", 52), key="intro_inline_max_chara")
+                            value=current_itext.get("inline_max_chara", 26), key="intro_inline_max_chara")
             current_itext["font_color"] = st.color_picker("片头片尾文本字体颜色", value=current_itext.get("font_color", "#FFFFFF"), key="intro_font_color")
             current_itext["enable_stroke"] = st.checkbox("片头片尾文本字体描边", value=current_itext.get("enable_stroke", True), key="intro_enable_stroke")
             if current_itext.get("enable_stroke", False):
@@ -383,7 +383,7 @@ with custom_setting_area:
                           value=current_itext.get("stroke_width", 2), key="intro_stroke_width")
     
         with st.expander("评论文本样式调整"):
-            current_ctext["font_size"] = st.slider("评论字体大小", min_value=10, max_value=80, 
+            current_ctext["font_size"] = st.number_input("评论字体大小", min_value=10, max_value=360, 
                       value=current_ctext.get("font_size", 28), key="comment_font_size")
             current_ctext["interline"] = st.slider("评论字体行距", min_value=1.0, max_value=20.0, step=0.1,
                       value=current_ctext.get("interline", 6.5), key="comment_line_spacing")
@@ -394,7 +394,7 @@ with custom_setting_area:
             )
             current_ctext["inline_max_chara"] = st.number_input("评论每行最大字数", min_value=1, max_value=100,
                             help="每行文本的最大字符数，超过此长度将自动换行。注意：此项设置过大可能导致文本超出画面",
-                            value=current_ctext.get("inline_max_chara", 48), key="comment_inline_max_chara")
+                            value=current_ctext.get("inline_max_chara", 24), key="comment_inline_max_chara")
             current_ctext["font_color"] = st.color_picker("评论字体颜色", value=current_ctext.get("font_color", "#FFFFFF"), key="comment_font_color")
             current_ctext["enable_stroke"] = st.checkbox("字体描边", value=current_ctext.get("enable_stroke", True), key="comment_enable_stroke")
             if current_ctext.get("enable_stroke", False):
