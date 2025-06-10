@@ -12,7 +12,7 @@ Auto search and generate your best 50 videoes of MaimaiDX
 - 支持通过上传本地文件来自定义片头片尾、图片背景和字体风格，预设Buddies和Prism两套风格
 - 视频默认片头片尾风格切换为Prism，以迎合舞萌2025版本
 - 现已支持自定义搜索时预览和指定bilibili的分p合集视频
-- 目前仍然沿用v0.5版本的运行环境，runtime无需更新
+- 目前仍然沿用v0.5版本的运行环境，从旧版本升级无需更新runtime
 
 打个小广告：如果你觉得本项目好用的话，欢迎发电支持开发者！[爱发电](https://afdian.com/a/mai-gen-videob50)
 
@@ -159,27 +159,15 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 ### 视频抓取相关
 
-- 网络链接问题
+- 搜索视频步骤中，扫码登录后出现如下报错：
 
-    下载视频过程中出现RemoteProtocolError或SSLEOFError异常：
+    <img src="md_res/qa_6.jpg" width="400" alt="qa6">
 
-   - RemoteProtocolError
-    ```
-    httpx.RemoteProtocolError: peer closed connection without sending complete message body
-    ```
-    - SSLEOFError / urlopen error
-
-    ```
-    <urlopen error [Errno 2] No such file or directory>
-    ```
-
-    ```
-    ssl.SSLEOFError: EOF occurred in violation of protocol (_ssl.c:2423)
-    ```
-
-    请重新进入第三步下载页面，直接点击下载视频即可，支持断点续传。
+    请检查任务栏是否有未关闭的二维码扫描窗口，如果有，关闭该窗口后尝试重新开始搜索。如果弹出了新的二维码窗口请重新扫描登陆。如果没有，请尝试重新整个程序重试。
 
 - 搜索和下载视频时出现大量失败信息：
+
+    <img src="md_res/qa_5.jpg" width="400" alt="qa5">
 
     这通常意味着您的网络环境在调用api时遇到风控问题。请查看控制台是否有有如下输出。
 
@@ -200,6 +188,26 @@ Auto search and generate your best 50 videoes of MaimaiDX
     说明你未使用bilibili账号登录，或登录后遭到风控。
 
     请尝试登陆账号、更换网络运营商（ISP）后重试。若仍出现此问题，目前没有较好的解决办法，请考虑等待24h后再试。
+
+- 网络链接问题
+
+    下载视频过程中出现RemoteProtocolError或SSLEOFError异常，或http超时报错：
+
+   - RemoteProtocolError
+    ```
+    httpx.RemoteProtocolError: peer closed connection without sending complete message body
+    ```
+    - SSLEOFError / urlopen error
+
+    ```
+    <urlopen error [Errno 2] No such file or directory>
+    ```
+
+    ```
+    ssl.SSLEOFError: EOF occurred in violation of protocol (_ssl.c:2423)
+    ```
+
+    通常只是网络波动，重新尝试搜索/下载即可。
 
 - 下载视频期间未报错，但是没有视频文件：
   
@@ -258,11 +266,13 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 - Q：**视频生成过程中中断，报错中出现如下内存错误**
 
+    <img src="md_res/qa_4.jpg" width="500" alt="qa4">
+
     ```
-    _ArrayMemoryError: Unable to allocate xxx MiB for an array with shape (1920, 1080, 3) and data type float64
+    _ArrayMemoryError: Unable to allocate xxx MiB for an array with shape (xxx, xxx, 3) and data type float64
     ```
 
-    这通常是由于ffmpeg没有被分配足够的内存导致的，由于B50视频的时长通常较长，且默认分辨率为高清，部分设备可能会出现内存瓶颈。
+    这通常是由于ffmpeg没有被分配足够的内存导致的，由于完整生成模式需要一次缓存约50段视频的图像张量，且默认分辨率为高清，部分设备可能会出现内存瓶颈。
 
     请考虑：
     
@@ -270,11 +280,13 @@ Auto search and generate your best 50 videoes of MaimaiDX
     - 缩减片段的预览时长，或降低视频分辨率（不推荐，可能导致文字错位）。
     - 增加系统的虚拟内存（请参考：[如何设置虚拟内存](https://www.bilibili.com/video/BV1a142197a9)），建议可以调整至32GB以上。
 
-- Q：视频生成过慢
+- Q：视频生成速度缓慢
 
     合并完整视频的时间取决于你设置的预览时长和设备的性能，在每个片段10s的情况下，生成完整视频大概需要60-100分钟。
+
+    本工具的性能瓶颈主要是CPU性能，由于依赖的第三方库特性，**目前无法实现GPU加速渲染**，敬请谅解。
     
-    如果设备性能不佳，请考虑缩减视频时长，或降低视频分辨率（不推荐，可能导致文字错位）
+    如果设备性能不佳，请考虑缩减视频时长，或降低视频分辨率（不推荐，可能需要手动调整字号以防止文字错位）
 
 
 - Q：生成视频最后出现如下控制台错误
@@ -327,7 +339,7 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 ### 本地存档文件结构的解释
 
-> 注意：本部分内容在v0.5版本以后已经过时，有待进行更新完善，旧版内容仅供参考！
+> 注意：本部分内容在v0.6版本以后已经过时，有待进行更新完善，旧版内容仅供参考！
 
 - 在`./b50_datas`文件夹下是所有的用户b50存档，以及与其配对的视频搜索和生成配置文件
 
@@ -335,7 +347,29 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
     - 每个存档文件夹中包含：
 
-        - `b50_raw.json` ：用户的原始b50数据，由查分器返回，目前统一采用水鱼API的格式
+        - `b50_raw.json` ：用户的存档数据，目前最新的数据格式版本为0.5，其字段如下：
+
+        ```json
+        "version": "0.5",
+        "type": "maimai", # 存档的游戏类型（未来支持中二预留）
+        "sub_type": "best", # 存档的排序方式（best 倒序，customer 正序）
+        "username": "xxxxxx", # 用户名
+        "rating": 10000, # 存档对应的rating
+        "length_of_content": 50, # 存档的记录长度
+        "records": # 具体成绩数据
+        [
+            {
+                "song_id": 11447,
+                "title": "エゴロック",
+                "type": "DX",
+                "clip_name": "PastBest_1", # 显示在视频标题的文字（下划线代指空格）
+                "clip_id": "clip_1", # 索引记录的id
+                ... # 其他成绩数据
+            },
+            ...
+        ]
+        ```
+        - 对于当前版本的较新曲目，在存档和文件名中，曲目id将使用一串哈希编码的字符串代替。
 
         - `b50_config_{DOWNLOADER}.json` ：用户的b50数据与每个谱面的目标流媒体视频数据的映射。
             - 其中无后缀的文件是空映射，为了使得用户更新b50数据时，不会覆盖已有的配置文件。
@@ -351,8 +385,6 @@ Auto search and generate your best 50 videoes of MaimaiDX
     - 如果用户以复制源码方式导入数据，输入的html或json源码不会保存在存档内，而是作为缓存保存在`./b50_datas/{user}`文件夹下，新的原始数据会覆盖这些文件，但存档内的数据保持不变（除非用户手动修改或覆盖）
 
 - 在`./videos/downloads`文件夹下可以找到所有已下载的谱面确认视频，命名格式为`{song_id}-{level_index}-{type}.mp4`。其中，`song_id`为曲目的ID，`level_index`为难度，`type`为谱面类型，例如`834-4-SD.mp4`。
-    
-    - 您可能会见到具有负数`song_id`的视频文件，这是由于数据库缺少一些较新曲目id导致的，在单次使用时一般不会产生问题。在多次使用时，这可能导致视频索引错误，请删除对应的视频文件已解决这样的问题。
 
 `video_config.json`的详细格式解释：
 

@@ -150,7 +150,7 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
                     "first_frame": st.column_config.ImageColumn("预览图", width="small", help="为了减少对性能的影响，分p数量过多(>5)时，不加载预览图"),
                 }
                      
-                with st.expander("查看分p信息", expanded=page_count < 2):
+                with st.expander("查看分p信息", expanded=page_count < 5):
                     if isinstance(page_info, list):
                         st.dataframe(
                             page_info, 
@@ -161,52 +161,62 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
                     else:
                         st.write("没有找到分p信息")
                 
-
     with placeholder.container(border=True):
         song = config[current_index]
         # 获取当前匹配的视频信息
         st.subheader(f"片段ID: {song['clip_id']}，标题名称: {song['clip_name']}")
 
         match_info_placeholder = st.empty()
-        video_info = song['video_info_match']
-        update_match_info(match_info_placeholder, video_info=video_info)
-        if "p_index" in video_info:
-            p_index = video_info['p_index']   
-            if st.button("修改分p序号", key=f"change_page_{song['clip_id']}"):
-                change_video_page(config, current_index, p_index, b50_config_file)
+        change_video_page_button = st.button("修改分P视频", key=f"change_video_page_{song['clip_id']}")
+        match_list_placeholder = st.empty()
+        extra_search_placeholder = st.empty()
+        video_info = song.get('video_info_match', None)
+        to_match_videos = song.get('video_info_list', None)
 
+        if video_info:
+            update_match_info(match_info_placeholder, video_info=video_info)
+            if "p_index" in video_info:
+                p_index = video_info['p_index']   
+                if change_video_page_button:
+                    change_video_page(config, current_index, p_index, b50_config_file)
 
-        # 获取当前所有搜索得到的视频信息
-        st.write("请检查上述视频信息与谱面是否匹配。如果有误，请从下方备选结果中选择正确的视频。")
-        to_match_videos = song['video_info_list']
-        
-        # 视频链接指定
-        video_options = []
-        for i, video in enumerate(to_match_videos):
-            page_count_str = f"    【分p总数：{video['page_count']}】" if 'page_count' in video else ""
-            video_options.append(
-                f"[{i+1}] {video['title']}({video['duration']}秒) [🔗{video['id']}]({video['url']}) {page_count_str}"
-            )
-        
-        selected_index = st.radio(
-            "搜索备选结果:",
-            options=range(len(video_options)),
-            format_func=lambda x: video_options[x],
-            key=f"radio_select_{song['clip_id']}",
-            label_visibility="visible"
-        )
+            # 获取当前所有搜索得到的视频信息
+            st.write("请检查上述视频信息与谱面是否匹配。如果有误，请从下方备选结果中选择正确的视频。")
 
-        if st.button("确定使用该信息", key=f"confirm_selected_match_{song['clip_id']}"):
-            song['video_info_match'] = to_match_videos[selected_index]
-            save_record_config(b50_config_file, config)
-            st.toast("配置已保存！")
-            update_match_info(match_info_placeholder, song['video_info_match'])
-        
+            if to_match_videos:
+                with match_list_placeholder.container(border=True):
+                    # 视频链接指定
+                    video_options = []
+                    for i, video in enumerate(to_match_videos):
+                        page_count_str = f"    【分p总数：{video['page_count']}】" if 'page_count' in video else ""
+                        video_options.append(
+                            f"[{i+1}] {video['title']}({video['duration']}秒) [🔗{video['id']}]({video['url']}) {page_count_str}"
+                        )
+                    
+                    selected_index = st.radio(
+                        "搜索备选结果:",
+                        options=range(len(video_options)),
+                        format_func=lambda x: video_options[x],
+                        key=f"radio_select_{song['clip_id']}",
+                        label_visibility="visible"
+                    )
+
+                    if st.button("确定使用该信息", key=f"confirm_selected_match_{song['clip_id']}"):
+                        song['video_info_match'] = to_match_videos[selected_index]
+                        save_record_config(b50_config_file, config)
+                        st.toast("配置已保存！")
+                        update_match_info(match_info_placeholder, song['video_info_match'])
+            else:
+                match_list_placeholder.write("没有备选视频信息")
+        else:
+            match_info_placeholder.warning("未找到当前片段的匹配视频信息，请尝试重新进行上一步，或使用下方组件手动搜索！")
+            match_list_placeholder.write("没有备选视频信息")
+
         # 如果搜索结果均不符合，手动输入地址：
-        with st.container(border=True):
+        with extra_search_placeholder.container(border=True):
             st.markdown('<p style="color: #ffc107;">以上都不对？手动输入正确的谱面确认视频id：</p>', unsafe_allow_html=True)
             replace_id = st.text_input("谱面确认视频的 youtube ID 或 BV号", 
-                                       key=f"replace_id_{song['clip_id']}")
+                                        key=f"replace_id_{song['clip_id']}")
 
             # 搜索手动输入的id
             to_replace_video_info = None
@@ -259,8 +269,8 @@ b50_config = load_record_config(b50_config_file, username)
 if b50_config:
     for song in b50_config:
         if not (song.get('video_info_list') and song.get('video_info_match')):
-            st.error(f"未找到有效视频下载信息，请检查上一页步骤是否完成！")
-            st.stop()
+            st.warning(f"未部分记录未找到有效视频下载信息，请检查上一页步骤是否全部正常完成！")
+            break
 
     # 获取所有视频片段的ID
     record_ids = [f"{item['clip_id']}: {item['title']} ({item['type']}) [{item['level_label']}]" for item in b50_config]
