@@ -80,7 +80,8 @@ def st_download_video(placeholder, dl_instance, G_config, b50_config):
                     continue
                 
                 video_info = song['video_info_match']
-                progress_bar.progress(i / record_len, text=f"正在下载视频({i}/{record_len}): {video_info['title']}")
+                title = escape_markdown_text(video_info['title'])
+                progress_bar.progress(i / record_len, text=f"正在下载视频({i}/{record_len}): {title}")
                 
                 result = download_one_video(dl_instance, song, video_download_path, download_high_res)
                 write_container.write(f"【{i}/{record_len}】{result['info']}")
@@ -134,7 +135,7 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
             st.markdown("""<p style="color: #28a745;"><b>当前匹配的视频信息 :</b></p>""", unsafe_allow_html=True)
             # 使用封装的函数展示视频信息
             id = video_info['id']
-            title = video_info['title']
+            title = escape_markdown_text(video_info['title'])
             st.markdown(f"- 视频标题：{title}")
             st.markdown(f"- 链接：[🔗{id}]({video_info['url']}), 总时长: {video_info['duration']}秒")
             page_info = dl_instance.get_video_pages(id)
