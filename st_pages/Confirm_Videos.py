@@ -80,7 +80,7 @@ def st_download_video(placeholder, dl_instance, G_config, b50_config):
                     continue
                 
                 video_info = song['video_info_match']
-                progress_bar.progress(i / record_len, text=f"正在下载视频({i}/50): {video_info['title']}")
+                progress_bar.progress(i / record_len, text=f"正在下载视频({i}/{record_len}): {video_info['title']}")
                 
                 result = download_one_video(dl_instance, song, video_download_path, download_high_res)
                 write_container.write(f"【{i}/{record_len}】{result['info']}")
