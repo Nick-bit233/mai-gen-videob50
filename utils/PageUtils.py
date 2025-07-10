@@ -25,6 +25,10 @@ def remove_invalid_chars(text: str) -> str:
     # 去除非法字符，使用re.sub
     return re.sub(r'[\\/:*?"<>|]', '', text)
 
+def escape_markdown_text(text: str) -> str:
+    # 转义Markdown特殊字符 '[]'、'()'、'*'、'`'、'$'、'~'、'_'，使其能在stMarkdownContainer中正常渲染原本内容
+    return re.sub(r'([\[\]\(\)\*`#$~_])', r'\\\1', text)
+
 # 验证和编码song_id（重要：song_id涉及远程获取歌曲的有效曲绘数据）
 def format_record_songid(record, raw_song_id):
     if raw_song_id and type(raw_song_id) == int and raw_song_id > 0:

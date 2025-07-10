@@ -4,7 +4,7 @@ import traceback
 import os
 import streamlit as st
 from datetime import datetime
-from utils.PageUtils import load_record_config, save_record_config, read_global_config
+from utils.PageUtils import escape_markdown_text, load_record_config, save_record_config, read_global_config
 from utils.PathUtils import get_data_paths, get_user_versions
 from utils.WebAgentUtils import download_one_video
 
@@ -188,9 +188,10 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
                     # 视频链接指定
                     video_options = []
                     for i, video in enumerate(to_match_videos):
+                        title = escape_markdown_text(video['title'])
                         page_count_str = f"    【分p总数：{video['page_count']}】" if 'page_count' in video else ""
                         video_options.append(
-                            f"[{i+1}] {video['title']}({video['duration']}秒) [🔗{video['id']}]({video['url']}) {page_count_str}"
+                            f"[{i+1}] {title}({video['duration']}秒) [🔗{video['id']}]({video['url']}) {page_count_str}"
                         )
                     
                     selected_index = st.radio(
