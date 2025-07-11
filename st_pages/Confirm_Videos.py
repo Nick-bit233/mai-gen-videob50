@@ -4,7 +4,7 @@ import traceback
 import os
 import streamlit as st
 from datetime import datetime
-from utils.PageUtils import load_record_config, save_record_config, read_global_config
+from utils.PageUtils import escape_markdown_text, load_record_config, save_record_config, read_global_config
 from utils.PathUtils import get_data_paths, get_user_versions
 from utils.WebAgentUtils import download_one_video
 
@@ -80,7 +80,8 @@ def st_download_video(placeholder, dl_instance, G_config, b50_config):
                     continue
                 
                 video_info = song['video_info_match']
-                progress_bar.progress(i / record_len, text=f"正在下载视频({i}/50): {video_info['title']}")
+                title = escape_markdown_text(video_info['title'])
+                progress_bar.progress(i / record_len, text=f"正在下载视频({i}/{record_len}): {title}")
                 
                 result = download_one_video(dl_instance, song, video_download_path, download_high_res)
                 write_container.write(f"【{i}/{record_len}】{result['info']}")
@@ -134,7 +135,7 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
             st.markdown("""<p style="color: #28a745;"><b>当前匹配的视频信息 :</b></p>""", unsafe_allow_html=True)
             # 使用封装的函数展示视频信息
             id = video_info['id']
-            title = video_info['title']
+            title = escape_markdown_text(video_info['title'])
             st.markdown(f"- 视频标题：{title}")
             st.markdown(f"- 链接：[🔗{id}]({video_info['url']}), 总时长: {video_info['duration']}秒")
             page_info = dl_instance.get_video_pages(id)
@@ -188,9 +189,10 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
                     # 视频链接指定
                     video_options = []
                     for i, video in enumerate(to_match_videos):
+                        title = escape_markdown_text(video['title'])
                         page_count_str = f"    【分p总数：{video['page_count']}】" if 'page_count' in video else ""
                         video_options.append(
-                            f"[{i+1}] {video['title']}({video['duration']}秒) [🔗{video['id']}]({video['url']}) {page_count_str}"
+                            f"[{i+1}] {title}({video['duration']}秒) [🔗{video['id']}]({video['url']}) {page_count_str}"
                         )
                     
                     selected_index = st.radio(
