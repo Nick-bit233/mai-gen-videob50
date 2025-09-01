@@ -44,7 +44,7 @@ class MaiImageGenerater:
             raise Exception("定数无效")
 
         # 加载加号
-        if int(DecimalPart) >= 7:
+        if int(DecimalPart) >= 6:
             with Image.open(f"{self.image_root_path}/Numbers/{str(level)}/plus.png") as PlusMark:
                 Background.paste(PlusMark, (75, 50), PlusMark)
 
