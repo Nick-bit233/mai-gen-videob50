@@ -16,3 +16,4 @@ lxml>=5.3.0
 streamlit_sortables>=0.3.1
 streamlit_searchbox>=0.1.22
 httpx
+opencv-python>=4.8.0 
