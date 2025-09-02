@@ -7,6 +7,7 @@ from moviepy import VideoFileClip, ImageClip, TextClip, AudioFileClip, Composite
 from moviepy import vfx, afx
 from utils.ImageUtils import load_music_jacket
 from utils.PageUtils import load_style_config
+from utils.VisionUtils import find_circle_center, draw_center_marker
 
 
 def get_splited_text(text, text_max_bytes=60):
@@ -255,26 +256,45 @@ def create_video_segment(clip_config, style_config, resolution):
         
         # 添加调试信息
         print(f"Start time: {clip_config['start']}, Clip duration: {video_clip.duration}, End time: {clip_config['end']}")
-        
+        # 等比例缩放
+        video_clip = video_clip.with_effects([vfx.Resize(height=0.5 * resolution[1])])
+        # 从未剪裁的视频中提取第0.1s的一帧用于分析
+        analysis_frame = video_clip.get_frame(t=0.1)
+
         # 检查 start_time 和 end_time 是否超出 clip 的持续时间
         if clip_config['start'] < 0 or clip_config['start'] >= video_clip.duration:
             raise ValueError(f"片段开始时间 {clip_config['start']} 超出视频{clip_config['video']}的长度. 请检查该片段的时间配置.")
         
         if clip_config['end'] <= clip_config['start'] or clip_config['end'] > video_clip.duration:
             raise ValueError(f"片段结束时间 {clip_config['end']} 超出视频{clip_config['video']}的长度. 请检查该片段的时间配置.")
-        
+        # 裁剪目标视频片段
         video_clip = video_clip.subclipped(start_time=clip_config['start'],
                                             end_time=clip_config['end'])
-        # 等比例缩放，在高为1080像素的情况下，谱面确认的高度应该是540像素，因此比例为0.5
-        video_clip = video_clip.with_effects([vfx.Resize(height=0.5 * resolution[1])])
         
+        # 检测传入谱面确认视频的视觉中心，此操作的目的是为了识别原始视频存在中心偏移的情况
+        visual_center = find_circle_center(analysis_frame)
+
         # 裁剪成正方形
         video_height = video_clip.h
         video_width = video_clip.w
-        x_center = video_width / 2
+        if visual_center: # 如果成功检测到圆形中心
+            center_x, center_y = visual_center
+        else: # 否则使用几何中心
+            center_x = video_width / 2
+
         crop_size = video_height
-        x1 = x_center - (crop_size / 2)
-        x2 = x_center + (crop_size / 2)
+        x1 = center_x - (crop_size / 2)
+        x2 = center_x + (crop_size / 2)
+
+        x1 = max(0, x1)
+        x2 = min(video_width, x2)
+
+        # DEBUG: show the frame using PIL
+        debug_frame = draw_center_marker(analysis_frame,
+                                         center_point=visual_center if visual_center else (video_clip.w//2, video_clip.h//2),
+                                         crop_box=(x1, 0, x2, video_height))
+        Image.fromarray(debug_frame.astype("uint8")).show()
+
         video_clip = video_clip.cropped(x1=x1, y1=0, x2=x2, y2=video_height)
     else:
         print(f"Video Generator Warning:{clip_config['id']} 没有对应的视频, 请检查本地资源")
