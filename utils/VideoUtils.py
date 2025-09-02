@@ -289,11 +289,11 @@ def create_video_segment(clip_config, style_config, resolution):
         x1 = max(0, x1)
         x2 = min(video_width, x2)
 
-        # DEBUG: show the frame using PIL
-        debug_frame = draw_center_marker(analysis_frame,
-                                         center_point=visual_center if visual_center else (video_clip.w//2, video_clip.h//2),
-                                         crop_box=(x1, 0, x2, video_height))
-        Image.fromarray(debug_frame.astype("uint8")).show()
+        # # DEBUG: show the frame using PIL
+        # debug_frame = draw_center_marker(analysis_frame,
+        #                                  center_point=visual_center if visual_center else (video_clip.w//2, video_clip.h//2),
+        #                                  crop_box=(x1, 0, x2, video_height))
+        # Image.fromarray(debug_frame.astype("uint8")).show()
 
         video_clip = video_clip.cropped(x1=x1, y1=0, x2=x2, y2=video_height)
     else:

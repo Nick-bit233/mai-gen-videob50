@@ -56,7 +56,7 @@ st.image("md_res/icon.png", width=256)
 
 st.title("Mai-gen Videob50 视频生成器")
 
-st.write("当前版本: v0.6.0")
+st.write("当前版本: v0.6.5")
 
 st.markdown(
     """
