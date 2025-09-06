@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import traceback
 
 def find_circle_center(frame):
     """
@@ -16,8 +17,14 @@ def find_circle_center(frame):
         img = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         # 转换为灰度图
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        # 使用中值滤波降噪，这对于霍夫变换检测的准确性至关重要
+        # 使用中值滤波降噪
         gray = cv2.medianBlur(gray, 5)
+        # 二值化处理，将非黑色部分转为白色
+        # 参数: src, threshold_value, max_value, threshold_type
+        _, gray = cv2.threshold(gray, 50, 255, cv2.THRESH_BINARY)
+
+        # debug: 存储预处理后的图像到本地文件
+        cv2.imwrite("debug_preprocessed.png", gray)
 
         # 使用霍夫圆变换检测圆形
         # 参数说明:
@@ -34,8 +41,16 @@ def find_circle_center(frame):
                                    minRadius=0, maxRadius=0)
         
         if circles is not None:
-            # 将坐标和半径转换为整数
-            circles = np.round(circles[0, :]).astype("int")
+            # # debug: 显示检测到的圆，并存储到本地图像文件中
+            # debug_img = img.copy()
+            # circles = np.round(circles[0, :]).astype("int")
+            # for (x, y, r) in circles:
+            #     cv2.circle(debug_img, (x, y), r, (0, 255, 0), 4)
+            #     # 绘制红色的小十字
+            #     cv2.line(debug_img, (x - 15, y), (x + 15, y), (0, 0, 255), 2)
+            #     cv2.line(debug_img, (x, y - 15), (x, y + 15), (0, 0, 255), 2)
+            # cv2.imwrite("debug_detected_circles.png", debug_img)
+
             # 提取第一个被检测到的圆的中心坐标 (x, y)
             (x, y, r) = circles[0]
             print(f"检测到圆形中心: ({x}, {y}), 半径: {r}")
@@ -43,6 +58,7 @@ def find_circle_center(frame):
             
     except Exception as e:
         print(f"[Vision] Warning: 自动检测圆形中心失败 - {str(e)}")
+        traceback.print_exc()
         
     print("[Vision] Warning: 未能自动检测到圆形中心，将使用默认的几何中心。")
     return None
