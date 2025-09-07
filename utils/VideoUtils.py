@@ -258,8 +258,8 @@ def create_video_segment(clip_config, style_config, resolution):
         print(f"Start time: {clip_config['start']}, Clip duration: {video_clip.duration}, End time: {clip_config['end']}")
         # 等比例缩放
         video_clip = video_clip.with_effects([vfx.Resize(height=0.5 * resolution[1])])
-        # 从未剪裁的视频中提取第0.1s的一帧用于分析
-        analysis_frame = video_clip.get_frame(t=0.1)
+        # 从未剪裁的视频中提取中间一帧用于分析
+        analysis_frame = video_clip.get_frame(t=(video_clip.duration / 2))
 
         # 检查 start_time 和 end_time 是否超出 clip 的持续时间
         if clip_config['start'] < 0 or clip_config['start'] >= video_clip.duration:
@@ -271,31 +271,29 @@ def create_video_segment(clip_config, style_config, resolution):
         video_clip = video_clip.subclipped(start_time=clip_config['start'],
                                             end_time=clip_config['end'])
         
-        # 检测传入谱面确认视频的视觉中心，此操作的目的是为了识别原始视频存在中心偏移的情况
-        visual_center = find_circle_center(analysis_frame)
-
-        # 裁剪成正方形
         video_height = video_clip.h
         video_width = video_clip.w
-        if visual_center: # 如果成功检测到圆形中心
-            center_x, center_y = visual_center
-        else: # 否则使用几何中心
-            center_x = video_width / 2
+        if video_height != video_width:  # 仅当视频不是正方形时才进行裁剪
+            # 检测传入谱面确认视频的视觉中心，此操作的目的是为了识别原始视频存在中心偏移的情况
+            visual_center = find_circle_center(analysis_frame, debug=False, name=clip_config['id'])
 
-        crop_size = video_height
-        x1 = center_x - (crop_size / 2)
-        x2 = center_x + (crop_size / 2)
+            # 确定裁剪中心（优先使用视觉中心，未识别到时使用几何中心）
+            center_x = visual_center[0] if visual_center else video_width / 2
+            
+            # 计算方形宽度范围
+            x1 = center_x - (video_height / 2)
+            x2 = center_x + (video_height / 2)
+            
+            # 处理边界
+            if x1 < 0:
+                x1 = 0
+                x2 = video_height
+            elif x2 > video_width:
+                x2 = video_width
+                x1 = video_width - video_height
 
-        x1 = max(0, x1)
-        x2 = min(video_width, x2)
-
-        # DEBUG: show the frame using PIL
-        # debug_frame = draw_center_marker(analysis_frame,
-        #                                  center_point=visual_center if visual_center else (video_clip.w//2, video_clip.h//2),
-        #                                  crop_box=(x1, 0, x2, video_height))
-        # Image.fromarray(debug_frame.astype("uint8")).show()
-
-        video_clip = video_clip.cropped(x1=x1, y1=0, x2=x2, y2=video_height)
+            # 裁剪成正方形
+            video_clip = video_clip.cropped(x1=x1, y1=0, x2=x2, y2=video_height)
     else:
         print(f"Video Generator Warning:{clip_config['id']} 没有对应的视频, 请检查本地资源")
         # 创建一个透明的视频片段
