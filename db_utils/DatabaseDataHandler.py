@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional, Tuple, Any
-from utils.DatabaseManager import DatabaseManager
-from utils.DataUtils import encode_song_id, decode_song_id
+from db_utils.DatabaseManager import DatabaseManager
+from db_utils.DataUtils import encode_song_id, decode_song_id
 import os
 import json
 from datetime import datetime

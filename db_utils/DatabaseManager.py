@@ -27,155 +27,152 @@ class DatabaseManager:
             conn.close()
     
     def init_database(self):
-        """Initialize database with all required tables"""
+        """Initialize database with all required tables from schema.sql file"""
+        schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
+        
+        if not os.path.exists(schema_path):
+            raise FileNotFoundError(f"Database schema file not found: {schema_path}")
+        
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Users table - stores user information and global settings
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT UNIQUE NOT NULL,
-                    display_name TEXT,
-                    rating INTEGER,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    global_settings TEXT -- JSON string for user-specific settings
-                )
-            ''')
+            # Read and execute the schema file
+            with open(schema_path, 'r', encoding='utf-8') as f:
+                schema_sql = f.read()
             
-            # Save archives table - replaces timestamp-based folder structure
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS save_archives (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    archive_name TEXT NOT NULL,
-                    game_type TEXT NOT NULL DEFAULT 'maimai',
-                    sub_type TEXT NOT NULL DEFAULT 'best', -- best, custom, ap, etc.
-                    version TEXT NOT NULL DEFAULT '0.6',
-                    rating INTEGER,
-                    record_count INTEGER DEFAULT 0,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    is_active BOOLEAN DEFAULT 1,
-                    metadata TEXT, -- JSON string for additional metadata
-                    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-                    UNIQUE(user_id, archive_name)
-                )
-            ''')
-            
-            # Records table - stores individual song records (B50 entries)
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS records (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    archive_id INTEGER NOT NULL,
-                    song_id TEXT NOT NULL, -- Can be numeric ID or encoded hash
-                    title TEXT NOT NULL,
-                    artist TEXT,
-                    chart_type TEXT NOT NULL, -- SD, DX, 宴, 协
-                    level_index INTEGER NOT NULL, -- 0-4 for Basic to Re:MASTER
-                    level_value REAL, -- Chart difficulty rating
-                    achievement REAL NOT NULL,
-                    fc_status TEXT, -- FC, FC+, AP, AP+, etc.
-                    fs_status TEXT, -- FS, FS+, FDX, FDX+, etc.
-                    dx_score INTEGER,
-                    dx_rating REAL,
-                    play_time TIMESTAMP,
-                    clip_name TEXT, -- Display name for video
-                    clip_id TEXT, -- Unique identifier for this record
-                    position INTEGER, -- Position in B50 list
-                    raw_data TEXT, -- JSON string for any additional data
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (archive_id) REFERENCES save_archives (id) ON DELETE CASCADE
-                )
-            ''')
-            
-            # Video configs table - stores video-related configuration for each record
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS video_configs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    record_id INTEGER NOT NULL,
-                    video_path TEXT, -- Path to downloaded video file
-                    image_path TEXT, -- Path to generated score image
-                    duration REAL DEFAULT 10.0, -- Video segment duration
-                    start_time REAL DEFAULT 0.0, -- Start time in video
-                    end_time REAL DEFAULT 10.0, -- End time in video
-                    comment TEXT, -- User comment for this segment
-                    video_url TEXT, -- Original video URL
-                    video_platform TEXT, -- youtube, bilibili, etc.
-                    video_id TEXT, -- Platform-specific video ID
-                    download_status TEXT DEFAULT 'pending', -- pending, downloaded, failed
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (record_id) REFERENCES records (id) ON DELETE CASCADE,
-                    UNIQUE(record_id)
-                )
-            ''')
-            
-            # Video search results table - stores search results for videos
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS video_search_results (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    record_id INTEGER NOT NULL,
-                    platform TEXT NOT NULL, -- youtube, bilibili
-                    video_id TEXT NOT NULL,
-                    video_url TEXT NOT NULL,
-                    title TEXT,
-                    description TEXT,
-                    duration REAL,
-                    view_count INTEGER,
-                    upload_date TIMESTAMP,
-                    thumbnail_url TEXT,
-                    is_selected BOOLEAN DEFAULT 0,
-                    search_query TEXT,
-                    search_rank INTEGER, -- Rank in search results
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (record_id) REFERENCES records (id) ON DELETE CASCADE
-                )
-            ''')
-            
-            # Project configs table - stores intro/ending and global video settings
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS project_configs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    archive_id INTEGER NOT NULL,
-                    config_type TEXT NOT NULL, -- intro, ending, global
-                    config_data TEXT NOT NULL, -- JSON string
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (archive_id) REFERENCES save_archives (id) ON DELETE CASCADE,
-                    UNIQUE(archive_id, config_type)
-                )
-            ''')
-            
-            # Assets table - tracks generated assets (images, videos, etc.)
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS assets (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    record_id INTEGER,
-                    archive_id INTEGER,
-                    asset_type TEXT NOT NULL, -- image, video, audio, etc.
-                    file_path TEXT NOT NULL,
-                    file_size INTEGER,
-                    checksum TEXT, -- For integrity checking
-                    metadata TEXT, -- JSON string for additional metadata
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (record_id) REFERENCES records (id) ON DELETE SET NULL,
-                    FOREIGN KEY (archive_id) REFERENCES save_archives (id) ON DELETE CASCADE
-                )
-            ''')
-            
-            # Create indexes for better performance
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_records_archive_id ON records (archive_id)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_records_song_id ON records (song_id)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_records_song_chart ON records (song_id, chart_type, level_index)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_video_configs_record_id ON video_configs (record_id)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_video_search_record_id ON video_search_results (record_id)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_assets_record_id ON assets (record_id)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_assets_archive_id ON assets (archive_id)')
+            # Execute the schema (split by semicolon to handle multiple statements)
+            for statement in schema_sql.split(';'):
+                statement = statement.strip()
+                if statement:  # Skip empty statements
+                    cursor.execute(statement)
             
             conn.commit()
+    
+    def get_schema_version(self) -> str:
+        """Get the current database schema version"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                # Check if schema_version table exists
+                cursor.execute('''
+                    SELECT name FROM sqlite_master 
+                    WHERE type='table' AND name='schema_version'
+                ''')
+                if not cursor.fetchone():
+                    return "1.0"  # Default version for existing databases
+                
+                cursor.execute('SELECT version FROM schema_version ORDER BY id DESC LIMIT 1')
+                result = cursor.fetchone()
+                return result['version'] if result else "1.0"
+            except sqlite3.Error:
+                return "1.0"
+    
+    def update_schema_version(self, version: str, description: str = None):
+        """Update the schema version after applying migrations"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Create schema_version table if it doesn't exist
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS schema_version (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    version TEXT NOT NULL,
+                    description TEXT,
+                    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            cursor.execute('''
+                INSERT INTO schema_version (version, description)
+                VALUES (?, ?)
+            ''', (version, description))
+            
+            conn.commit()
+    
+    def apply_migration(self, migration_file: str):
+        """Apply a database migration from a SQL file"""
+        migration_path = os.path.join(os.path.dirname(__file__), 'migrations', migration_file)
+        
+        if not os.path.exists(migration_path):
+            raise FileNotFoundError(f"Migration file not found: {migration_path}")
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Read and execute the migration file
+            with open(migration_path, 'r', encoding='utf-8') as f:
+                migration_sql = f.read()
+            
+            # Execute the migration (split by semicolon to handle multiple statements)
+            for statement in migration_sql.split(';'):
+                statement = statement.strip()
+                if statement and not statement.startswith('--'):  # Skip empty statements and comments
+                    cursor.execute(statement)
+            
+            conn.commit()
+    
+    def check_and_apply_migrations(self, target_version: str = None):
+        """
+        Check for and apply pending migrations
+        
+        Args:
+            target_version: Apply migrations up to this version (optional)
+        """
+        migrations_dir = os.path.join(os.path.dirname(__file__), 'migrations')
+        
+        if not os.path.exists(migrations_dir):
+            return  # No migrations directory
+        
+        current_version = self.get_schema_version()
+        migration_files = sorted([f for f in os.listdir(migrations_dir) if f.endswith('.sql')])
+        
+        for migration_file in migration_files:
+            # Extract version from migration file if it follows naming convention
+            # This is a simple implementation - you might want more sophisticated versioning
+            migration_path = os.path.join(migrations_dir, migration_file)
+            
+            try:
+                with open(migration_path, 'r', encoding='utf-8') as f:
+                    header = f.readline()
+                    if 'Version:' in header:
+                        file_version = header.split('Version:')[1].strip().replace('--', '').strip()
+                        
+                        # Simple version comparison (you might want to use proper semantic versioning)
+                        if self._version_greater_than(file_version, current_version):
+                            if target_version is None or not self._version_greater_than(file_version, target_version):
+                                print(f"Applying migration: {migration_file}")
+                                self.apply_migration(migration_file)
+                                
+                                # Extract description
+                                f.seek(0)
+                                content = f.read()
+                                description = "Migration applied"
+                                for line in content.split('\n'):
+                                    if 'Description:' in line:
+                                        description = line.split('Description:')[1].strip().replace('--', '').strip()
+                                        break
+                                
+                                self.update_schema_version(file_version, description)
+                                current_version = file_version
+            except Exception as e:
+                print(f"Error applying migration {migration_file}: {e}")
+                raise
+    
+    def _version_greater_than(self, version1: str, version2: str) -> bool:
+        """Simple version comparison - you might want to use proper semantic versioning"""
+        try:
+            v1_parts = [int(x) for x in version1.split('.')]
+            v2_parts = [int(x) for x in version2.split('.')]
+            
+            # Pad with zeros to make them the same length
+            max_len = max(len(v1_parts), len(v2_parts))
+            v1_parts += [0] * (max_len - len(v1_parts))
+            v2_parts += [0] * (max_len - len(v2_parts))
+            
+            return v1_parts > v2_parts
+        except ValueError:
+            # Fallback to string comparison if not numeric
+            return version1 > version2
     
     # User management methods
     def create_user(self, username: str, display_name: str = None, global_settings: Dict = None) -> int:
