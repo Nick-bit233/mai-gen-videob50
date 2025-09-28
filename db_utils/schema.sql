@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
     rating_chu FLOAT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    global_settings TEXT -- JSON string for user-specific settings
+    metadata TEXT, -- JSON string for additional metadata
 );
 
 -- Save archives table -stores list of achievement records of a user
@@ -37,13 +37,15 @@ CREATE TABLE IF NOT EXISTS save_archives (
 CREATE TABLE IF NOT EXISTS records (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     archive_id INTEGER NOT NULL,
-    song_id TEXT NOT NULL, -- Can be numeric ID or encoded hash
+    -- TODO：单独建立一个表管理谱面信息，谱面信息与搜索缓存和本地视频信息挂钩
+    song_id TEXT NOT NULL, -- [Update]: using new format align with Dxrating.net, song_id is unique text name, same as the title by default.
     title TEXT NOT NULL, -- Song title
     artist TEXT,  -- Song artist
-    chart_type INTEGER NOT NULL, -- [maimai] 0-3 for SD, DX, 宴, 协 [chunithm] 0 for normal, 1 for WORLD'S END
-    level_index INTEGER NOT NULL, -- 0-4 for Basic to Re:MASTER / Basic to ULTIMA
+    chart_type INTEGER NOT NULL, -- [maimai] 0, 1, 2 for std, dX, utage(宴) [chunithm] 0 for normal, 1 for WORLD'S END
+    level_index INTEGER NOT NULL, -- 0-4 for Basic to Re:MASTER, 5 for utage / Basic to ULTIMA, 5 for WORLD'S END
     level_value REAL, -- Chart difficulty rating
-    achievement REAL NOT NULL,
+    achievement REAL NOT NULL, -- 0.00 to 101.00 for maimai, 0.0 to 1010000.0 for chunithm
+    
     fc_status TEXT, -- FC, FC+, AP, AP+, etc. / FC, AJ, AJC
     fs_status TEXT, -- FS, FS+, FDX, FDX+, etc. / Clear, Fullchain, AllChain
     dx_score INTEGER, -- only for maimai
@@ -51,7 +53,7 @@ CREATE TABLE IF NOT EXISTS records (
     chuni_rating REAL, -- only for chunithm
     record_time TIMESTAMP,
     clip_name TEXT, -- Display name for video
-    clip_id TEXT, -- Unique identifier for this record
+    play_count INTEGER DEFAULT 0, -- Number of times played
     position INTEGER, -- Position in B50 list
     raw_data TEXT, -- JSON string for any additional data
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

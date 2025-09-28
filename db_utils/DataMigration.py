@@ -3,7 +3,7 @@ import json
 import glob
 from datetime import datetime
 from typing import Dict, List, Optional
-from utils.DatabaseManager import DatabaseManager
+from db_utils.DatabaseManager import DatabaseManager
 import shutil
 
 class DataMigration:

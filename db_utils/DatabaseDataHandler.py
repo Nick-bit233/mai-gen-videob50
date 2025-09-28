@@ -1,6 +1,6 @@
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any, Union
 from db_utils.DatabaseManager import DatabaseManager
-from db_utils.DataUtils import encode_song_id, decode_song_id
+from utils.DataUtils import encode_song_id, decode_song_id
 import os
 import json
 from datetime import datetime
@@ -26,38 +26,29 @@ class DatabaseDataHandler:
             self.current_user_id = user['id']
         return self.current_user_id
     
-    def get_user_settings(self, username: str) -> Dict:
-        """Get user's global settings"""
-        user = self.db.get_user(username)
-        return user['global_settings'] if user else {}
-    
-    def update_user_settings(self, username: str, settings: Dict):
-        """Update user's global settings"""
-        user = self.db.get_user(username)
-        if user:
-            self.db.update_user_settings(user['id'], settings)
-    
     # Save archive management (replaces timestamp-based folders)
-    def create_new_save(self, username: str, game_type: str = 'maimai', 
-                       sub_type: str = 'best', rating: int = None) -> Tuple[int, str]:
+    def create_new_archive(self, username: str, game_type: str = 'maimai', 
+                       sub_type: str = 'best', rating_mai: int = None, rating_chu: float = None) -> Tuple[int, str]:
         """Create a new save archive"""
         user_id = self.set_current_user(username)
         
         # Generate archive name with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        archive_name = f"{game_type}_{sub_type}_{timestamp}"
+        archive_name = f"{username}_{game_type}_{sub_type}_{timestamp}"
         
         archive_id = self.db.create_save_archive(
             user_id=user_id,
             archive_name=archive_name,
             game_type=game_type,
             sub_type=sub_type,
-            rating=rating
+            rating_mai=rating_mai,
+            rating_chu=rating_chu,
         )
         
         self.current_archive_id = archive_id
         return archive_id, archive_name
     
+    # get existing save archive, return archive_id or None
     def load_save_archive(self, username: str, archive_name: str = None) -> Optional[int]:
         """Load an existing save archive (most recent if archive_name not specified)"""
         user_id = self.set_current_user(username)
@@ -99,55 +90,53 @@ class DatabaseDataHandler:
         return False
     
     # Record management (replaces b50_raw.json)
-    def save_b50_data(self, username: str, b50_data: Dict, archive_name: str = None) -> int:
-        """Save B50 data to database (replaces writing b50_raw.json)"""
-        if not archive_name:
-            # Create new archive
-            archive_id, _ = self.create_new_save(
-                username=username,
-                game_type=b50_data.get('type', 'maimai'),
-                sub_type=b50_data.get('sub_type', 'best'),
-                rating=b50_data.get('rating')
-            )
-        else:
-            # Use existing archive
-            archive_id = self.load_save_archive(username, archive_name)
-            if not archive_id:
-                raise ValueError(f"Archive {archive_name} not found")
+    def update_archive_b50_data(self, username: str, b50_data: Dict, archive_name: str = None, type: str = 'maimai') -> int:
+        """update B50 data to database"""
+        # Only allowed to use existing archive
+        archive_id = self.load_save_archive(username, archive_name)
+        if not archive_id:
+            raise ValueError(f"Archive {archive_name} not found")
         
-        # Clear existing records if updating
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('DELETE FROM records WHERE archive_id = ?', (archive_id,))
-            conn.commit()
-        
-        # Add all records
-        records = b50_data.get('records', [])
-        for i, record in enumerate(records):
-            # Map field names from JSON format to database format
-            mapped_record = {
-                'song_id': str(record.get('song_id', '')),
-                'title': record.get('title', ''),
-                'artist': record.get('artist', ''),
-                'chart_type': record.get('type', ''),  # 'type' in JSON -> 'chart_type' in DB
-                'level_index': record.get('level_index', 0),
-                'level_value': record.get('level', 0.0),
-                'achievement': record.get('achievements', 0.0),  # 'achievements' in JSON -> 'achievement' in DB
-                'fc_status': record.get('fc', ''),
-                'fs_status': record.get('fs', ''),
-                'dx_score': record.get('dx_score', record.get('dxScore', 0)),  # Handle both formats
-                'dx_rating': record.get('dx_rating', record.get('ra', 0.0)),  # Handle both formats
-                'play_time': record.get('play_time'),
-                'clip_name': record.get('clip_name', ''),
-                'clip_id': record.get('clip_id', f"clip_{i+1}"),
-                'position': i + 1,
-                'raw_data': record  # Store original record for reference
-            }
-            self.db.add_record(archive_id, mapped_record)
-        
+        new_records = b50_data.get('records', [])  
+        existing_records = self.db.get_archive_records(archive_id)
+        for each in existing_records:
+            pos = each.get('position')
+            match = next((r for r in new_records if r.get('position') == pos), None)
+            if match:
+                self.db.update_record(each['id'], match)
+
         return archive_id
     
-    def load_b50_data(self, username: str, archive_name: str = None) -> Optional[Dict]:
+    def copy_archive(self, username: str, source_archive_name: str) -> Optional[int]:
+        """Create a new archive by copying an existing one"""
+        archive_id = self.load_save_archive(username, source_archive_name)
+
+        # Get the source archive metadata
+        source_archive = self.db.get_archive(archive_id)
+        if not source_archive:
+            raise ValueError(f"Archive {source_archive_name} not found")
+
+        # Create new archive with same metadata
+        new_archive_id, new_archive_name = self.create_new_archive(
+            username=username,
+            game_type=source_archive['game_type'],
+            sub_type=source_archive['sub_type'],
+            rating_mai=source_archive.get('rating_mai'),
+            rating_chu=source_archive.get('rating_chu')
+        )
+        
+        # Copy records
+        records = self.db.get_archive_records(source_archive['id'])
+        for record in records:
+            record_copy = record.copy()
+            record_copy.pop('id', None)  # Remove id to avoid conflicts
+            record_copy.pop('archive_id', None)  # Will be set to new archive_id
+            self.db.add_record(new_archive_id, record_copy)
+
+        # TODO: Copy video configs as well if needed
+        return new_archive_id, new_archive_name
+
+    def load_archive_b50_data(self, username: str, archive_name: str = None) -> Optional[Dict]:
         """Load B50 data from database (replaces reading b50_raw.json)"""
         archive_id = self.load_save_archive(username, archive_name)
         if not archive_id:
@@ -155,18 +144,22 @@ class DatabaseDataHandler:
         
         archive = self.db.get_archive(archive_id)
         records = self.db.get_archive_records(archive_id)
+
+        db_version = self.db.get_schema_version()
         
         # Reconstruct b50_data format for backward compatibility
         b50_data = {
-            'version': archive['metadata'].get('version', '0.6'),
+            'version': archive['metadata'].get('version', db_version),
             'type': archive['game_type'],
             'sub_type': archive['sub_type'],
             'username': username,
-            'rating': archive['rating'],
+            'rating_mai': archive['rating_mai'],
+            'rating_chu': archive['rating_chu'],
             'length_of_content': len(records),
             'records': []
         }
         
+        to_sort_records = []
         for record in records:
             # Convert database record back to original format
             record_data = {
@@ -181,21 +174,26 @@ class DatabaseDataHandler:
                 'fs': record['fs_status'],
                 'dx_score': record['dx_score'],
                 'dx_rating': record['dx_rating'],
-                'play_time': record['play_time'],
+                'play_time': record['play_count'],
                 'clip_name': record['clip_name'],
-                'clip_id': record['clip_id']
             }
             
             # Add any additional data from raw_data field
-            if record['raw_data']:
-                try:
-                    raw_data = json.loads(record['raw_data'])
-                    record_data.update(raw_data)
-                except:
-                    pass
-            
-            b50_data['records'].append(record_data)
-        
+            # if record['raw_data']:
+            #     try:
+            #         raw_data = json.loads(record['raw_data'])
+            #         record_data.update(raw_data)
+            #     except:
+            #         pass
+
+            pos = record.get('position')
+            to_sort_records.append((pos, record_data))
+
+        # Sort records by position
+        reversed = b50_data['sub_type'] in ['best', 'ap']
+        to_sort_records.sort(key=lambda x: x[0], reverse=reversed)
+        b50_data['records'] = [x[1] for x in to_sort_records]
+
         return b50_data
     
     # Video configuration management (replaces video_config.json)
@@ -275,52 +273,6 @@ class DatabaseDataHandler:
             'ending': ending_config,
             'main': main_configs
         }
-    
-    # Video search and download management
-    def save_search_results(self, username: str, song_id: str, level_index: int, 
-                           chart_type: str, platform: str, results: List[Dict], 
-                           archive_name: str = None):
-        """Save video search results for a specific record"""
-        archive_id = self.load_save_archive(username, archive_name)
-        if not archive_id:
-            raise ValueError("No active archive found")
-        
-        # Find the record
-        records = self.db.get_archive_records(archive_id)
-        target_record = None
-        
-        for record in records:
-            if (record['song_id'] == str(song_id) and 
-                record['level_index'] == level_index and 
-                record['chart_type'] == chart_type):
-                target_record = record
-                break
-        
-        if target_record:
-            self.db.add_search_results(target_record['id'], platform, results)
-    
-    def get_search_results(self, username: str, song_id: str, level_index: int, 
-                          chart_type: str, platform: str = None, 
-                          archive_name: str = None) -> List[Dict]:
-        """Get video search results for a specific record"""
-        archive_id = self.load_save_archive(username, archive_name)
-        if not archive_id:
-            return []
-        
-        # Find the record
-        records = self.db.get_archive_records(archive_id)
-        target_record = None
-        
-        for record in records:
-            if (record['song_id'] == str(song_id) and 
-                record['level_index'] == level_index and 
-                record['chart_type'] == chart_type):
-                target_record = record
-                break
-        
-        if target_record:
-            return self.db.get_search_results(target_record['id'], platform)
-        return []
     
     def update_download_status(self, username: str, song_id: str, level_index: int, 
                               chart_type: str, status: str, video_path: str = None,
@@ -421,13 +373,13 @@ class DatabaseDataHandler:
     # Migration helpers
     def import_from_json(self, json_data_path: str):
         """Import data from existing JSON structure"""
-        from utils.DataMigration import DataMigration
+        from db_utils.DataMigration import DataMigration
         migration = DataMigration(self.db, json_data_path)
         return migration.migrate_all_data()
     
     def export_to_json(self, username: str, archive_name: str, output_path: str):
         """Export archive data to JSON format for backup"""
-        b50_data = self.load_b50_data(username, archive_name)
+        b50_data = self.load_archive_b50_data(username, archive_name)
         video_config = self.load_video_config(username, archive_name)
         
         export_data = {
@@ -453,13 +405,13 @@ def get_database_handler() -> DatabaseDataHandler:
 def load_user_data(username: str, archive_name: str = None) -> Optional[Dict]:
     """Load user B50 data (backward compatibility)"""
     handler = get_database_handler()
-    return handler.load_b50_data(username, archive_name)
+    return handler.load_archive_b50_data(username, archive_name)
 
 
-def save_user_data(username: str, b50_data: Dict, archive_name: str = None) -> int:
+def update_user_data(username: str, b50_data: Dict, archive_name: str = None) -> int:
     """Save user B50 data (backward compatibility)"""
     handler = get_database_handler()
-    return handler.save_b50_data(username, b50_data, archive_name)
+    return handler.update_archive_b50_data(username, b50_data, archive_name)
 
 
 def load_video_config(username: str, archive_name: str = None) -> Dict:
