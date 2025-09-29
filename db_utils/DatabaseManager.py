@@ -28,23 +28,31 @@ class DatabaseManager:
             conn.close()
     
     def init_database(self):
-        """Initialize database with all required tables from schema.sql file"""
-        schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
-        
-        if not os.path.exists(schema_path):
-            raise FileNotFoundError(f"Database schema file not found: {schema_path}")
-        
+        """
+        Initializes the database with the schema, but only if the tables don't already exist.
+        This makes the initialization idempotent.
+        """
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            
-            # Read and execute the schema file
-            with open(schema_path, 'r', encoding='utf-8') as f:
-                schema_sql = f.read()
-            
-            # Use executescript to handle multiple statements and comments
-            cursor.executescript(schema_sql)
-            
-            conn.commit()
+
+            # Check if a key table (e.g., 'users') already exists.
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+            if cursor.fetchone() is None:
+                # Tables do not exist, so initialize the database.
+                print("Database not found or empty. Initializing new database from schema...")
+                schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
+                
+                if not os.path.exists(schema_path):
+                    raise FileNotFoundError(f"Database schema file not found: {schema_path}")
+
+                # Read and execute the schema file
+                with open(schema_path, 'r', encoding='utf-8') as f:
+                    schema_sql = f.read()
+                
+                # Use executescript to handle multiple statements and comments
+                cursor.executescript(schema_sql)
+                conn.commit()
+                print("Database initialized successfully.")
     
     def get_schema_version(self) -> str:
         """Get the current database schema version"""
@@ -122,6 +130,8 @@ class DatabaseManager:
                             self.apply_migration(migration_file)
                             self.update_schema_version(file_version, f"Applied migration {migration_file}")
                             print(f"Successfully applied migration {migration_file}")
+                        else:
+                            print(f"Skipping migration {migration_file}, already applied.")
                             
             except Exception as e:
                 print(f"Error applying migration {migration_file}: {e}")

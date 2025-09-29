@@ -259,22 +259,6 @@ class DataMigration:
                         metadata={'original_name': video_file}
                     )
     
-    def migrate_search_configs(self, archive_path: str):
-        """Migrate video search configurations"""
-        # Look for b50_config_*.json files
-        config_files = glob.glob(os.path.join(archive_path, "b50_config_*.json"))
-        
-        search_data = {}
-        for config_file in config_files:
-            platform = os.path.basename(config_file).replace('b50_config_', '').replace('.json', '')
-            
-            with open(config_file, 'r', encoding='utf-8') as f:
-                config_data = json.load(f)
-            
-            search_data[platform] = config_data
-        
-        return search_data
-    
     def _is_timestamp_folder(self, folder_name: str) -> bool:
         """Check if folder name matches timestamp pattern (YYYYMMDD_HHMMSS)"""
         import re
@@ -321,7 +305,11 @@ class DataMigration:
         return verification
 
 
-def run_migration():
+def old_data_migration():
+    # TODO: 数据库导入旧数据迁移开发
+    pass
+
+def test_run_migration():
     """Convenience function to run the complete migration process"""
     print("Starting migration from JSON to SQLite database...")
     
@@ -361,4 +349,4 @@ def run_migration():
 
 
 if __name__ == "__main__":
-    run_migration()
+    test_run_migration()

@@ -1,5 +1,6 @@
 import streamlit as st
-from utils.PageUtils import change_theme, update_music_metadata, DEFAULT_STYLE_CONFIG_FILE_PATH
+from utils.PageUtils import change_theme, update_music_metadata, DEFAULT_STYLE_CONFIG_FILE_PATH, get_db_manager
+from db_utils.DataMigration import old_data_migration
 from utils.themes import THEME_COLORS, DEFAULT_STYLES
 from utils.WebAgentUtils import st_init_cache_pathes
 import datetime
@@ -56,7 +57,7 @@ st.image("md_res/icon.png", width=256)
 
 st.title("Mai-gen Videob50 视频生成器")
 
-st.write("当前版本: v0.9.0 alpha test")
+st.write("当前版本: v1.0.0 alpha test")
 
 st.markdown(
     """
@@ -77,6 +78,24 @@ if not os.path.exists(DEFAULT_STYLE_CONFIG_FILE_PATH):
     with open(DEFAULT_STYLE_CONFIG_FILE_PATH, "w") as f:
         json.dump(default_style_config, f, indent=4)
 
+# 初始化数据库
+try:
+    db_manager = get_db_manager()
+    st.success("🗃️ 数据库已连接并准备就绪。")
+except Exception as e:
+    st.error(f"初始化数据库时出错: {e}")
+
+st.write("从旧版本导入数据")
+with st.container(border=True):
+    st.write("如果您有旧版本的存档数据，可以点击下面的按钮，选择旧版本文件夹导入您的历史数据。")
+    st.warning("请勿重复导入数据，以免造成冗余损坏。")
+    if st.button("导入数据"):
+        try:
+            old_data_migration() # TODO: 未开发完成
+            st.success("数据导入成功！")
+        except Exception as e:
+            st.error(f"导入数据时出错: {e}")
+
 st.write("单击下面的按钮开始。在开始制作前，您也可以考虑先自定义视频模板的样式。")
 
 col1, col2 = st.columns(2)
@@ -87,11 +106,12 @@ with col2:
     if st.button("视频模板样式设置", key="style_button"):
         st.switch_page("st_pages/Custom_Video_Style_Config.py")
 
-st.write("更新乐曲数据库")
+# 检查乐曲元数据
+st.write("更新乐曲元数据")
 with st.container(border=True):
     try:
         # 检查乐曲元数据更新（设定24小时更新冷却时间）
-        metadata_path = "./music_metadata/maimaidx/songs.json"
+        metadata_path = "./music_metadata/maimaidx/dxdata.json"
         if should_update_metadata(24) or not os.path.exists(metadata_path):
             update_music_metadata()
             st.success("乐曲元数据已更新")
@@ -102,7 +122,6 @@ with st.container(border=True):
                 st.success("乐曲元数据已更新")
     except Exception as e:
         st.error(f"更新乐曲元数据时出错: {e}")
-
 
 st.write("外观选项")
 with st.container(border=True):
@@ -115,7 +134,7 @@ with st.container(border=True):
             st.toast("新主题已应用！")
             st.rerun()
         
-    options = ["Default", "Festival", "Buddies", "Prism"]
+    options = ["Default", "Festival", "Buddies", "Prism", "Circle"]
     theme = st.segmented_control("更改页面主题",
                                  options, 
                                  default=st.session_state.theme,

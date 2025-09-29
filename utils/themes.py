@@ -18,6 +18,12 @@ THEME_COLORS = {
         "backgroundColor": "#e08b0b",
         "secondaryBackgroundColor": "#0c315b",
         "textColor": "#fbf0f4"
+    },
+    "Circle": {
+        "primaryColor": "#002DE8",
+        "backgroundColor": "#FFD7EF",
+        "secondaryBackgroundColor": "#FFAEDE",
+        "textColor": "#8801C2"
     }
 }
 

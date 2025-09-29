@@ -9,8 +9,13 @@ import subprocess
 import platform
 from moviepy import VideoFileClip
 from utils.DataUtils import download_metadata, encode_song_id, CHART_TYPE_MAP_MAIMAI
+from db_utils.DatabaseManager import DatabaseManager
+import streamlit as st
 
 DEFAULT_STYLE_CONFIG_FILE_PATH = "./static/video_style_config.json"
+
+# TODO：去除所有关于数据文件读写的功能函数，改为使用数据库工具函数
+# TODO：迁移所有和歌曲数据格式相关的实现为dxrating项目的格式（参考dxdata.json)
 DATA_CONFIG_VERSION = "0.5"
 LEVEL_LABELS = {
     0: "BASIC",
@@ -104,15 +109,16 @@ def load_full_config_safe(config_file, username):
 
 
 def update_music_metadata():
+    # TODO: 替换为更新dxrating源
     for game_type in ['maimaidx']:
         metadata_dir = './music_metadata/maimaidx'
         if not os.path.exists(metadata_dir):
             os.makedirs(metadata_dir, exist_ok=True)
-        json_path = os.path.join(metadata_dir, f"songs.json")
-        latest =download_metadata(game_type)
-        # 覆盖现有metadata信息
-        with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(latest, f, ensure_ascii=False, indent=4)
+        # json_path = os.path.join(metadata_dir, f"songs.json")
+        # latest = download_metadata(game_type)
+        # # 覆盖现有metadata信息
+        # with open(json_path, 'w', encoding='utf-8') as f:
+        #     json.dump(latest, f, ensure_ascii=False, indent=4)
 
 
 def load_music_metadata(game_type="maimaidx"):
@@ -180,6 +186,30 @@ def write_global_config(config):
             yaml.dump(config, f)
     except Exception as e:
         print(f"Error writing global config: {e}")
+
+
+def get_db_manager() -> "DatabaseManager":
+    """
+    Initializes the database on first run, applies migrations,
+    and returns a singleton instance of the DatabaseManager.
+    
+    Uses st.session_state to cache the manager instance.
+    """
+    if 'db_manager' not in st.session_state:
+        print("Initializing DatabaseManager...")
+        db_path = "mai_gen_videob50.db"
+        
+        # The DatabaseManager's __init__ will handle the initial schema creation.
+        db_manager = DatabaseManager(db_path=db_path)
+        
+        # Apply any pending migrations
+        print("Checking for and applying database migrations...")
+        db_manager.check_and_apply_migrations()
+        
+        st.session_state['db_manager'] = db_manager
+        print("DatabaseManager initialized and cached.")
+        
+    return st.session_state['db_manager']
 
 
 def get_video_duration(video_path):

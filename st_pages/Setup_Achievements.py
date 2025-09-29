@@ -453,7 +453,7 @@ if st.session_state.get('config_saved', False):
             load_full_config_safe(current_paths['data_file'], username)  # 转换旧版本config json文件
             st.session_state.data_updated_step1 = True
         
-        st.markdown("4. 点击下方按钮打开视频下载目录。请前往旧版本生成器的`videos\downloads`目录，将已下载的视频文件复制到新的目录。如果还没有下载任何视频文件，可以跳过此步骤。")
+        st.markdown("4. 点击下方按钮打开视频下载目录。请前往旧版本生成器的`videos\\downloads`目录，将已下载的视频文件复制到新的目录。如果还没有下载任何视频文件，可以跳过此步骤。")
         if st.button("打开视频下载目录"):
             open_file_explorer(os.path.abspath("./videos/downloads"))
         
