@@ -1,6 +1,6 @@
 import sqlite3
-import json
 import os
+import json
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
 from contextlib import contextmanager
@@ -41,11 +41,8 @@ class DatabaseManager:
             with open(schema_path, 'r', encoding='utf-8') as f:
                 schema_sql = f.read()
             
-            # Execute the schema (split by semicolon to handle multiple statements)
-            for statement in schema_sql.split(';'):
-                statement = statement.strip()
-                if statement:  # Skip empty statements
-                    cursor.execute(statement)
+            # Use executescript to handle multiple statements and comments
+            cursor.executescript(schema_sql)
             
             conn.commit()
     
@@ -54,42 +51,23 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             try:
-                # Check if schema_version table exists
-                cursor.execute('''
-                    SELECT name FROM sqlite_master 
-                    WHERE type='table' AND name='schema_version'
-                ''')
-                if not cursor.fetchone():
-                    return "1.0"  # Default version for existing databases
-                
-                cursor.execute('SELECT version FROM schema_version ORDER BY id DESC LIMIT 1')
+                cursor.execute("SELECT version FROM schema_version ORDER BY id DESC LIMIT 1")
                 result = cursor.fetchone()
                 return result['version'] if result else "1.0"
-            except sqlite3.Error:
+            except sqlite3.OperationalError:
+                # This happens if the schema_version table doesn't exist yet
                 return "1.0"
-    
+
     def update_schema_version(self, version: str, description: str = None):
         """Update the schema version after applying migrations"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            
-            # Create schema_version table if it doesn't exist
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS schema_version (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    version TEXT NOT NULL,
-                    description TEXT,
-                    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            
             cursor.execute('''
                 INSERT INTO schema_version (version, description)
                 VALUES (?, ?)
             ''', (version, description))
-            
             conn.commit()
-    
+
     def apply_migration(self, migration_file: str):
         """Apply a database migration from a SQL file"""
         migration_path = os.path.join(os.path.dirname(__file__), 'migrations', migration_file)
@@ -140,21 +118,11 @@ class DatabaseManager:
                         
                         # Simple version comparison (you might want to use proper semantic versioning)
                         if self._version_greater_than(file_version, current_version):
-                            if target_version is None or not self._version_greater_than(file_version, target_version):
-                                print(f"Applying migration: {migration_file}")
-                                self.apply_migration(migration_file)
-                                
-                                # Extract description
-                                f.seek(0)
-                                content = f.read()
-                                description = "Migration applied"
-                                for line in content.split('\n'):
-                                    if 'Description:' in line:
-                                        description = line.split('Description:')[1].strip().replace('--', '').strip()
-                                        break
-                                
-                                self.update_schema_version(file_version, description)
-                                current_version = file_version
+                            print(f"Applying migration {migration_file} for version {file_version}...")
+                            self.apply_migration(migration_file)
+                            self.update_schema_version(file_version, f"Applied migration {migration_file}")
+                            print(f"Successfully applied migration {migration_file}")
+                            
             except Exception as e:
                 print(f"Error applying migration {migration_file}: {e}")
                 raise
@@ -207,7 +175,7 @@ class DatabaseManager:
             cursor = conn.cursor()
             cursor.execute('''
                 UPDATE users
-                SET rating_mai = ?, rating_chu = ?, updated_at = CURRENT_TIMESTAMP
+                SET rating_mai = ?, rating_chu = ?
                 WHERE id = ?
             ''', (rating_mai, rating_chu, user_id))
             conn.commit()
@@ -218,23 +186,57 @@ class DatabaseManager:
             cursor = conn.cursor()
             cursor.execute('''
                 UPDATE users
-                SET metadata = ?, updated_at = CURRENT_TIMESTAMP
+                SET metadata = ?
                 WHERE id = ?
             ''', (json.dumps(metadata), user_id))
             conn.commit()
-    
-    # Save archive management methods
-    def create_save_archive(self, user_id: int, archive_name: str, game_type: str = 'maimai', 
-                           sub_type: str = 'best', rating_mai: int = None, rating_chu: float = None, 
-                           metadata: Dict = None) -> int:
+
+    # Chart management methods
+    def get_or_create_chart(self, chart_data: Dict) -> int:
+        """Get a chart by its unique properties, or create it if it doesn't exist."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Define the unique keys for a chart
+            unique_keys = ['game_type', 'song_id', 'chart_type', 'difficulty']
+            
+            # Check if the chart exists
+            cursor.execute(f'''
+                SELECT id FROM charts 
+                WHERE game_type = ? AND song_id = ? AND chart_type = ? AND difficulty = ?
+            ''', tuple(chart_data.get(k) for k in unique_keys))
+            
+            row = cursor.fetchone()
+            if row:
+                return row['id']
+            
+            # If not, create it
+            # Define all possible fields for a chart
+            all_fields = unique_keys + ['level', 'song_name', 'artist', 'max_dx_score', 'video_path']
+            
+            # Prepare for insertion
+            columns = [field for field in all_fields if field in chart_data and chart_data[field] is not None]
+            placeholders = ', '.join(['?'] * len(columns))
+            values = [chart_data.get(col) for col in columns]
+            
+            cursor.execute(f'''
+                INSERT INTO charts ({', '.join(columns)})
+                VALUES ({placeholders})
+            ''', values)
+            
+            conn.commit()
+            return cursor.lastrowid
+
+    # Archive management methods
+    def create_archive(self, user_id: int, archive_name: str, game_type: str, sub_type: str, 
+                       rating_mai: Optional[int] = None, rating_chu: Optional[float] = None, game_version: str = 'latest') -> int:
         """Create a new save archive"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            metadata_json = json.dumps(metadata or {})
             cursor.execute('''
-                INSERT INTO save_archives (user_id, archive_name, game_type, sub_type, rating_mai, rating_chu, metadata)
+                INSERT INTO archives (user_id, archive_name, game_type, sub_type, rating_mai, rating_chu, game_version)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (user_id, archive_name, game_type, sub_type, rating_mai, rating_chu, metadata_json))
+            ''', (user_id, archive_name, game_type, sub_type, rating_mai, rating_chu, game_version))
             conn.commit()
             return cursor.lastrowid
     
@@ -243,7 +245,7 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT * FROM save_archives 
+                SELECT * FROM archives 
                 WHERE user_id = ? 
                 ORDER BY created_at DESC
             ''', (user_id,))
@@ -258,7 +260,7 @@ class DatabaseManager:
         """Get save archive by ID"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('SELECT * FROM save_archives WHERE id = ?', (archive_id,))
+            cursor.execute('SELECT * FROM archives WHERE id = ?', (archive_id,))
             row = cursor.fetchone()
             if row:
                 archive = dict(row)
@@ -271,8 +273,8 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                UPDATE save_archives
-                SET is_active = ?, updated_at = CURRENT_TIMESTAMP
+                UPDATE archives
+                SET is_active = ?
                 WHERE id = ?
             ''', (is_active, archive_id))
             conn.commit()
@@ -282,7 +284,7 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT * FROM save_archives 
+                SELECT * FROM archives 
                 WHERE user_id = ? AND is_active = 1
                 ORDER BY created_at DESC
             ''', (user_id,))
@@ -294,96 +296,131 @@ class DatabaseManager:
             return archives
     
     # Record management methods
-    def add_record(self, archive_id: int, record_data: Dict) -> int:
+    def add_record(self, archive_id: int, chart_id: int, record_data: Dict) -> int:
         """Add a new record to an archive"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO records (
-                    archive_id, song_id, title, artist, chart_type, level_index, level_value,
-                    achievement, fc_status, fs_status, dx_score, dx_rating, chuni_rating, record_time,
-                    clip_name, play_count, position, raw_data
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                archive_id,
-                record_data.get('song_id'),
-                record_data.get('title'),
-                record_data.get('artist'),
-                record_data.get('chart_type'),
-                record_data.get('level_index'),
-                record_data.get('level_value'),
-                record_data.get('achievement'),
-                record_data.get('fc_status'),
-                record_data.get('fs_status'),
-                record_data.get('dx_score'),
-                record_data.get('dx_rating'),
-                record_data.get('chuni_rating'),
-                record_data.get('record_time'),
-                record_data.get('clip_name'),
-                record_data.get('play_count'),
-                record_data.get('position'),
-                json.dumps(record_data.get('raw_data', {}))
-            ))
+            
+            # Fields for the records table
+            record_fields = [
+                'order_in_archive', 'achievement', 'fc_status', 'fs_status', 
+                'dx_score', 'dx_rating', 'chuni_rating', 'play_count', 'clip_title_name', 'raw_data'
+            ]
+            
+            # Prepare for insertion
+            columns = ['archive_id', 'chart_id']
+            values = [archive_id, chart_id]
+            
+            for field in record_fields:
+                if field in record_data and record_data[field] is not None:
+                    columns.append(field)
+                    value = record_data[field]
+                    if field == 'raw_data':
+                        values.append(json.dumps(value or {}))
+                    else:
+                        values.append(value)
+
+            placeholders = ', '.join(['?'] * len(columns))
+            
+            cursor.execute(f'''
+                INSERT INTO records ({', '.join(columns)})
+                VALUES ({placeholders})
+            ''', values)
             
             record_id = cursor.lastrowid
             
             # Update record count in archive
             cursor.execute('''
-                UPDATE save_archives 
-                SET record_count = (SELECT COUNT(*) FROM records WHERE archive_id = ?),
-                    updated_at = CURRENT_TIMESTAMP
+                UPDATE archives 
+                SET record_count = (SELECT COUNT(*) FROM records WHERE archive_id = ?)
                 WHERE id = ?
             ''', (archive_id, archive_id))
             
             conn.commit()
             return record_id
-    
+
+    def get_record(self, record_id: int) -> Optional[Dict]:
+        """Get a single record by ID, joined with other tables"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT
+                    r.id AS record_id,
+                    r.archive_id,
+                    r.chart_id,
+                    r.order_in_archive,
+                    r.achievement,
+                    r.fc_status,
+                    r.fs_status,
+                    r.dx_score,
+                    r.dx_rating,
+                    r.chuni_rating,
+                    r.play_count,
+                    r.clip_title_name,
+                    r.raw_data,
+                    c.game_type,
+                    c.song_id,
+                    c.chart_type,
+                    c.difficulty,
+                    c.level_index,
+                    c.song_name,
+                    c.artist,
+                    c.max_dx_score,
+                    c.video_path,
+                    conf.background_image_path,
+                    conf.achievement_image_path,
+                    conf.video_slice_start,
+                    conf.video_slice_end,
+                    conf.comment_text,
+                    conf.video_metadata
+                FROM
+                    records r
+                JOIN
+                    charts c ON r.chart_id = c.id
+                LEFT JOIN
+                    configurations conf ON r.archive_id = conf.archive_id AND r.chart_id = conf.chart_id
+                WHERE
+                    r.id = ?
+            ''', (record_id,))
+            
+            row = cursor.fetchone()
+            if row:
+                record = dict(row)
+                # Parse JSON fields
+                if record.get('raw_data'):
+                    record['raw_data'] = json.loads(record['raw_data'])
+                if record.get('video_metadata'):
+                    record['video_metadata'] = json.loads(record['video_metadata'])
+                return record
+            return None
+
     def update_record(self, record_id: int, update_data: Dict):
         """Update an existing record"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # First, get the existing record to check song_id
-            cursor.execute('SELECT song_id FROM records WHERE id = ?', (record_id,))
-            existing_record = cursor.fetchone()
-            
-            if not existing_record:
-                raise ValueError(f"Record with ID {record_id} not found")
-
-            # Build dynamic UPDATE query based on provided fields
             updateable_fields = [
-                'song_id',
-                'title', 'artist', 'chart_type', 'level_index', 'level_value', 
-                'achievement', 'fc_status', 'fs_status', 'dx_score', 'dx_rating', 
-                'chuni_rating', 'record_time', 'clip_name', 'play_count', 'position'
+                'order_in_archive', 'achievement', 'fc_status', 'fs_status', 
+                'dx_score', 'dx_rating', 'chuni_rating', 'play_count', 'clip_title_name', 'raw_data'
             ]
             
-            # Filter update_data to only include valid fields
-            filtered_data = {k: v for k, v in update_data.items() if k in updateable_fields}
+            filtered_data = {k: v for k, v in update_data.items() if k in updateable_fields and v is not None}
             
             if not filtered_data:
-                raise ValueError("No valid fields to update")
+                return # Nothing to update
             
-            # Build the SET clause
             set_clauses = []
             values = []
             
             for field, value in filtered_data.items():
                 set_clauses.append(f"{field} = ?")
-                values.append(value)
+                if field == 'raw_data':
+                    values.append(json.dumps(value or {}))
+                else:
+                    values.append(value)
             
-            # Update raw_data if provided
-            if 'raw_data' in update_data:
-                set_clauses.append("raw_data = ?")
-                values.append(json.dumps(update_data['raw_data']))
-            
-            # Always update the updated_at timestamp
-            set_clauses.append("updated_at = CURRENT_TIMESTAMP")
-            
-            # Add record_id for WHERE clause
             values.append(record_id)
             
-            # Execute the update
             update_query = f"""
                 UPDATE records 
                 SET {', '.join(set_clauses)}
@@ -391,68 +428,162 @@ class DatabaseManager:
             """
             
             cursor.execute(update_query, values)
-            
-            if cursor.rowcount == 0:
-                print(f"Warning: No record was updated for ID {record_id}")
-            
             conn.commit()
 
-    def get_archive_records(self, archive_id: int) -> List[Dict]:
-        """Get all records for an archive"""
+    def get_records_for_video_generation(self, archive_id: int) -> List[Dict]:
+        """
+        Get all records for an archive, joined with chart and configuration data.
+        This is the primary method for fetching data to generate a video.
+        """
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT r.*, vc.video_file_name, vc.video_file_url, vc.duration, vc.start_time, 
-                       vc.end_time, vc.user_comment, vc.video_url, vc.video_platform, vc.video_id,
-                       vc.video_p_index, vc.download_status
-                FROM records r
-                LEFT JOIN video_configs vc ON r.id = vc.record_id
-                WHERE r.archive_id = ?
-                ORDER BY r.position ASC, r.created_at ASC
+                SELECT
+                    r.id AS record_id,
+                    r.archive_id,
+                    r.chart_id,
+                    r.order_in_archive,
+                    r.achievement,
+                    r.fc_status,
+                    r.fs_status,
+                    r.dx_score,
+                    r.dx_rating,
+                    r.chuni_rating,
+                    r.play_count,
+                    r.clip_title_name,
+                    r.raw_data,
+                    c.game_type,
+                    c.song_id,
+                    c.chart_type,
+                    c.difficulty,
+                    c.level_index,
+                    c.song_name,
+                    c.artist,
+                    c.max_dx_score,
+                    c.video_path,
+                    conf.background_image_path,
+                    conf.achievement_image_path,
+                    conf.video_slice_start,
+                    conf.video_slice_end,
+                    conf.comment_text,
+                    conf.video_metadata
+                FROM
+                    records r
+                JOIN
+                    charts c ON r.chart_id = c.id
+                LEFT JOIN
+                    configurations conf ON r.archive_id = conf.archive_id AND r.chart_id = conf.chart_id
+                WHERE
+                    r.archive_id = ?
+                ORDER BY
+                    r.order_in_archive ASC;
             ''', (archive_id,))
             
-            records = []
-            for row in cursor.fetchall():
-                record = dict(row)
-                record['raw_data'] = json.loads(record['raw_data'] or '{}')
-                records.append(record)
-            return records
-    
-    # Video configuration methods
-    def set_video_config(self, record_id: int, config_data: Dict):
-        """Set or update video configuration for a record"""
+            results = cursor.fetchall()
+            # Parse JSON fields
+            for row in results:
+                if row.get('raw_data'):
+                    row['raw_data'] = json.loads(row['raw_data'])
+                if row.get('video_metadata'):
+                    row['video_metadata'] = json.loads(row['video_metadata'])
+            return results
+
+    def get_archive_records_simple(self, archive_id: int) -> List[Dict]:
+        """Gets all records for an archive without joining other tables."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
+            cursor.execute('SELECT * FROM records WHERE archive_id = ?', (archive_id,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    def delete_records(self, record_ids: List[int]):
+        """Deletes multiple records by their IDs."""
+        if not record_ids:
+            return
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            placeholders = ','.join('?' for _ in record_ids)
+            cursor.execute(f'DELETE FROM records WHERE id IN ({placeholders})', record_ids)
+            conn.commit()
+
+    # Configuration methods
+    def set_configuration(self, archive_id: int, chart_id: int, config_data: Dict):
+        """Set or update configuration for a chart in an archive."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Check if a config already exists
             cursor.execute('''
-                INSERT OR REPLACE INTO video_configs (
-                    record_id, video_file_name, video_file_url, duration, start_time, end_time,
-                    user_comment, video_url, video_platform, video_id, video_p_index, download_status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                record_id,
-                config_data.get('video_file_name'),
-                config_data.get('video_file_url'),
-                config_data.get('duration', 10.0),
-                config_data.get('start_time', 0.0),
-                config_data.get('end_time', 10.0),
-                config_data.get('user_comment'),
-                config_data.get('video_url'),
-                config_data.get('video_platform'),
-                config_data.get('video_id'),
-                config_data.get('video_p_index', 0),
-                config_data.get('download_status', 'pending')
-            ))
+                SELECT id FROM configurations WHERE archive_id = ? AND chart_id = ?
+            ''', (archive_id, chart_id))
+            
+            existing_id = cursor.fetchone()
+            
+            # Fields for the configurations table
+            config_fields = [
+                'background_image_path', 'achievement_image_path',
+                'video_slice_start', 'video_slice_end', 
+                'comment_text', 'video_metadata'
+            ]
+            
+            # Filter out None values from config_data
+            filtered_config = {k: v for k, v in config_data.items() if v is not None}
+
+            if existing_id:
+                # Update existing configuration
+                update_clauses = []
+                update_values = []
+                for field in config_fields:
+                    if field in filtered_config:
+                        update_clauses.append(f"{field} = ?")
+                        value = filtered_config[field]
+                        if field == 'metadata':
+                            update_values.append(json.dumps(value or {}))
+                        else:
+                            update_values.append(value)
+                
+                if not update_clauses:
+                    return # Nothing to update
+                
+                update_values.extend([archive_id, chart_id])
+                cursor.execute(f'''
+                    UPDATE configurations SET {', '.join(update_clauses)}
+                    WHERE archive_id = ? AND chart_id = ?
+                ''', update_values)
+            else:
+                # Insert new configuration
+                columns = ['archive_id', 'chart_id']
+                values = [archive_id, chart_id]
+                for field in config_fields:
+                    if field in filtered_config:
+                        columns.append(field)
+                        value = filtered_config[field]
+                        if field == 'metadata':
+                            values.append(json.dumps(value or {}))
+                        else:
+                            values.append(value)
+                
+                if len(columns) > 2: # Only insert if there's data
+                    placeholders = ', '.join(['?'] * len(columns))
+                    cursor.execute(f'''
+                        INSERT INTO configurations ({', '.join(columns)})
+                        VALUES ({placeholders})
+                    ''', values)
+
             conn.commit()
     
-    def get_video_config(self, record_id: int) -> Optional[Dict]:
-        """Get video configuration for a record"""
+    def get_configuration(self, archive_id: int, chart_id: int) -> Optional[Dict]:
+        """Get configuration for a chart in an archive."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('SELECT * FROM video_configs WHERE record_id = ?', (record_id,))
+            cursor.execute('SELECT * FROM configurations WHERE archive_id = ? AND chart_id = ?', (archive_id, chart_id))
             row = cursor.fetchone()
-            return dict(row) if row else None
+            if row:
+                config = dict(row)
+                config['metadata'] = json.loads(config.get('metadata') or '{}')
+                return config
+            return None
     
-    # Extra video configuration methods (intro/ending settings)
+    # Extra video configuration methods (no changes needed)
     def set_extra_video_config(self, archive_id: int, config_type: str, config_data: Dict, config_index: int = 0):
         """Set extra video configuration (intro, ending, global settings)"""
         with self.get_connection() as conn:
@@ -547,18 +678,18 @@ class DatabaseManager:
             return assets
     
     # Query methods for tracking records across time
-    def get_song_history(self, user_id: int, song_id: str, chart_type: str, level_index: int) -> List[Dict]:
-        """Get all records for a specific song across all archives for a user"""
+    def get_song_history(self, user_id: int, chart_id: int) -> List[Dict]:
+        """Get all records for a specific chart across all archives for a user"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT r.*, sa.archive_name, sa.created_at as archive_created_at, 
-                       sa.rating_mai as archive_rating_mai, sa.rating_chu as archive_rating_chu
+                SELECT r.*, a.archive_name, a.created_at as archive_created_at, 
+                       a.rating_mai as archive_rating_mai, a.rating_chu as archive_rating_chu
                 FROM records r
-                JOIN save_archives sa ON r.archive_id = sa.id
-                WHERE sa.user_id = ? AND r.song_id = ? AND r.chart_type = ? AND r.level_index = ?
-                ORDER BY sa.created_at DESC
-            ''', (user_id, str(song_id), chart_type, level_index))
+                JOIN archives a ON r.archive_id = a.id
+                WHERE a.user_id = ? AND r.chart_id = ?
+                ORDER BY a.created_at DESC
+            ''', (user_id, chart_id))
             
             records = []
             for row in cursor.fetchall():
@@ -579,7 +710,7 @@ class DatabaseManager:
                        MAX(created_at) as latest_archive,
                        MAX(rating_mai) as best_rating_mai,
                        MAX(rating_chu) as best_rating_chu
-                FROM save_archives 
+                FROM archives 
                 WHERE user_id = ?
             ''', (user_id,))
             
@@ -589,69 +720,10 @@ class DatabaseManager:
             cursor.execute('''
                 SELECT COUNT(*) as total_records
                 FROM records r
-                JOIN save_archives sa ON r.archive_id = sa.id
+                JOIN archives a ON r.archive_id = a.id
                 WHERE sa.user_id = ?
             ''', (user_id,))
             
             summary.update(dict(cursor.fetchone()))
             
             return summary
-    
-    def update_record_time(self, record_id: int, record_time: datetime):
-        """Update record timestamp"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                UPDATE records
-                SET record_time = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            ''', (record_time, record_id))
-            conn.commit()
-    
-    def get_records_by_game_type(self, archive_id: int, game_type: str = None) -> List[Dict]:
-        """Get records filtered by game type (maimai/chunithm)"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            if game_type:
-                cursor.execute('''
-                    SELECT r.*, sa.game_type
-                    FROM records r
-                    JOIN save_archives sa ON r.archive_id = sa.id
-                    WHERE r.archive_id = ? AND sa.game_type = ?
-                    ORDER BY r.position ASC, r.created_at ASC
-                ''', (archive_id, game_type))
-            else:
-                cursor.execute('''
-                    SELECT r.*, sa.game_type
-                    FROM records r
-                    JOIN save_archives sa ON r.archive_id = sa.id
-                    WHERE r.archive_id = ?
-                    ORDER BY r.position ASC, r.created_at ASC
-                ''', (archive_id,))
-            
-            records = []
-            for row in cursor.fetchall():
-                record = dict(row)
-                record['raw_data'] = json.loads(record['raw_data'] or '{}')
-                records.append(record)
-            return records
-
-    def get_record(self, record_id: int) -> Optional[Dict]:
-        """Get a single record by ID"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT r.*, vc.video_file_name, vc.video_file_url, vc.duration, vc.start_time, 
-                       vc.end_time, vc.user_comment, vc.video_url, vc.video_platform, vc.video_id,
-                       vc.video_p_index, vc.download_status
-                FROM records r
-                LEFT JOIN video_configs vc ON r.id = vc.record_id
-                WHERE r.id = ?
-            ''', (record_id,))
-            
-            row = cursor.fetchone()
-            if row:
-                record = dict(row)
-                record['raw_data'] = json.loads(record['raw_data'] or '{}')
-                return record
-            return None
