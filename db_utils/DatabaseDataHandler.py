@@ -126,12 +126,11 @@ class DatabaseDataHandler:
             for i, record_data in enumerate(new_records_data):
                 # 1. Get or create the chart for the incoming record
                 chart_data = self._extract_chart_data(record_data)  # TODO: check chart_data format
-                print(f"[CREATE] i={i}, chart_data={chart_data}")
                 chart_id = self.db.get_or_create_chart(chart_data)
-                print(f"[CREATE] ADD CHART FINISHED. chart_id={chart_id}")
                 processed_chart_ids.add(chart_id)
 
                 # 2. Prepare record data
+                # TODO: 检查Order是否需要调整
                 record_update_data = self._prepare_record_data(record_data, order=i)
 
                 # 3. Check if this chart already has a record in the archive
