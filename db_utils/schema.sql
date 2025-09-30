@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS charts (
     video_path TEXT, -- Path to the reference video file, stored in charts instead of configurations.
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(game_type, song_id, chart_type, difficulty)
+    UNIQUE(game_type, song_id, chart_type, level_index)
 );
 
 -- Archives table: Represents a user's saved list of scores (e.g., a B50)

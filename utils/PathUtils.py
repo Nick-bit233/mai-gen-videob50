@@ -1,6 +1,8 @@
 import os
 from datetime import datetime
 
+# TODO: 重构，只保留缓存相关的路径函数
+
 def get_user_base_dir(username):
     """Get base directory for user data"""
     return os.path.join("b50_datas", username)

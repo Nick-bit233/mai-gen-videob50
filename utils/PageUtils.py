@@ -53,6 +53,22 @@ def escape_markdown_text(text: str) -> str:
     # 转义Markdown特殊字符 '[]'、'()'、'*'、'`'、'$'、'~'、'_'，使其能在stMarkdownContainer中正常渲染原本内容
     return re.sub(r'([\[\]\(\)\*`#$~_])', r'\\\1', text)
 
+# r/w gloabl_config.yaml
+def read_global_config():
+    if os.path.exists("global_config.yaml"):
+        with open("global_config.yaml", "r", encoding='utf-8') as f:
+            return yaml.load(f, Loader=yaml.FullLoader)
+    else:
+        raise FileNotFoundError("global_config.yaml not found")
+    
+
+def write_global_config(config):
+    try:
+        with open("global_config.yaml", "w", encoding='utf-8') as f:
+            yaml.dump(config, f)
+    except Exception as e:
+        print(f"Error writing global config: {e}")
+
 def update_music_metadata():
     # TODO: 替换为更新dxrating源
     for game_type in ['maimaidx']:

@@ -7,6 +7,68 @@ from PIL import Image
 
 BUCKET_ENDPOINT = "https://nickbit-maigen-images.oss-cn-shanghai.aliyuncs.com"
 FC_PROXY_ENDPOINT = "https://fish-usta-proxy-efexqrwlmf.cn-shanghai.fcapp.run"
+
+# --------------------------------------
+# Data format grounding Helper methods
+# --------------------------------------
+def chart_type_str2value(str_type: str, fish_record_style: bool = False) -> int:
+    """Determine chart type from record data."""
+    if fish_record_style:
+        match str_type:
+            case "SD":
+                return 0
+            case "DX":
+                return 1
+            case _:
+                return 0
+    else:
+        match str_type:
+            case "std": # maimai
+                return 0
+            case "dx":
+                return 1
+            case "utage":
+                return 2
+            case "normal": # chuni
+                return 0
+            case "we":
+                return 1
+            case _:
+                return 0
+
+def level_label_to_index(game_type: str, label: str) -> int:
+    """Convert level label to index."""
+    if game_type == "maimai":
+        match label.upper():
+            case "BASIC":
+                return 0
+            case "ADVANCED":
+                return 1
+            case "EXPERT":
+                return 2
+            case "MASTER":
+                return 3
+            case "RE:MASTER":
+                return 4
+            case _:
+                return 5
+    elif game_type == "chunithm":
+        match label.upper():
+            case "BASIC":
+                return 0
+            case "ADVANCED":
+                return 1
+            case "EXPERT":
+                return 2
+            case "MASTER":
+                return 3
+            case "ULTIMA":
+                return 4
+            case _:
+                return 5
+
+# TODO：重构数据格式以及工具函数，支持dxrating数据格式和未来的中二数据格式，以下方法均已弃用
+# 曲绘数据将尝试从dxrating接口获取
 CHART_TYPE_MAP_MAIMAI =  {   
     "SD": 0,
     "DX": 1,
@@ -20,6 +82,7 @@ REVERSE_TYPE_MAP_MAIMAI = {
     11: "协",
 }
 
+@DeprecationWarning
 def download_metadata(data_type="maimaidx"):
     url = f"{BUCKET_ENDPOINT}/metadata_json/{data_type}/songs.json"
     response = requests.get(url)
@@ -29,7 +92,7 @@ def download_metadata(data_type="maimaidx"):
         print(f"Failed to download metadata from {url}. Status code: {response.status_code}")
         raise FileNotFoundError
 
-
+@DeprecationWarning
 def download_image_data(image_path):
     url = f"{BUCKET_ENDPOINT}/{image_path}"
     response = requests.get(url, stream=True)
@@ -40,7 +103,7 @@ def download_image_data(image_path):
         print(f"Failed to download image from {url}. Status code: {response.status_code}")
         raise FileNotFoundError
 
-
+@DeprecationWarning
 def encode_song_id(name, song_type):
     """
     Args:
@@ -82,7 +145,7 @@ def encode_song_id(name, song_type):
     
     return encoded_id
 
-
+@DeprecationWarning
 def decode_song_id(encoded_id):
     """
     解码歌曲ID以提取类型和哈希值。
@@ -111,7 +174,7 @@ def decode_song_id(encoded_id):
     
     return song_type, hash_value
 
-
+@DeprecationWarning
 def find_song_by_id(encoded_id, songs_data):
     """
     通过编码ID在歌曲数据中查找歌曲。
@@ -162,7 +225,7 @@ def find_song_by_id(encoded_id, songs_data):
         print(f"查找歌曲时出错: {e}")
         return None
 
-
+@DeprecationWarning
 def search_songs(query, songs_data) -> List[tuple[str, dict]]:
     """
     在歌曲数据中搜索匹配的歌曲。
@@ -184,9 +247,3 @@ def search_songs(query, songs_data) -> List[tuple[str, dict]]:
             result_string = f"{song.get('name', '')} [{song_type}]"
             results.append((result_string, song))
     return results
-
-
-if __name__ == "__main__":
-    img_path = "jackets/maimaidx/Jacket_1103.jpg"
-    img = download_image_data(img_path)
-    img.show()

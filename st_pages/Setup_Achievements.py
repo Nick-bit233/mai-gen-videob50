@@ -6,7 +6,7 @@ from datetime import datetime
 from utils.user_gamedata_handlers import fetch_user_gamedata, update_b50_data_int
 from utils.PageUtils import get_db_manager, process_username, open_file_explorer, LEVEL_LABELS
 from db_utils.DatabaseDataHandler import get_database_handler
-from utils.PathUtils import get_user_base_dir, get_user_version_dir
+from utils.PathUtils import get_user_base_dir
 import glob
 
 # Get a handler for database operations
@@ -69,27 +69,48 @@ def confirm_delete_archive(username: str, archive_name: str):
     if st.button("取消"):
         st.rerun()
 
-def handle_new_data(username: str, source: str, params: dict = None, parser: str = None):
+def handle_new_data(username: str, source: str, raw_file_path: str, params: dict = None, parser: str = "json"):
     """
     Fetches new data from a source, then creates a new archive in the database.
     This function is a placeholder for the actual data fetching logic.
     """
     try:
-        # This part needs to be adapted based on how fetch_user_gamedata returns data.
-        # Assuming it returns a dictionary similar to the old b50_data.json format.
-        st.info("注意：从外部源获取数据的功能正在重构中，此处为临时占位逻辑。")
+        # 重构：查分，并创建存档，原始数据缓存于raw_file_path
+        if source == "intl":
+            new_archive_data = update_b50_data_int(
+                b50_raw_file=raw_file_path,
+                username=username,
+                params=params,
+                parser=parser
+            )
+        elif source in ["fish"]:
+            new_archive_data = fetch_user_gamedata(
+                raw_file_path=raw_file_path,
+                source=source,
+                username=username,
+                params=params,
+        )
+        else:
+            st.error(f"不支持的数据源: {source}")
+            return
         
-        # Placeholder: Create a dummy record list
-        records_data = [{"title": "New Song", "achievements": 100.0, "type": "DX", "level_index": 3, "level": "14"}]
-        
+        # debug: 存储new_archive_data
+        debug_path = f"./b50_datas/debug_new_archive_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        with open(debug_path, "w", encoding="utf-8") as f:
+            json.dump(new_archive_data, f, ensure_ascii=False, indent=4)
+
         archive_id, archive_name = db_handler.create_new_archive(
             username=username,
-            game_type=params.get('type', 'maimai'),
-            sub_type=params.get('query', 'best'),
-            initial_records=records_data
+            game_type=new_archive_data.get('game_type', 'maimai'),
+            sub_type=new_archive_data.get('sub_type', 'best'),
+            rating_mai=new_archive_data.get('rating_mai', 0),
+            rating_chu=new_archive_data.get('rating_chu', 0),
+            game_version=new_archive_data.get('game_version', 'N/A'),
+            initial_records=new_archive_data.get('initial_records', [])
         )
         
         st.session_state.archive_name = archive_name
+        print(f"成功创建新存档: {archive_name}， ID: {archive_id}")
         st.success(f"成功创建新存档: {archive_name}")
         st.session_state.data_updated_step1 = True
         st.rerun()
@@ -111,7 +132,7 @@ with st.container(border=True):
     input_username = st.text_input(
         "输入您的用户名",
         value=st.session_state.get("username", ""),
-        help="此用户名将用于数据库记录和存档管理。"
+        help="如果你从水鱼等查分器获取数据，请输入在对应平台的用户名，否则请自拟用户名。"
     )
 
     if st.button("确定用户名"):
@@ -135,6 +156,11 @@ if st.session_state.get('config_saved', False):
     username = st.session_state.username
     safe_username = st.session_state.safe_username
 
+    # Create user base directory if not exists
+    # 备注：b50_datas/username 目录现只用于缓存b50_raw.json等文件，数据管理迁移至数据库
+    user_base_dir = get_user_base_dir(safe_username)
+    os.makedirs(user_base_dir, exist_ok=True)
+
     # --- 2. Manage Existing Archives ---
     st.subheader("管理本地存档")
     with st.container(border=True):
@@ -155,7 +181,7 @@ if st.session_state.get('config_saved', False):
                 "选择一个存档进行操作",
                 archive_names,
                 index=current_archive_index,
-                format_func=lambda name: f"{username} - {name}"
+                format_func=lambda name: f"{name}"
             )
 
             col1, col2, col3 = st.columns(3)
@@ -179,44 +205,50 @@ if st.session_state.get('config_saved', False):
         # Data from FISH (CN Server)
         with st.expander("从水鱼查分器获取（国服）"):
             st.write(f"将以用户名 **{username}** 从查分器获取数据。")
+            b50_raw_file = f"{user_base_dir}/b50_raw.json"
             if st.button("获取 B50 数据"):
-                handle_new_data(username, "fish", {"type": "maimai", "query": "best"})
+                handle_new_data(username, source="fish", 
+                                raw_file_path=b50_raw_file,
+                                params={"type": "maimai", "query": "best"})
             if st.button("获取 AP B50 数据"):
-                handle_new_data(username, "fish", {"type": "maimai", "query": "all", "filter": {"tag": "ap", "top": 50}})
+                handle_new_data(username, source="fish",
+                                raw_file_path=b50_raw_file,
+                                params={"type": "maimai", "query": "all", "filter": {"tag": "ap", "top": 50}})
 
         # Data from DX Web (INTL/JP Server)
         with st.expander("从 DX Rating Net 导入（国际服/日服）"):
-            st.write("请先将 DX Rating Net 网页的源代码或导出的JSON粘贴到下方。")
+            st.write("请将maimai DX NET(官网)获取的源代码，或 DX Rating 网站导出的JSON代码粘贴到下方。")
             data_input = st.text_area("粘贴源代码或JSON", height=200)
             
             if st.button("从粘贴内容创建新存档"):
                 if data_input:
                     file_type = "json" if data_input.strip().startswith("[{") else "html"
-                    # The actual parsing logic needs to be implemented in handle_new_data
-                    # For now, this is a placeholder.
-                    handle_new_data(username, f"int_{file_type}", {"type": "maimai", "query": "best"}, parser=file_type)
+                    b50_raw_file = f"{user_base_dir}/b50_raw.{file_type}"
+                    handle_new_data(username, source="intl",
+                                    raw_file_path=b50_raw_file,
+                                    params={"type": "maimai", "query": "best"}, parser=file_type)
                 else:
                     st.warning("输入框内容为空。")
 
     # --- 4. Data Migration (Legacy) ---
     with st.expander("从旧版本（v0.4.x 及以下）迁移数据"):
-        st.info("此功能可以将旧的基于JSON文件的存档导入到新的数据库系统中。")
+        st.info("此功能已废弃，请使用首页的“导入数据”按钮进行数据迁移。")
         
-        # Use safe_username for directory operations
-        legacy_data_path = st.text_input("输入旧版 `b50_datas` 文件夹的路径", 
-                                         help=f"例如: C:\\old_project\\b50_datas\\{safe_username}")
+        # # Use safe_username for directory operations
+        # legacy_data_path = st.text_input("输入旧版 `b50_datas` 文件夹的路径", 
+        #                                  help=f"例如: C:\\old_project\\b50_datas\\{safe_username}")
 
-        if st.button("开始迁移"):
-            if os.path.isdir(legacy_data_path):
-                try:
-                    with st.spinner("正在迁移旧存档..."):
-                        count = db_handler.import_from_json(legacy_data_path)
-                    st.success(f"成功迁移了 {count} 个旧存档！请在上方“管理本地存档”区域查看。")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"迁移过程中发生错误: {e}")
-            else:
-                st.error("输入的路径无效或不是一个文件夹。")
+        # if st.button("开始迁移"):
+        #     if os.path.isdir(legacy_data_path):
+        #         try:
+        #             with st.spinner("正在迁移旧存档..."):
+        #                 count = db_handler.import_from_json(legacy_data_path)
+        #             st.success(f"成功迁移了 {count} 个旧存档！请在上方“管理本地存档”区域查看。")
+        #             st.rerun()
+        #         except Exception as e:
+        #             st.error(f"迁移过程中发生错误: {e}")
+        #     else:
+        #         st.error("输入的路径无效或不是一个文件夹。")
 
     # --- 5. Navigation ---
     st.divider()

@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional, Tuple, Any, Union
+from unittest import case
 from db_utils.DatabaseManager import DatabaseManager
-from utils.DataUtils import encode_song_id, decode_song_id
+from utils.DataUtils import chart_type_str2value, level_label_to_index
 import os
 import json
 from datetime import datetime
@@ -125,7 +126,9 @@ class DatabaseDataHandler:
             for i, record_data in enumerate(new_records_data):
                 # 1. Get or create the chart for the incoming record
                 chart_data = self._extract_chart_data(record_data)  # TODO: check chart_data format
+                print(f"[CREATE] i={i}, chart_data={chart_data}")
                 chart_id = self.db.get_or_create_chart(chart_data)
+                print(f"[CREATE] ADD CHART FINISHED. chart_id={chart_id}")
                 processed_chart_ids.add(chart_id)
 
                 # 2. Prepare record data
@@ -224,7 +227,8 @@ class DatabaseDataHandler:
             return None
         
         archive = self.db.get_archive(archive_id)
-        if not archive: return None
+        if not archive: 
+            return None
 
         records = self.db.get_records_for_video_generation(archive_id)
         
@@ -303,6 +307,7 @@ class DatabaseDataHandler:
                             'video_url': main_config.get('video_url'),
                             'video_platform': main_config.get('video_platform'),
                             'video_id': main_config.get('video_id'),
+                            'video_p_index': main_config.get('video_p_index', 0)
                         })
                     }
                     self.db.set_configuration(archive_id, chart_id, config_data)
@@ -350,18 +355,19 @@ class DatabaseDataHandler:
     # Internal Helper methods
     # TODO: Refactor if needed
     # --------------------------------------
+
     def _extract_chart_data(self, record_data: Dict) -> Dict:
-        """Extracts chart-specific fields from a raw record dictionary."""
+        """Fish-style chart data to standard chart table format."""
         return {
             'game_type': record_data.get('game_type', 'maimai'),
-            'song_id': str(record_data.get('song_id')),
-            'chart_type': record_data.get('type'), # 'type' is the key in old format
+            'song_id': str(record_data.get('title')),
+            'chart_type': chart_type_str2value(record_data.get('type'), fish_record_style=True), 
             'level_index': record_data.get('level_index'),
-            'difficulty': record_data.get('level'), # 'level' is the new 'difficulty'
+            'difficulty': record_data.get('ds'), 
             'song_name': record_data.get('title'),
-            'artist': record_data.get('artist'),
-            'max_dx_score': record_data.get('max_dx_score'),
-            'video_path': record_data.get('video_path') # If available from source
+            'artist': record_data.get('artist', None), # TODO：部分歌曲信息需要从元数据查询
+            'max_dx_score': record_data.get('max_dx_score', None),
+            'video_path': record_data.get('video_path', None)
         }
 
     def _prepare_record_data(self, record_data: Dict, order: int) -> Dict:
@@ -371,9 +377,9 @@ class DatabaseDataHandler:
             'achievement': record_data.get('achievements'), # 'achievements' in old format
             'fc_status': record_data.get('fc'),
             'fs_status': record_data.get('fs'),
-            'dx_score': record_data.get('dx_score'),
-            'dx_rating': record_data.get('dx_rating'),
-            'chuni_rating': record_data.get('chuni_rating'),
+            'dx_score': record_data.get('dxScore', None),
+            'dx_rating': record_data.get('ra', 0),
+            'chuni_rating': record_data.get('chuni_rating', 0),
             'play_count': record_data.get('play_count', 0),
             'clip_title_name': record_data.get('clip_title_name'),
             'raw_data': record_data # Store the original record for full fidelity

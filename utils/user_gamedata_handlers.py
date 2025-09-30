@@ -7,7 +7,6 @@ import json
 import requests
 
 from utils.dxnet_extension import ChartManager
-from utils.PageUtils import DATA_CONFIG_VERSION, format_record_songid
 from utils.DataUtils import FC_PROXY_ENDPOINT
 
 LEVEL_LABEL = ["Basic", "Advanced", "Expert", "Master", "Re:MASTER"]
@@ -71,15 +70,7 @@ def get_data_from_fish(username, params=None):
 ################################################
 # Maimai B50 data handlers from diving-fish.com
 ################################################
-def fetch_user_gamedata(raw_file_path, data_file_path, username, params, source="fish"):
-    # params = {
-    #     "type": maimai / chuni / ...,
-    #     "query": all / best /
-    #     "filter": {
-    #         "tag": "ap",
-    #         "top": 50,
-    #     },
-    #}
+def fetch_user_gamedata(raw_file_path, username, params, source="fish") -> dict:
     if source == "fish":
         try:
             fish_data = get_data_from_fish(username, params)
@@ -97,44 +88,54 @@ def fetch_user_gamedata(raw_file_path, data_file_path, username, params, source=
             raise Exception(f"Error: 从水鱼获得B50数据失败。错误信息：{fish_data['msg']}")
         
         # 生成数据文件
-        generate_config_file_from_fish(fish_data, data_file_path, params)
+        return generate_config_file_from_fish(fish_data, params)
+    else:
+        raise ValueError("Invalid source for fetching game data")
 
 
-def generate_config_file_from_fish(fish_data, data_file_path, params):
+def generate_config_file_from_fish(fish_data, params) -> dict:
+    """根据从水鱼获取的原始数据，生成B50数据配置文件
+    Args:
+        fish_data (dict): 从水鱼获取的原始数据
+        data_file_path (str): 生成的数据文件路径
+        params (dict): 处理参数:
+            type (str): 游戏类型，"maimai"或"chuni"，默认为"maimai"
+            query (str): 查询数据数量，"best"或"all"，默认为"best"
+            filter (dict): 过滤条件，有效键值示例：{"tag": "ap", "top": 50}
+        Returns: 
+            new_archive (dict): 用于创建新存档的数据字典，包括存档信息和initial_records的列表
+    """
     type = params.get("type", "maimai")
     query = params.get("query", "best")
     filter = params.get("filter", None)
     if type == "maimai":
         if query == "best":
-            # 解析fish b50数据  TODO: 模块化这段逻辑
+            # 解析fish b50数据
             charts_data = fish_data['charts']
             b35_data = charts_data['sd']
             b15_data = charts_data['dx']
 
+            # 为初始化数据添加clip_title_name字段，
+            # 备注：对于水鱼返回的数据，只做这一项默认字段名的添加，
+            # DatabaseDataHandler.py中的函数会对谱面和记录数据对齐到数据库做进一步处理
             for i in range(len(b35_data)):
                 song = b35_data[i]
-                song['clip_name'] = f"PastBest_{i + 1}"
+                song['clip_title_name'] = f"PastBest_{i + 1}"
 
             for i in range(len(b15_data)):
                 song = b15_data[i]
-                song['clip_name'] = f"NewBest_{i + 1}"
+                song['clip_title_name'] = f"NewBest_{i + 1}"
             
             # 合并b35_data和b15_data到同一列表
             b50_data = b35_data + b15_data
-            for i in range(len(b50_data)):
-                song = b50_data[i]
-                song["level_label"] = song.get("level_label", "").upper()
-                song['clip_id'] = f"clip_{i + 1}"
-                song["song_id"] = format_record_songid(song, song.get("song_id", None))
 
-            config_content = {
-                "version": DATA_CONFIG_VERSION,
+            new_archive_data = {
                 "type": type,
                 "sub_type": "best",
                 "username": fish_data['username'],
-                "rating": fish_data['rating'],
-                "length_of_content": len(b50_data),
-                "records": b50_data,
+                "rating_mai": fish_data['rating'],
+                "game_version": "latest_CN",
+                "initial_records": b50_data
             }
         else:
             if not filter:
@@ -146,24 +147,22 @@ def generate_config_file_from_fish(fish_data, data_file_path, params):
                     data_list = filter_maimai_ap_data(fish_data, top_len)
                     if len(data_list) < top_len:
                         print(f"Warning: 仅找到{len(data_list)}条AP数据，生成实际数据长度小于top_len={top_len}的配置。")
-                    config_content = {
-                        "version": DATA_CONFIG_VERSION,
+                    new_archive_data = {
                         "type": type,
-                        "sub_type": tag,
+                        "sub_type": "ap",
                         "username": fish_data['username'],
-                        "rating": fish_data['rating'],
-                        "length_of_content": len(data_list),
-                        "records": data_list,
+                        "rating_mai": fish_data['rating'],
+                        "game_version": "latest_CN",
+                        "initial_records": data_list
                     }
                 else:
                     raise ValueError("Error: 目前仅支持tag为ap的查询类型。")
-                
-        # 写入b50_data_file
-        with open(data_file_path, "w", encoding="utf-8") as f:
-            json.dump(config_content, f, ensure_ascii=False, indent=4)
-        return config_content
+        return new_archive_data
+    elif type == "chunithm":
+        # TODO: 支持chunithm查询接口
+        raise NotImplementedError("Only MAIMAI DX is supported for now")
     else:
-        raise ValueError("Only MAIMAI DX is supported for now")
+        raise ValueError("Invalid game data type for diving-fish.com")
 
 
 def filter_maimai_ap_data(fish_data, top_len=50):
@@ -185,8 +184,7 @@ def filter_maimai_ap_data(fish_data, top_len=50):
         # 将level_label转换为全大写
         song["level_label"] = song.get("level_label", "").upper()
         # 添加clip_id字段
-        song['clip_name'] = f"APBest_{index}"
-        song['clip_id'] = f"clip_{index}"
+        song['clip_title_name'] = f"APBest_{index}"
 
     return ap_data
 
@@ -431,7 +429,7 @@ def parse_dxrating_json(song_json, song_id_placeholder):
 # Update local cache files
 ################################################
 
-def update_b50_data_int(b50_raw_file, b50_data_file, username, params, parser):
+def update_b50_data_int(b50_raw_file, username, params, parser) -> dict:
     data_parser = read_b50_from_html # html parser is default
     if parser == "html":
         data_parser = read_b50_from_html
@@ -442,9 +440,9 @@ def update_b50_data_int(b50_raw_file, b50_data_file, username, params, parser):
     parsed_data = data_parser(b50_raw_file, username)
 
     # building b50_config
-    generate_data_file_int(parsed_data, b50_data_file, params)
+    return generate_data_file_int(parsed_data, params)
 
-def generate_data_file_int(parsed_data, data_file_path, params):
+def generate_data_file_int(parsed_data, params) -> dict:
     type = params.get("type", "maimai")
     query = params.get("query", "best")
     filter = params.get("filter", None)
@@ -457,34 +455,25 @@ def generate_data_file_int(parsed_data, data_file_path, params):
 
             for i in range(len(b35_data)):
                 song = b35_data[i]
-                song["clip_name"] = f"PastBest_{i + 1}"
+                song['clip_title_name'] = f"PastBest_{i + 1}"
 
             for i in range(len(b15_data)):
                 song = b15_data[i]
-                song["clip_name"] = f"NewBest_{i + 1}"
+                song['clip_title_name'] = f"NewBest_{i + 1}"
             
             # 合并b35_data和b15_data到同一列表
             b50_data = b35_data + b15_data
-            for i in range(len(b50_data)):
-                song = b50_data[i]
-                song["level_label"] = song.get("level_label", "").upper()
-                song["clip_id"] = f"clip_{i + 1}"
-                song["song_id"] = format_record_songid(song, song.get("song_id", None))
             
-            config_content = {
-                "version": DATA_CONFIG_VERSION,
+            new_archive_data = {
                 "type": type,
-                "sub_type": "b50",
+                "sub_type": "best",
                 "username": parsed_data["username"],
                 "rating": parsed_data["rating"],
-                "length_of_content": len(b50_data),
-                "records": b50_data,
+                "game_version": "latest_INTL",
+                "initial_records": b50_data
             }
-                
-        # 写入b50_data_file
-        with open(data_file_path, "w", encoding="utf-8") as f:
-            json.dump(config_content, f, ensure_ascii=False, indent=4)
-        return config_content
+
+        return new_archive_data
     else:
         raise ValueError("Only MAIMAI DX is supported for now")
     

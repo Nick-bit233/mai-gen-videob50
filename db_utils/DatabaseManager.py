@@ -208,12 +208,12 @@ class DatabaseManager:
             cursor = conn.cursor()
             
             # Define the unique keys for a chart
-            unique_keys = ['game_type', 'song_id', 'chart_type', 'difficulty']
+            unique_keys = ['game_type', 'song_id', 'chart_type', 'level_index']
             
             # Check if the chart exists
             cursor.execute(f'''
                 SELECT id FROM charts 
-                WHERE game_type = ? AND song_id = ? AND chart_type = ? AND difficulty = ?
+                WHERE game_type = ? AND song_id = ? AND chart_type = ? AND level_index = ?
             ''', tuple(chart_data.get(k) for k in unique_keys))
             
             row = cursor.fetchone()
@@ -222,7 +222,7 @@ class DatabaseManager:
             
             # If not, create it
             # Define all possible fields for a chart
-            all_fields = unique_keys + ['level', 'song_name', 'artist', 'max_dx_score', 'video_path']
+            all_fields = unique_keys + ['difficulty', 'song_name', 'artist', 'max_dx_score', 'video_path']
             
             # Prepare for insertion
             columns = [field for field in all_fields if field in chart_data and chart_data[field] is not None]
@@ -440,7 +440,7 @@ class DatabaseManager:
             cursor.execute(update_query, values)
             conn.commit()
 
-    def get_records_for_video_generation(self, archive_id: int) -> List[Dict]:
+    def get_records_for_video_generation(self, archive_id: int, retrieve_raw_data: bool = False) -> List[Dict]:
         """
         Get all records for an archive, joined with chart and configuration data.
         This is the primary method for fetching data to generate a video.
@@ -490,13 +490,16 @@ class DatabaseManager:
             ''', (archive_id,))
             
             results = cursor.fetchall()
-            # Parse JSON fields
+            # Convert rows to dicts and parse JSON fields
+            parsed_results = []
             for row in results:
-                if row.get('raw_data'):
-                    row['raw_data'] = json.loads(row['raw_data'])
-                if row.get('video_metadata'):
-                    row['video_metadata'] = json.loads(row['video_metadata'])
-            return results
+                row_dict = dict(row)
+                if retrieve_raw_data and row_dict.get('raw_data'):
+                    row_dict['raw_data'] = json.loads(row_dict['raw_data'])
+                if row_dict.get('video_metadata'):
+                    row_dict['video_metadata'] = json.loads(row_dict['video_metadata'])
+                parsed_results.append(row_dict)
+            return parsed_results
 
     def get_archive_records_simple(self, archive_id: int) -> List[Dict]:
         """Gets all records for an archive without joining other tables."""
@@ -731,7 +734,7 @@ class DatabaseManager:
                 SELECT COUNT(*) as total_records
                 FROM records r
                 JOIN archives a ON r.archive_id = a.id
-                WHERE sa.user_id = ?
+                WHERE a.user_id = ?
             ''', (user_id,))
             
             summary.update(dict(cursor.fetchone()))
