@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS records (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     archive_id INTEGER NOT NULL,
     chart_id INTEGER NOT NULL,
-    order_in_archive INTEGER NOT NULL, -- The position of this record in the archive list
+    order_in_archive INTEGER NOT NULL, -- The position of this record in the archive list, start from 0
     achievement REAL, -- Score(chuni)/achievement percentage(maimai)
     fc_status TEXT,   -- 'fc', 'aj', 'none'.. (chuni) / 'fc', 'ap', 'none'..(maimai)
     fs_status TEXT,   -- 'FC', 'AC', 'none'.. (chuni) / 'fs', 'fsd', 'none' .. (maimai)

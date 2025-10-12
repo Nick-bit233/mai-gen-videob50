@@ -102,6 +102,15 @@ class DatabaseDataHandler:
         return False
 
     # --------------------------------------
+    # Chart table handler
+    # --------------------------------------
+    def get_or_create_chart(self, chart_data: Dict) -> int:
+        """Get or create a chart entry in the database from metadata."""
+
+        chart_id = self.db.get_or_create_chart(chart_data)
+        return chart_id
+
+    # --------------------------------------
     # Record and archive update handler from json data
     # --------------------------------------
     def update_archive_records(self, username: str, new_records_data: List[Dict], archive_name: str) -> int:

@@ -1,3 +1,4 @@
+from importlib import metadata
 from typing import List
 import requests
 import base64
@@ -49,6 +50,8 @@ def level_label_to_index(game_type: str, label: str) -> int:
             case "MASTER":
                 return 3
             case "RE:MASTER":
+                return 4
+            case "REMASTER": # 兼容dxrating的元数据
                 return 4
             case _:
                 return 5
@@ -225,25 +228,53 @@ def find_song_by_id(encoded_id, songs_data):
         print(f"查找歌曲时出错: {e}")
         return None
 
-@DeprecationWarning
-def search_songs(query, songs_data) -> List[tuple[str, dict]]:
+
+def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tuple[str, dict]]:
     """
-    在歌曲数据中搜索匹配的歌曲。
+    在歌曲数据中搜索匹配的歌曲。输出歌曲元数据格式与数据库Chart表一致。
     
     Args:
         query (str): 要搜索的查询字符串
         songs_data (dict): 歌曲元数据的json对象
-        
+        game_type (str): 游戏类型
+
     Returns:
         list: 匹配的歌曲列表
     """
     results = []
-    for song in songs_data:
-        if query.lower() in song.get('name', '').lower() \
-           or query.lower() in song.get('artist', '').lower() \
-           or query.lower() in str(song.get('id', '')):
-            song_type = REVERSE_TYPE_MAP_MAIMAI.get(song.get('type'), '-')
-            index = songs_data.index(song)
-            result_string = f"{song.get('name', '')} [{song_type}]"
-            results.append((result_string, song))
-    return results
+    if game_type == "maimai":
+        for song in songs_data:
+            # 合并所有别名为单个字符串
+            all_acronyms = ",".join(song.get('searchAcronyms', []))
+            # 匹配关键词
+            if query.lower() in song.get('songId', '').lower() \
+            or query.lower() in song.get('artist', '').lower() \
+            or query.lower() in all_acronyms:
+                
+                sheets = song.get('sheets', [])
+                for s in sheets:
+                    # 选择难度和查询一致的谱面
+                    s_level_index = level_label_to_index(game_type, s['difficulty'])
+                    if s_level_index == level_index:
+                        type = s.get('type', 'std')
+                        result_string = f"{song.get('title', '')} [{type}]"
+                        total_notes = s.get('noteCounts', {}).get('total', 0)
+                        if not total_notes:  # 防止数据源传入NULL
+                            total_notes = 0
+                        chart_data = {
+                            'game_type': 'maimai',
+                            'song_id': song['songId'],
+                            'chart_type': chart_type_str2value(type),
+                            'level_index': level_index,
+                            'difficulty': str(s.get('internalLevelValue', 0.0)),
+                            'song_name': s.get('title', ''),
+                            'artist': s.get('artist', None),
+                            'max_dx_score': total_notes * 3,
+                            'video_path': None
+                        }
+                        results.append((result_string, chart_data))
+        return results
+    elif game_type == "chunithm":
+        raise NotImplementedError("Chunithm search not implemented yet.")
+    else:
+        raise ValueError("Unsupported game type for search.")
