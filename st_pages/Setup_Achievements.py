@@ -16,7 +16,7 @@ maimai_level_label_list = list(LEVEL_LABELS.values())
 @st.dialog("b50数据查看", width="large")
 def view_b50_data(username: str, archive_name: str):
     """Displays the records of a selected archive in a read-only table."""
-    b50_data = db_handler.load_archive_b50_data(username, archive_name)
+    b50_data = db_handler.load_archive_as_old_b50_config(username, archive_name)
     
     if not b50_data:
         st.error("无法加载存档数据。")
@@ -94,10 +94,10 @@ def handle_new_data(username: str, source: str, raw_file_path: str, params: dict
             st.error(f"不支持的数据源: {source}")
             return
         
-        # debug: 存储new_archive_data
-        debug_path = f"./b50_datas/debug_new_archive_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        with open(debug_path, "w", encoding="utf-8") as f:
-            json.dump(new_archive_data, f, ensure_ascii=False, indent=4)
+        ### debug: 存储new_archive_data
+        # debug_path = f"./b50_datas/debug_new_archive_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        # with open(debug_path, "w", encoding="utf-8") as f:
+        #     json.dump(new_archive_data, f, ensure_ascii=False, indent=4)
 
         archive_id, archive_name = db_handler.create_new_archive(
             username=username,

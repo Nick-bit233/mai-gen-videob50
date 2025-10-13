@@ -1,10 +1,13 @@
 from importlib import metadata
+from turtle import st
 from typing import List
+import json
 import requests
 import base64
 import hashlib
 import struct
 from PIL import Image
+from typing import Dict
 
 BUCKET_ENDPOINT = "https://nickbit-maigen-images.oss-cn-shanghai.aliyuncs.com"
 FC_PROXY_ENDPOINT = "https://fish-usta-proxy-efexqrwlmf.cn-shanghai.fcapp.run"
@@ -12,6 +15,27 @@ FC_PROXY_ENDPOINT = "https://fish-usta-proxy-efexqrwlmf.cn-shanghai.fcapp.run"
 # --------------------------------------
 # Data format grounding Helper methods
 # --------------------------------------
+def chart_type_value2str(value: int, game_type: str) -> str:
+    """Convert chart type value to string representation."""
+    if game_type == "maimai":
+        match value:
+            case 0:
+                return "std"
+            case 1:
+                return "dx"
+            case 2:
+                return "utage"
+            case _:
+                return "unknown"
+    elif game_type == "chunithm":
+        match value:
+            case 0:
+                return "normal"
+            case 1:
+                return "we"
+            case _:
+                return "unknown"
+
 def chart_type_str2value(str_type: str, fish_record_style: bool = False) -> int:
     """Determine chart type from record data."""
     if fish_record_style:
@@ -229,6 +253,21 @@ def find_song_by_id(encoded_id, songs_data):
         return None
 
 
+def load_songs_metadata(game_type: str) -> dict:
+    # metadata已经更换为dxrating数据源
+    if game_type == "maimai":
+        with open("./music_metadata/maimaidx/dxdata.json", 'r', encoding='utf-8') as f:
+            songs_data = json.load(f)
+        songs_data = songs_data.get('songs', [])
+        assert isinstance(songs_data, list), "songs_data should be a list"
+        return songs_data
+    elif game_type == "chunithm":
+        raise NotImplementedError("Chunithm metadata loading not implemented yet.")
+        # TODO: implement chunithm metadata loading
+    else:
+        raise ValueError("Unsupported game type for metadata loading.")
+
+
 def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tuple[str, dict]]:
     """
     在歌曲数据中搜索匹配的歌曲。输出歌曲元数据格式与数据库Chart表一致。
@@ -267,8 +306,8 @@ def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tupl
                             'chart_type': chart_type_str2value(type),
                             'level_index': level_index,
                             'difficulty': str(s.get('internalLevelValue', 0.0)),
-                            'song_name': s.get('title', ''),
-                            'artist': s.get('artist', None),
+                            'song_name': song.get('title', ''),
+                            'artist': song.get('artist', None),
                             'max_dx_score': total_notes * 3,
                             'video_path': None
                         }
@@ -278,3 +317,86 @@ def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tupl
         raise NotImplementedError("Chunithm search not implemented yet.")
     else:
         raise ValueError("Unsupported game type for search.")
+
+def query_songs_metadata(game_type: str, fish_record: dict) -> dict:
+    songs_data = load_songs_metadata(game_type) # 读取dxrating data（以maimai为例），从中匹配和水鱼查询结果相同的乐曲
+    for song in songs_data:
+        # TODO: 处理title重名的情况（在dxrating data中会加入后缀，而在水鱼查询结果中不会）
+        if song.get('songId') == fish_record.get('title'):
+            return song
+    return None
+
+def fish_to_new_record_format(fish_record: dict, game_type: str = "maimai") -> dict:
+    """
+    Convert a Fish-style record to the new unified record format.
+    The input fish_record is based on Fish-style API query format.
+
+    Args:
+        fish_record (dict): A single record in Fish-style format.
+
+    Returns:
+        dict: The converted record in the new unified format.
+    """
+    # Resolve level index if missing by using level label
+    level_idx = fish_record.get('level_index')
+    if level_idx is None or level_idx == -1:
+        level_label = fish_record.get('level_label')
+        if level_label:
+            level_idx = level_label_to_index(game_type, level_label)
+        else:
+            level_idx = 0
+    # Resolve chart type
+    chart_type = chart_type_str2value(fish_record.get('type', ''), fish_record_style=True)
+
+    # Must have a title as song_id to query songs metadata
+    resolved_song_id = fish_record['title']
+    if not resolved_song_id:
+        raise ValueError("Fish record must have a 'title' field to resolve song_id.")
+
+    # query artist and other metadata from songs metadata
+    song = query_songs_metadata(game_type, fish_record)
+    if not song:
+        raise LookupError(f"Cannot find song metadata for song_id: {resolved_song_id} in game_type: {game_type}")
+    
+    resolved_artist = song.get('artist', None)
+    resolved_total_notes = song.get('noteCounts', {}).get('total', 0)
+    if not resolved_total_notes:  # 防止数据源传入NULL
+        resolved_total_notes = 0
+    # check difficulty from metadata if missing
+    resolved_ds = fish_record.get('ds', 0.0)
+    if resolved_ds is None or resolved_ds == 0.0:
+        sheets = song.get('sheets', [])
+        for s in sheets:
+            s_level_index = level_label_to_index(game_type, s['difficulty'])
+            s_type = chart_type_str2value(s.get('type', ''))
+            if s_level_index == level_idx and s_type == chart_type:
+                resolved_ds = s.get('internalLevelValue', 0.0)
+
+    chart_data = {
+        'game_type': game_type,
+        'song_id': resolved_song_id,
+        'chart_type': chart_type,
+        'level_index': level_idx,
+        'difficulty': str(resolved_ds) if resolved_ds is not None else '0.0',
+        'song_name': fish_record.get('title'),
+        'artist': resolved_artist,
+        'max_dx_score': resolved_total_notes * 3,
+        'video_path': fish_record.get('video_path', None)
+    }
+
+    record = {
+        'chart_data': chart_data,
+        'order_in_archive': 0,
+        'achievement': fish_record.get('achievements'),
+        'fc_status': fish_record.get('fc'),
+        'fs_status': fish_record.get('fs'),
+        'dx_score': fish_record.get('dxScore', None),
+        'dx_rating': fish_record.get('ra', 0),
+        'chuni_rating': fish_record.get('chuni_rating', 0),
+        'play_count': fish_record.get('play_count', 0),
+        'clip_title_name': fish_record.get('clip_title_name'),
+        # Store the original record as JSON string (ensure_ascii=True to escape unicode like the example)
+        'raw_data': json.dumps(fish_record, ensure_ascii=True)
+    }
+
+    return record

@@ -237,6 +237,16 @@ class DatabaseManager:
             conn.commit()
             return cursor.lastrowid
 
+    def get_chart(self, chart_id: int) -> Optional[Dict]:
+        """Retrieve chart metadata by chart_id"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM charts WHERE id = ?', (chart_id,))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+        
     # Archive management methods
     def create_archive(self, user_id: int, archive_name: str, game_type: str, sub_type: str, 
                        rating_mai: Optional[int] = None, rating_chu: Optional[float] = None, game_version: str = 'latest') -> int:
@@ -278,15 +288,39 @@ class DatabaseManager:
                 return archive
             return None
     
-    def update_archive_status(self, archive_id: int, is_active: bool):
-        """Update archive active status"""
+    def update_archive(self, archive_id: int, update_data: Dict):
+        """Update an existing archive"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('''
-                UPDATE archives
-                SET is_active = ?
+            
+            updateable_fields = ['archive_name', 'game_type', 'sub_type', 
+                                 'rating_mai', 'rating_chu', 'game_version', 
+                                 'is_active', 'metadata']
+            
+            filtered_data = {k: v for k, v in update_data.items() if k in updateable_fields and v is not None}
+            
+            if not filtered_data:
+                return # Nothing to update
+            
+            set_clauses = []
+            values = []
+            
+            for field, value in filtered_data.items():
+                set_clauses.append(f"{field} = ?")
+                if field == 'metadata':
+                    values.append(json.dumps(value or {}))
+                else:
+                    values.append(value)
+            
+            values.append(archive_id)
+            
+            update_query = f"""
+                UPDATE archives 
+                SET {', '.join(set_clauses)}
                 WHERE id = ?
-            ''', (is_active, archive_id))
+            """
+            
+            cursor.execute(update_query, values)
             conn.commit()
     
     def get_active_archives(self, user_id: int) -> List[Dict]:

@@ -3,6 +3,7 @@ import streamlit as st
 import os
 import re
 import json
+import ast
 import traceback
 from copy import deepcopy
 from datetime import datetime
@@ -10,7 +11,7 @@ import pandas as pd
 from utils.PathUtils import *
 from utils.PageUtils import get_db_manager, process_username
 from db_utils.DatabaseDataHandler import get_database_handler
-from utils.DataUtils import search_songs, level_label_to_index
+from utils.DataUtils import search_songs, level_label_to_index, chart_type_value2str
 from utils.dxnet_extension import get_rate, parse_level, compute_rating
 
 # 检查streamlit扩展组件安装情况
@@ -34,6 +35,7 @@ level_label_lists = {
 }
 
 # 加载歌曲数据
+# TODO：实现中二的metadata加载
 @st.cache_data
 def load_songs_data():
     # metadata已经更换为dxrating数据源
@@ -47,9 +49,33 @@ def load_songs_data():
 songs_data = load_songs_data().get('songs', [])
 assert isinstance(songs_data, list), "songs_data should be a list"
 
+@st.cache_data
+def get_chart_info_from_db(chart_id):
+    """从数据库中获取乐曲（谱面）信息"""
+    return db_handler.load_chart_by_id(chart_id=chart_id)
+
 # --- Data Helper Functions ---
 
-def create_empty_config(game_type="maimai", sub_type="custom"):
+def expand_records_data(simple_records):
+    """Expand simple record data by fetching chart metadata from the database."""
+    expanded_records = []
+    for record in simple_records:
+        chart_id = record.get('chart_id')
+        if chart_id is not None:
+            chart_data = get_chart_info_from_db(chart_id)
+            assert isinstance(chart_data, dict), f"Chart_data should be a dict, got {type(chart_data)}"
+            if chart_data:
+                expanded_record = deepcopy(record)
+                expanded_record['chart_data'] = chart_data
+                expanded_records.append(expanded_record)
+            else:
+                raise LookupError(f"Can not find chart data for chart_id {chart_id} in database!")
+        else:
+            raise KeyError("No chart_id found in record!")
+    return expanded_records
+
+
+def create_empty_archive_meta(game_type="maimai", sub_type="custom"):
     """创建一个临时空白存档元配置，该配置在页面会话中使用，未保存前不会写入数据库"""
     return {
         "game_type": game_type,
@@ -57,27 +83,27 @@ def create_empty_config(game_type="maimai", sub_type="custom"):
         "game_version": "latest",
     }
 
-def create_empty_record(index, game_type="maimai"):
+
+def create_empty_record(chart_data, index, game_type="maimai"):
     """Creates a blank template for a new record."""
     prefix = st.session_state.get("generate_setting", {}).get("clip_prefix", "Clip")
     add_name_index = st.session_state.get("generate_setting", {}).get("auto_index", True)
     auto_all_perfect = st.session_state.get("generate_setting", {}).get("auto_all_perfect", True)
 
     record_template =  {
+                "chart_data": chart_data,
                 "order_in_archive": index - 1,
                 "clip_title_name": f"{prefix}_{index}" if add_name_index else prefix,
-                "chart_id": None,
                 "play_count": 0
             }
 
     match game_type:
         case "maimai":
             record_template.update({
-                "achievements": 101.0000 if auto_all_perfect else 0.0,
+                "achievement": 101.0000 if auto_all_perfect else 0.0,
                 "fc_status": "app" if auto_all_perfect else "",
                 "fs_status": "fsdp" if auto_all_perfect else "",
                 "dx_rating": 0,
-                "rate": "sssp" if auto_all_perfect else "d",
                 "dx_score": 0,
             })
         case "chunithm":
@@ -85,8 +111,7 @@ def create_empty_record(index, game_type="maimai"):
                 "achievement": 1010000 if auto_all_perfect else 0,
                 "fc_status": "ajc" if auto_all_perfect else "",
                 "fs_status": "fcr" if auto_all_perfect else "",
-                "chuni_rating": 0,
-                "rank": "sssp" if auto_all_perfect else "d",
+                "chuni_rating": 0.0,
             })
             
         case _:
@@ -94,28 +119,29 @@ def create_empty_record(index, game_type="maimai"):
     
     return record_template
 
-def create_record_from_song(chart_data, game_type, index):
-    """从已有乐曲元数据创建一条新记录，TODO：在session_state中缓存chart_data和record_data，不先写入数据库
-    """
-    # 获取对应chart_id（若不存在则创建）
-    chart_id = db_handler.get_or_create_chart(chart_data)
 
-    
-    # record = create_empty_record(index, game_type=game_type)
-    # record.update({
-    #     "chart_id": chart_id,
-    # })
-    # return record
-    return create_empty_record(index, game_type=game_type) | {"chart_id": chart_id}
+def save_current_archive():
+    # 更新当前存档的元信息到数据库
+    if 'username' in st.session_state and 'archive_name' in st.session_state:
+        try:
+            db_handler.update_archive_metadata(
+                st.session_state.username,
+                st.session_state.archive_name,
+                st.session_state.archive_meta
+            )
+            st.toast("存档信息已保存到数据库！")
+        except Exception as e:
+            st.error(f"保存失败: {e}, {traceback.format_exc()}")
+    else:
+        st.error("无法保存，未加载有效的用户或存档。")
 
-def save_custom_config():
-    """TODO: 中间层处理保存逻辑"""
-    save_changes_to_db()
+    # 更新所有记录
+    update_records_to_db()
 
-def save_changes_to_db():
-    """Saves the current state of records in the session to the database.
-        逻辑：检查所有的record和chart，并更新到对应的archive_name总
-    """
+
+def update_records_to_db():
+    """Saves the current state of records in the session to the database."""
+    # TODO:保存时处理order in archives
     if 'username' in st.session_state and 'archive_name' in st.session_state:
         try:
             db_handler.update_archive_records(
@@ -125,44 +151,11 @@ def save_changes_to_db():
             )
             st.toast("更改已保存到数据库！")
         except Exception as e:
-            st.error(f"保存失败: {e}")
+            st.error(f"保存失败: {e}, {traceback.format_exc()}")
     else:
         st.error("无法保存，未加载有效的用户或存档。")
 
 # --- UI Dialogs ---
-
-# TODO: 从弹窗修改为单独的折叠块
-@st.dialog("编辑存档基本信息")
-def edit_config_info():
-    current_config = st.session_state.custom_config
-    st.write(f"用户名：{st.session_state.username}，存档时间：{st.session_state.save_id}")
-    game_type = st.radio(
-        "选择存档游戏类型",
-        options=["maimai"],
-        index= 0 if current_config["type"] == "maimai" else 0,
-    )
-    sub_type = st.radio(
-        "是否为BestXX存档（若选择为best，则视频渲染将倒序进行）", 
-        options=["custom", "best"],
-        index= 1 if current_config["sub_type"] in ["ap", "best"] else 0,
-    )
-    rating = st.number_input(
-        "Rating 值（可选）",
-        value=current_config.get("rating", 0),
-        min_value=0,
-        max_value=20000
-    )
-
-    if st.button("保存"):
-        current_config["game_type"] = game_type
-        current_config["sub_type"] = sub_type
-        current_config["rating"] = rating
-        
-        st.session_state.custom_config = current_config
-        save_custom_config()
-        st.rerun()
-    if st.button("取消"):
-        st.rerun()
 
 @st.dialog("清空数据确认")
 def confirm_clear_records(title, clear_function):
@@ -176,26 +169,22 @@ def confirm_clear_records(title, clear_function):
 
 # --- Other Helper Functions ---
 
-def dataframe_auto_calculate(game_type, edited_df):
-    # 根据填写数值自动计算其他字段
-    for record in edited_df:
-        # 计算level_index
-        level_index = level_label_to_index(game_type, record.get('level_label', 'MASTER'))
-        record['level_index'] = level_index
+def get_chart_info_str(record: dict, game_type="maimai", split='|'):
+    """根据record中的chart_data，返回乐曲信息的字符串表示"""
+    chart_data = record.get('chart_data', {})
+    title = chart_data.get('song_name', '')
+    chart_type = chart_type_value2str(chart_data.get('chart_type', -1), game_type=game_type)
+    level_label = level_label_lists[game_type][chart_data.get('level_index', '3')] # default to MASTER
+    return f"{title} {split} {level_label} [{chart_type}]"
 
-        # 计算level
-        # 将record['ds']切分为整数部分和小数部分
-        ds_l, ds_p = str(record.get('ds', 0.0)).split('.')
-        # ds_p取第一位整数
-        ds_p = int(ds_p[0])
-        plus = '+' if ds_p > 6 else ''
-        record['level'] = f"{ds_l}{plus}"
-        # print(f"ds: {record['ds']} | level: {record['level']}")
 
-        # 计算rate
-        record['rate'] = get_rate(record['achievements'])
-        # print(f"achievements: {record['achievements']} | rate: {record['rate']}")
+def get_showing_records(records, game_type="maimai"):
+    """根据存档类型，返回排序后的记录列表"""
+    ret_records = deepcopy(records)
+    for r in ret_records:
+        r['chart_info'] = get_chart_info_str(r, game_type=game_type, split='|')
 
+    return ret_records
 
 # --- Streamlit Page Components ---
 
@@ -204,94 +193,91 @@ def update_records_count(placeholder):
 
 
 def update_record_grid(grid, external_placeholder):
+
+    def recover_edited_records(edited_df):
+        # 由于 st.data_editor 会将dict对象序列化，从组件df数据更新时需要反序列化chart_data
+        to_update_records = deepcopy(edited_df)
+        for r in to_update_records:
+            r.pop('chart_info', None) # 清理chart_info
+            chart_data = r.get('chart_data', {})
+            if isinstance(chart_data, str):
+            # 反序列化解析chart_data
+                try:
+                    # 使用 ast.literal_eval 处理可能包含单引号的字符串
+                    chart_data = ast.literal_eval(chart_data)
+                    r['chart_data'] = chart_data
+                except (ValueError, SyntaxError):
+                    return "Invalid chart data occurs when trying to save edited records."
+        return to_update_records
+        
     with grid.container(border=True):
+        game_type = st.session_state.archive_meta.get("game_type", "maimai")
+
         # 显示和编辑现有记录
         if st.session_state.records:
+            showing_records = get_showing_records(st.session_state.records, game_type=game_type)
             st.write("在此表格中编辑记录")
             st.warning("注意：修改表格中的记录内容后，请务必点击‘保存编辑’按钮！未保存修改的情况下使用上方按钮添加新记录将会导致修改内容丢失！")
             
             # 创建数据编辑器
-            # TODO:区分舞萌和中二
-            edited_records = st.data_editor(
-                st.session_state.records,
-                column_order=["clip_name", "song_id", "title", "type", "level_label",
-                            "ds", "achievements", "fc", "fs", "ra", "rate", "dxScore", "playCount"],
-                column_config={
-                    "clip_name": "抬头标题",
-                    "song_id": "曲ID",
-                    "title": "曲名",
-                    "type": st.column_config.SelectboxColumn(
-                        "类型",
-                        options=["SD", "DX"],
-                        width=60,
-                        required=True
-                    ),
-                    "level_label": st.column_config.SelectboxColumn(
-                        "难度", 
-                        options=level_label_lists.get(st.session_state.custom_config.get("game_type", "maimai"), 
-                                                      ["BASIC", "ADVANCED", "EXPERT", "MASTER", "RE:MASTER"]),
-                        width=100,
-                        required=True,
-                    ),
-                    "ds": st.column_config.NumberColumn(
-                        "定数",
-                        min_value=1.0,
-                        max_value=15.0,
-                        format="%.1f",
-                        width=60,
-                        required=True
-                    ),
-                    "achievements": st.column_config.NumberColumn(
-                        "达成率",
-                        min_value=0.0,
-                        max_value=101.0,
-                        format="%.4f",
-                        required=True
-                    ),
-                    "fc": st.column_config.SelectboxColumn(
-                        "FC标",
-                        options=["", "fc", "fcp", "ap", "app"],
-                        width=60,
-                        required=False
-                    ),
-                    "fs": st.column_config.SelectboxColumn(
-                        "Sync标",
-                        options=["", "sync", "fs", "fsp", "fsd", "fsdp"],
-                        width=60,
-                        required=False
-                    ),
-                    "ra": st.column_config.NumberColumn(
-                        "单曲Ra",
-                        format="%d",
-                        width=65,
-                        required=True
-                    ),
-                    "dxScore": st.column_config.NumberColumn(
-                        "DX分数",
-                        format="%d",
-                        width=80,
-                        required=True
-                    ),
-                    "playCount": st.column_config.NumberColumn(
-                        "游玩次数",
-                        format="%d",
-                        required=False
-                    )
-                },
-                num_rows="dynamic",
-                height=400,
-                width='stretch'
-            )
-            
-            # 自动计算其他字段（注意：不含ra）
-            if edited_records is not None:
-                dataframe_auto_calculate(st.session_state.custom_config.get("game_type", "maimai"), edited_records)
+            if game_type == "maimai":
+                edited_records = st.data_editor(
+                    showing_records,
+                    column_order=["clip_title_name", "chart_info", "achievement", "fc_status", "fs_status", "dx_rating", "dx_score", "play_count"],
+                    column_config={
+                        "clip_title_name": "抬头标题",
+                        "chart_info": "乐曲信息",
+                        "achievement": st.column_config.NumberColumn(
+                            "达成率",
+                            min_value=0.0,
+                            max_value=101.0,
+                            format="%.4f",
+                            required=True
+                        ),
+                        "fc_status": st.column_config.SelectboxColumn(
+                            "FC标",
+                            options=["", "fc", "fcp", "ap", "app"],
+                            width=60,
+                            required=False
+                        ),
+                        "fs_status": st.column_config.SelectboxColumn(
+                            "Sync标",
+                            options=["", "sync", "fs", "fsp", "fsd", "fsdp"],
+                            width=60,
+                            required=False
+                        ),
+                        "dx_rating": st.column_config.NumberColumn(
+                            "单曲Ra",
+                            format="%d",
+                            width=65,
+                            required=True
+                        ),
+                        "dx_score": st.column_config.NumberColumn(
+                            "DX分数",
+                            format="%d",
+                            width=80,
+                            required=True
+                        ),
+                        "play_count": st.column_config.NumberColumn(
+                            "游玩次数",
+                            format="%d",
+                            required=False
+                        )
+                    },
+                    num_rows="dynamic",
+                    height=400,
+                    width='stretch'
+                )
+            elif game_type == "chunithm":
+                raise NotImplementedError("Chunithm record editing not implemented yet.")
+            else:
+                raise ValueError(f"Unsupported game type: {game_type}")
 
             # 更新记录
             if st.button("保存编辑"):
                 if edited_records is not None:
-                    st.session_state.records = edited_records
-                    save_custom_config()
+                    st.session_state.records = recover_edited_records(edited_records)
+                    save_current_archive()
                     update_records_count(external_placeholder)  # 更新外部记录数量的显示
 
             # 记录管理按钮
@@ -312,61 +298,21 @@ def update_record_grid(grid, external_placeholder):
         else:
             st.write("当前没有记录，请添加记录。")
 
-
-# def search_music_metadata(search_keyword):
-#     return search_songs(search_keyword, songs_data)
-
-
-# def search_and_add_record() -> list:
-#     with st.container():
-#         level_label = st.radio(
-#             "要搜索谱面的难度分类",
-#             help="请注意，如果搜索到的乐曲没有Re:MASTER谱面，将使用其MASTER谱面数据填充记录",
-#             options=level_label_lists.get(st.session_state.custom_config.get("game_type", "maimai"),
-#                                           ["BASIC", "ADVANCED", "EXPERT", "MASTER", "RE:MASTER"]),
-#             index=3,
-#             horizontal=True,
-#         )
-
-#     selected_value = st_searchbox(
-#         search_music_metadata,
-#         placeholder="输入关键词进行搜索（支持：歌曲名 / 曲师名 / 歌曲别名）",
-#         key="searchbox",
-#         rerun_scope="app"
-#     )
-#     song_metadata = selected_value
-    
-#     if st.button("添加此记录", disabled=not selected_value):
-#         try:
-            
-#             new_record = create_record_from_song(
-#                 song_metadata,
-#                 level_label,
-#                 len(st.session_state.records) + 1
-#             )
-#             st.session_state.records.append(new_record)
-#             st.toast(f"已添加歌曲{song_metadata['name']}的记录")
-#             st.rerun()
-#         except ValueError as e:
-#             st.error(f"添加记录失败: {e}")
-#             traceback.print_exc()
-
-
-def clear_all_records_achievement():
-    # TODO: 修改格式
-    for record in st.session_state.records:
-        record["achievements"] = 0.0
-        record["fc"] = ""
-        record["fs"] = ""
-        record["ra"] = 0
-        record["rate"] = "d"
-        record["dxScore"] = 0
-    save_custom_config()
+def clear_all_records_achievement():    
+    # TODO: 修改格式和处理中二
+    if st.session_state.archive_meta.get("game_type", "maimai") == "maimai":
+        for record in st.session_state.records:
+            record["achievements"] = 0.0
+            record["fc_status"] = ""
+            record["fs_status"] = ""
+            record["dx_rating"] = 0
+            record["dx_score"] = 0
+        save_current_archive()
 
 
 def clear_all_records():
     st.session_state.records = []
-    save_custom_config()
+    save_current_archive()
 
 # =============================================================================
 # Page layout starts here
@@ -402,11 +348,11 @@ if not st.session_state.get("username", None):
 #     本页面的会话状态包含：
 #     - username: 当前用户名
 #     - archive_name: 当前存档名，用于从数据库加载和保存存档
-#     - custom_config: 当前存档的元配置（临时缓存，未保存前不会写入数据库）
+#     - archive_meta: 当前存档的元配置（临时缓存，未保存前不会写入数据库）
 #     - records: 当前存档的所有记录（列表，临时缓存，未保存前不会写入数据库）
 # """
-if "custom_config" not in st.session_state:
-    st.session_state.custom_config = create_empty_config()
+if "archive_meta" not in st.session_state:
+    st.session_state.archive_meta = create_empty_archive_meta()
 if "records" not in st.session_state:
     st.session_state.records = []
 if "generate_setting" not in st.session_state:
@@ -443,9 +389,19 @@ with st.container(border=True):
             index=current_archive_index
         )
         if st.button("加载此存档进行编辑"):
-            b50_data = db_handler.load_archive_b50_data(username, selected_archive_name)
-            if b50_data:
-                st.session_state.records = b50_data.get('records', [])
+        
+            simple_record_data = db_handler.load_archive_records(username, selected_archive_name)           
+            st.session_state.records = expand_records_data(simple_record_data)
+
+            archive_data = db_handler.load_archive_metadata(username, selected_archive_name)
+            if archive_data:
+                updated_game_type = archive_data.get("game_type", "maimai")
+                st.session_state.archive_meta = {
+                    "game_type": updated_game_type,
+                    "sub_type": archive_data.get("sub_type", "custom"),
+                    "game_version": archive_data.get("game_version", "latest"),
+                    "rating": archive_data.get("rating_mai", 0) if updated_game_type == "maimai" else archive_data.get("rating_chu", 0.0)
+                }
                 st.session_state.archive_name = selected_archive_name
                 st.success(f"已加载存档 **{selected_archive_name}** ，共 {len(st.session_state.records)} 条记录。")
                 st.rerun()
@@ -457,27 +413,27 @@ with st.container(border=True):
 
     with st.container(border=True):
         st.write("新建存档选项")
-        st.session_state.custom_config['game_type'] = st.radio(
+        st.session_state.archive_meta['game_type'] = st.radio(
             "选择存档游戏类型",
             options=["maimai", "chunithm"],
             index=0,
             horizontal=True
         )
-        st.session_state.custom_config['sub_type'] = st.radio(
+        st.session_state.archive_meta['sub_type'] = st.radio(
             "存档记录顺序（best：倒序， custom：正序）", 
             options=["custom", "best"],
             index=1,
             horizontal=True
         )
         with st.expander("其他选项", expanded=False):
-            st.session_state.custom_config['game_version'] = st.selectbox(
+            st.session_state.archive_meta['game_version'] = st.selectbox(
                 "存档游戏版本（默认与数据库保持最新）",
                 options=["latest"],
                 index=0
             )
-            st.session_state.custom_config['rating'] = st.text_input(
+            st.session_state.archive_meta['rating'] = st.text_input(
                 "存档Rating值（可选）",
-                value=st.session_state.custom_config.get('rating', 0)
+                value=st.session_state.archive_meta.get('rating', 0)
             )
 
     if st.button("新建空白存档"):
@@ -490,7 +446,7 @@ with st.container(border=True):
 # 存档记录编辑部分
 if 'archive_name' in st.session_state and st.session_state.archive_name:
     st.subheader(f"正在编辑: {st.session_state.archive_name}")
-    cur_game_type = st.session_state.custom_config.get("game_type", "maimai")
+    cur_game_type = st.session_state.archive_meta.get("game_type", "maimai")
     st.markdown(f"> 当前存档游戏类型: **{cur_game_type}**")
 
     with st.expander("添加或修改记录", expanded=True):
@@ -518,7 +474,7 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
             if st.button("➕ 添加选中歌曲", disabled=not search_result, width='stretch'):
                 print(f"Search result: {search_result}")
                 new_index = len(st.session_state.records) + 1
-                new_record = create_record_from_song(search_result, game_type=cur_game_type, index=new_index)
+                new_record = create_empty_record(search_result, game_type=cur_game_type, index=new_index)
                 st.session_state.records.append(new_record)
                 st.success("已添加空白记录")
 
@@ -530,31 +486,31 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
         update_record_grid(record_grid, record_count_placeholder)  # 更新记录表格的显示
     
     with st.expander("修改存档基本信息", expanded=False):
-        st.session_state.custom_config['sub_type'] = st.radio(
+        st.session_state.archive_meta['sub_type'] = st.radio(
             "修改存档记录顺序（best：倒序， custom：正序）", 
             options=["custom", "best"],
-            index=1 if st.session_state.custom_config["sub_type"] == "custom" else 0,
+            index=1 if st.session_state.archive_meta["sub_type"] == "custom" else 0,
             horizontal=True
         )
         with st.expander("其他选项", expanded=False):
             st.warning("修改存档类型会清空当前存档的所有记录，请谨慎操作！")
-            st.session_state.custom_config['game_type'] = st.radio(
+            st.session_state.archive_meta['game_type'] = st.radio(
                 "修改存档类型",
                 options=["maimai", "chunithm"],
-                index=0 if st.session_state.custom_config["game_type"] == "maimai" else 1,
+                index=0 if st.session_state.archive_meta["game_type"] == "maimai" else 1,
                 horizontal=True
             )
-            st.session_state.custom_config['game_version'] = st.selectbox(
+            st.session_state.archive_meta['game_version'] = st.selectbox(
                 "修改存档游戏版本（默认与数据库保持最新）",
                 options=["latest"],
                 index=0
             )
-            st.session_state.custom_config['rating'] = st.text_input(
+            st.session_state.archive_meta['rating'] = st.text_input(
                 "修改存档Rating值",
-                value=st.session_state.custom_config.get('rating', 0)
+                value=st.session_state.archive_meta.get('rating', 0)
             )
         if st.button("保存更改"):
-            save_custom_config()
+            save_current_archive()
             st.success("存档信息已保存")
             st.rerun()
 
@@ -563,8 +519,7 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
         # 用于排序显示的记录（字符串）
         display_tags = []
         for i, record in enumerate(st.session_state.records):
-            # TODO: level_index需要转换为level_label, type需要转换为中文
-            read_string = f"{record['title'] or '无曲目'} | {record['level_index'] or '无难度'} [{record['type'] or '-'}]"
+            read_string = get_chart_info_str(record, game_type=cur_game_type)
             display_tags.append(f"(#{i+1}) {read_string}")
 
         simple_style = """
@@ -604,12 +559,9 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("应用排序更改"):
-                    # 需要同步clip id
-                    for i, record in enumerate(sorted_records):
-                        record["clip_id"] = f"clip_{i+1}"
                     st.session_state.records = sorted_records
                     # 更改排序后需要保存到文件
-                    save_custom_config()
+                    save_current_archive()
                     st.rerun()
             with col2:
                 if st.button("同步抬头标题后缀与当前排序一致",
@@ -618,12 +570,12 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
                     # （手动）同步clip name
                     for i, record in enumerate(st.session_state.records):
                         record["clip_name"] = f"{st.session_state.generate_setting['clip_prefix']}_{i+1}"
-                    save_custom_config()
+                    save_current_archive()
                     st.rerun()
 
     # 导航功能按钮
     with st.container(border=True):       
         if st.button("继续下一步"):
-            save_custom_config()
+            save_current_archive()
             st.session_state.data_updated_step1 = True
             st.switch_page("st_pages/Generate_Pic_Resources.py")

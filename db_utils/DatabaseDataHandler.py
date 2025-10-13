@@ -104,18 +104,46 @@ class DatabaseDataHandler:
     # --------------------------------------
     # Chart table handler
     # --------------------------------------
-    def get_or_create_chart(self, chart_data: Dict) -> int:
+    def load_or_create_chart_by_data(self, chart_data: Dict) -> int:
         """Get or create a chart entry in the database from metadata."""
 
         chart_id = self.db.get_or_create_chart(chart_data)
         return chart_id
+    
+    def load_chart_by_id(self, chart_id: int) -> Optional[Dict]:
+        """Retrieve chart metadata by chart_id"""
+        return self.db.get_chart(chart_id)
 
     # --------------------------------------
     # Record and archive update handler from json data
     # --------------------------------------
+    def update_archive_metadata(self, username: str, archive_name: str, metadata: Dict) -> bool:
+        """Update metadata fields of an existing archive."""
+        archive_id = self.load_save_archive(username, archive_name)
+        if not archive_id:
+            raise ValueError(f"Archive '{archive_name}' not found for user '{username}'")
+        
+        allowed_fields = ['archive_name', 'game_type', 'sub_type', 'rating_mai', 'rating_chu', 'game_version']
+        update_data = {k: v for k, v in metadata.items() if k in allowed_fields}
+        
+        if update_data:
+            self.db.update_archive(archive_id, update_data)
+            return True
+        return False
+
     def update_archive_records(self, username: str, new_records_data: List[Dict], archive_name: str) -> int:
         """
         Smartly updates records in an archive based on new data.
+        Input new_records_data format:
+            [
+                {
+                    "chart_data": { ... },  # Chart metadata for get_or_create_chart
+                    "order_in_archive": 0,
+                    "achievement": 100.6225,
+                    ... # Same fields as in record table except ids
+                }
+            ]   
+        Progressively:
         - Updates existing records.
         - Adds new records.
         - Deletes old records not present in the new data.
@@ -134,24 +162,23 @@ class DatabaseDataHandler:
         with self.db.get_connection() as conn: # Use a single transaction
             for i, record_data in enumerate(new_records_data):
                 # 1. Get or create the chart for the incoming record
-                chart_data = self._extract_chart_data(record_data)  # TODO: check chart_data format
+                chart_data = record_data.get('chart_data')
+                if not chart_data:
+                    raise ValueError("Each record must include 'chart_data' field.")
                 chart_id = self.db.get_or_create_chart(chart_data)
                 processed_chart_ids.add(chart_id)
 
-                # 2. Prepare record data
-                # TODO: 检查Order是否需要调整
-                record_update_data = self._prepare_record_data(record_data, order=i)
-
-                # 3. Check if this chart already has a record in the archive
+                # print(f"Updating record for chart_id {chart_id} with data: {record_data}")
+                # 2. Check if this chart already has a record in the archive
                 if chart_id in existing_records_map:
                     # It exists, so update it
                     existing_record = existing_records_map[chart_id]
-                    self.db.update_record(existing_record['id'], record_update_data)
+                    self.db.update_record(existing_record['id'], record_data)
                 else:
                     # It's a new record for this archive, so add it
-                    self.db.add_record(archive_id, chart_id, record_update_data)
+                    self.db.add_record(archive_id, chart_id, record_data)
             
-            # 4. Determine which records to delete
+            # 3. Determine which records to delete
             chart_ids_to_delete = set(existing_records_map.keys()) - processed_chart_ids
             record_ids_to_delete = [
                 rec['id'] for chart_id, rec in existing_records_map.items() 
@@ -228,8 +255,31 @@ class DatabaseDataHandler:
 
         return new_archive_id, new_archive_name
 
-    def load_archive_b50_data(self, username: str, archive_name: str = None) -> Optional[Dict]:
-        """Load B50 data from database, formatted for backward compatibility."""
+    # --------------------------------------
+    # Archive, Record, and Config loaders and joint query handlers
+    # --------------------------------------
+
+    def load_archive_metadata(self, username: str, archive_name: str) -> Optional[Dict]:
+        """Load metadata for a given archive."""
+        archive_id = self.load_save_archive(username, archive_name)
+        if not archive_id:
+            return None
+        
+        archive = self.db.get_archive(archive_id)
+        return archive
+
+    def load_archive_records(self, username: str, archive_name: str) -> List[Dict]:
+        """Load all records for a given archive."""
+        archive_id = self.load_save_archive(username, archive_name)
+        if not archive_id:
+            return []
+        
+        records = self.db.get_archive_records_simple(archive_id)
+        return records
+
+    def load_archive_as_old_b50_config(self, username: str, archive_name: str = None) -> Optional[Dict]:
+        """Load B50 data from database.
+           Supported game_type = maimai only, formatted for backward (v0.5~v0.6) compatibility."""
         archive_id = self.load_save_archive(username, archive_name)
         if not archive_id:
             return None
@@ -237,13 +287,16 @@ class DatabaseDataHandler:
         archive = self.db.get_archive(archive_id)
         if not archive: 
             return None
+        
+        game_type = archive['game_type']
+        if game_type != 'maimai':
+            raise NotImplementedError("Only 'maimai' game type is supported for old b50 format.")
 
         records = self.db.get_records_for_video_generation(archive_id)
-        
         # Reconstruct b50_data format
         b50_data = {
             'version': self.db.get_schema_version(),
-            'type': archive['game_type'],
+            'type': game_type,
             'sub_type': archive['sub_type'],
             'username': username,
             'rating_mai': archive['rating_mai'],
@@ -273,6 +326,24 @@ class DatabaseDataHandler:
 
         return b50_data
     
+    def load_archive_complete_config(self, username: str, archive_name: str) -> Optional[Dict]:
+        """Load complete archive info including metadata, all records with full video config."""
+        archive_id = self.load_save_archive(username, archive_name)
+        if not archive_id:
+            return None
+        
+        archive = self.db.get_archive(archive_id)
+        if not archive:
+            return None
+        
+        records = self.db.get_records_for_video_generation(archive_id)
+        
+        complete_info = {
+            'archive': archive,
+            'records': records
+        }
+        return complete_info
+
     # --------------------------------------
     # Configuration table and
     # Video_extra_configs table handler using video_config format
@@ -359,40 +430,6 @@ class DatabaseDataHandler:
         
         return video_config
     
-    # --------------------------------------
-    # Internal Helper methods
-    # TODO: Refactor if needed
-    # --------------------------------------
-
-    def _extract_chart_data(self, record_data: Dict) -> Dict:
-        """Fish-style chart data to standard chart table format."""
-        return {
-            'game_type': record_data.get('game_type', 'maimai'),
-            'song_id': str(record_data.get('title')),
-            'chart_type': chart_type_str2value(record_data.get('type'), fish_record_style=True), 
-            'level_index': record_data.get('level_index'),
-            'difficulty': record_data.get('ds'), 
-            'song_name': record_data.get('title'),
-            'artist': record_data.get('artist', None), # TODO：部分歌曲信息需要从元数据查询
-            'max_dx_score': record_data.get('max_dx_score', None),
-            'video_path': record_data.get('video_path', None)
-        }
-
-    def _prepare_record_data(self, record_data: Dict, order: int) -> Dict:
-        """Prepares record-specific fields for database insertion/update."""
-        return {
-            'order_in_archive': order,
-            'achievement': record_data.get('achievements'), # 'achievements' in old format
-            'fc_status': record_data.get('fc'),
-            'fs_status': record_data.get('fs'),
-            'dx_score': record_data.get('dxScore', None),
-            'dx_rating': record_data.get('ra', 0),
-            'chuni_rating': record_data.get('chuni_rating', 0),
-            'play_count': record_data.get('play_count', 0),
-            'clip_title_name': record_data.get('clip_title_name'),
-            'raw_data': record_data # Store the original record for full fidelity
-        }
-    
     # ----------------------------------
     # Migration helpers
     # TODO: Not finished, refactor to migration old data under v0.6
@@ -405,7 +442,7 @@ class DatabaseDataHandler:
     
     def export_to_json(self, username: str, archive_name: str, output_path: str):
         """Export archive data to JSON format for backup"""
-        b50_data = self.load_archive_b50_data(username, archive_name)
+        b50_data = self.load_archive_as_old_b50_config(username, archive_name)
         video_config = self.load_video_config(username, archive_name)
         
         export_data = {
@@ -431,7 +468,7 @@ def get_database_handler() -> "DatabaseDataHandler":
 def load_user_data(username: str, archive_name: str = None) -> Optional[Dict]:
     """Load user B50 data (backward compatibility)"""
     handler = get_database_handler()
-    return handler.load_archive_b50_data(username, archive_name)
+    return handler.load_archive_as_old_b50_config(username, archive_name)
 
 
 def update_user_data(username: str, b50_data: Dict, archive_name: str = None) -> int:

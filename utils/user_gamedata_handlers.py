@@ -7,7 +7,7 @@ import json
 import requests
 
 from utils.dxnet_extension import ChartManager
-from utils.DataUtils import FC_PROXY_ENDPOINT
+from utils.DataUtils import FC_PROXY_ENDPOINT, fish_to_new_record_format
 
 LEVEL_LABEL = ["Basic", "Advanced", "Expert", "Master", "Re:MASTER"]
 
@@ -116,18 +116,17 @@ def generate_config_file_from_fish(fish_data, params) -> dict:
             b15_data = charts_data['dx']
 
             # 为初始化数据添加clip_title_name字段，
-            # 备注：对于水鱼返回的数据，只做这一项默认字段名的添加，
-            # DatabaseDataHandler.py中的函数会对谱面和记录数据对齐到数据库做进一步处理
             for i in range(len(b35_data)):
                 song = b35_data[i]
                 song['clip_title_name'] = f"PastBest_{i + 1}"
 
             for i in range(len(b15_data)):
                 song = b15_data[i]
-                song['clip_title_name'] = f"NewBest_{i + 1}"
-            
+                song['clip_title_name'] = f"NewBest_{i + 1}" 
             # 合并b35_data和b15_data到同一列表
             b50_data = b35_data + b15_data
+            # 统一转换为数据库记录格式
+            new_record_data = [fish_to_new_record_format(song, type) for song in b50_data]
 
             new_archive_data = {
                 "type": type,
@@ -135,7 +134,7 @@ def generate_config_file_from_fish(fish_data, params) -> dict:
                 "username": fish_data['username'],
                 "rating_mai": fish_data['rating'],
                 "game_version": "latest_CN",
-                "initial_records": b50_data
+                "initial_records": new_record_data
             }
         else:
             if not filter:
@@ -463,6 +462,8 @@ def generate_data_file_int(parsed_data, params) -> dict:
             
             # 合并b35_data和b15_data到同一列表
             b50_data = b35_data + b15_data
+            # 统一转换为数据库记录格式
+            new_record_data = [fish_to_new_record_format(song, type) for song in b50_data]
             
             new_archive_data = {
                 "type": type,
@@ -470,7 +471,7 @@ def generate_data_file_int(parsed_data, params) -> dict:
                 "username": parsed_data["username"],
                 "rating": parsed_data["rating"],
                 "game_version": "latest_INTL",
-                "initial_records": b50_data
+                "initial_records": new_record_data
             }
 
         return new_archive_data
