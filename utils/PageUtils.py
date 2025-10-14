@@ -15,14 +15,13 @@ from typing import Tuple
 
 DEFAULT_STYLE_CONFIG_FILE_PATH = "./static/video_style_config.json"
 
-# TODO：迁移所有和歌曲数据格式相关的实现为dxrating项目的格式（参考dxdata.json)
-LEVEL_LABELS = {
-    0: "BASIC",
-    1: "ADVANCED",
-    2: "EXPERT",
-    3: "MASTER",
-    4: "RE:MASTER",
-}
+# LEVEL_LABELS = {
+#     0: "BASIC",
+#     1: "ADVANCED",
+#     2: "EXPERT",
+#     3: "MASTER",
+#     4: "RE:MASTER",
+# }
 
 
 def remove_invalid_chars(text: str) -> str:
@@ -68,6 +67,14 @@ def write_global_config(config):
             yaml.dump(config, f)
     except Exception as e:
         print(f"Error writing global config: {e}")
+
+# r/w video_style_config.json
+def load_style_config(config_file=DEFAULT_STYLE_CONFIG_FILE_PATH):
+    if os.path.exists(config_file):
+        with open(config_file, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return None
+
 
 def update_music_metadata():
     # TODO: 替换为更新dxrating源
