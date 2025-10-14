@@ -1,11 +1,20 @@
 import os
 from datetime import datetime
 
-# TODO: 重构，只保留缓存相关的路径函数
-
 def get_user_base_dir(username):
     """Get base directory for user data"""
     return os.path.join("b50_datas", username)
+
+def get_user_media_dir(username):
+    """Get media directory for user data"""
+    base_dir = get_user_base_dir(username)
+    return {
+        'raw_file': os.path.join(base_dir, "b50_raw.json"),
+        'image_dir': os.path.join(base_dir, "images"),
+        'output_video_dir': os.path.join(base_dir, "videos"),
+    }
+
+# TODO: 重构，下方函数不再使用，替换为仅缓存媒体资源的上方函数
 
 def get_user_version_dir(username, timestamp=None):
     """Get versioned directory for user data"""

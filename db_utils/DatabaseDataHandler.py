@@ -276,6 +276,9 @@ class DatabaseDataHandler:
         
         records = self.db.get_archive_records_simple(archive_id)
         return records
+    
+    def load_archive_for_image_generation(self, username: str, archive_name: str) -> List[Dict]:
+        raise NotImplementedError("This method is deprecated. Use load_archive_complete_config instead.")
 
     def load_archive_as_old_b50_config(self, username: str, archive_name: str = None) -> Optional[Dict]:
         """Load B50 data from database.
