@@ -1,4 +1,3 @@
-from importlib.metadata import metadata
 import streamlit as st
 import os
 import re
@@ -6,13 +5,11 @@ import json
 import ast
 import traceback
 from copy import deepcopy
-from datetime import datetime
-import pandas as pd
 from utils.PathUtils import *
 from utils.PageUtils import get_db_manager, process_username
 from db_utils.DatabaseDataHandler import get_database_handler
 from utils.DataUtils import search_songs, level_label_to_index, chart_type_value2str
-from utils.dxnet_extension import get_rate, parse_level, compute_rating
+from utils.dxnet_extension import compute_rating
 
 # 检查streamlit扩展组件安装情况
 try:
@@ -56,7 +53,7 @@ def get_chart_info_from_db(chart_id):
 
 # --- Data Helper Functions ---
 
-def expand_records_data(simple_records):
+def augment_records_with_chart_data(simple_records):
     """Expand simple record data by fetching chart metadata from the database."""
     expanded_records = []
     for record in simple_records:
@@ -72,6 +69,8 @@ def expand_records_data(simple_records):
                 raise LookupError(f"Can not find chart data for chart_id {chart_id} in database!")
         else:
             raise KeyError("No chart_id found in record!")
+    # 将records按order_in_archive排序
+    expanded_records.sort(key=lambda r: r.get('order_in_archive', 0))
     return expanded_records
 
 
@@ -120,7 +119,28 @@ def create_empty_record(chart_data, index, game_type="maimai"):
     return record_template
 
 
+def save_current_metadata():
+    """Saves the current archive metadata to the database."""
+    # 检查：是否修改了存档类型
+    if 'username' in st.session_state and 'archive_name' in st.session_state and 'archive_meta' in st.session_state:
+        cur_game_type = db_handler.load_archive_metadata(
+            st.session_state.username, st.session_state.archive_name
+        ).get("game_type", "maimai")
+        to_save_game_type = st.session_state.archive_meta.get("game_type", "maimai")
+        if cur_game_type != to_save_game_type:
+            confirm_alter_game_type(cur_game_type, to_save_game_type)
+        else:
+            update_metadata_to_db()
+    else:
+        st.error("无法保存，未加载有效的用户或存档。")
+
 def save_current_archive():
+    """Saves the current archive records to the database."""
+    # 更新所有记录
+    update_records_to_db()
+
+
+def update_metadata_to_db():
     # 更新当前存档的元信息到数据库
     if 'username' in st.session_state and 'archive_name' in st.session_state:
         try:
@@ -135,18 +155,18 @@ def save_current_archive():
     else:
         st.error("无法保存，未加载有效的用户或存档。")
 
-    # 更新所有记录
-    update_records_to_db()
-
 
 def update_records_to_db():
     """Saves the current state of records in the session to the database."""
-    # TODO:保存时处理order in archives
     if 'username' in st.session_state and 'archive_name' in st.session_state:
         try:
+            to_save_records = deepcopy(st.session_state.records)
+            # 按照点击保存按钮时的记录顺序更新order_in_archive
+            for i, record in enumerate(to_save_records):
+                record['order_in_archive'] = i
             db_handler.update_archive_records(
                 st.session_state.username,
-                st.session_state.records,
+                to_save_records,
                 st.session_state.archive_name
             )
             st.toast("更改已保存到数据库！")
@@ -159,13 +179,22 @@ def update_records_to_db():
 
 @st.dialog("清空数据确认")
 def confirm_clear_records(title, clear_function):
-    st.write(f"确定要清空“{title}”的所有记录吗？此操作在点击“保存更改”前不会影响数据库。")
+    st.write(f"确定要{title}吗？此操作在点击“提交存档修改”前不会影响数据库。")
     if st.button("确认清空"):
         clear_function()
         st.rerun()
     if st.button("取消"):
         st.rerun()
 
+@st.dialog("修改存档类型确认")
+def confirm_alter_game_type(cur_game_type, to_save_game_type):
+    st.write(f"确定要将存档类型从 **{cur_game_type}** 修改为 **{to_save_game_type}** 吗？此修改将清空当前存档的所有记录，且不可撤销！")
+    if st.button("确认修改"):
+        st.session_state.records = []
+        update_metadata_to_db()
+        st.rerun()
+    if st.button("取消"):
+        st.rerun()
 
 # --- Other Helper Functions ---
 
@@ -194,20 +223,37 @@ def update_records_count(placeholder):
 
 def update_record_grid(grid, external_placeholder):
 
-    def recover_edited_records(edited_df):
+    def recover_edited_records(edited_df, game_type="maimai"):
         # 由于 st.data_editor 会将dict对象序列化，从组件df数据更新时需要反序列化chart_data
         to_update_records = deepcopy(edited_df)
         for r in to_update_records:
+            # 还原chart_data
             r.pop('chart_info', None) # 清理chart_info
             chart_data = r.get('chart_data', {})
-            if isinstance(chart_data, str):
-            # 反序列化解析chart_data
+            if isinstance(chart_data, str):  # 反序列化解析chart_data
                 try:
                     # 使用 ast.literal_eval 处理可能包含单引号的字符串
                     chart_data = ast.literal_eval(chart_data)
                     r['chart_data'] = chart_data
                 except (ValueError, SyntaxError):
                     return "Invalid chart data occurs when trying to save edited records."
+
+            # 自动计算和填充成绩相关信息
+            difficulty_val = chart_data.get('difficulty')
+            try:
+                ds = float(difficulty_val)
+            except (ValueError, TypeError):
+                ds = 0.0
+            if game_type == "maimai":
+                # 计算dx_rating
+                r['dx_rating'] = compute_rating(ds=ds, score=r.get('achievement', 0.0))
+                # 如果是理论值成绩，填充dx_score
+                if r.get('achievement', 0) >= 101.0:
+                    r['dx_score'] = chart_data.get('max_dx_score', 0)
+            if game_type == "chunithm":
+                # 计算chuni_rating
+                raise NotImplementedError("Chunithm rating calculation not implemented yet.")
+
         return to_update_records
         
     with grid.container(border=True):
@@ -217,7 +263,7 @@ def update_record_grid(grid, external_placeholder):
         if st.session_state.records:
             showing_records = get_showing_records(st.session_state.records, game_type=game_type)
             st.write("在此表格中编辑记录")
-            st.warning("注意：修改表格中的记录内容后，请务必点击‘保存编辑’按钮！未保存修改的情况下使用上方按钮添加新记录将会导致修改内容丢失！")
+            st.warning("注意：添加、删除和修改记录内容后，请务必点击‘提交存档修改’按钮！未保存修改的情况下刷新页面将导致修改内容丢失！")
             
             # 创建数据编辑器
             if game_type == "maimai":
@@ -272,13 +318,10 @@ def update_record_grid(grid, external_placeholder):
                 raise NotImplementedError("Chunithm record editing not implemented yet.")
             else:
                 raise ValueError(f"Unsupported game type: {game_type}")
-
-            # 更新记录
-            if st.button("保存编辑"):
-                if edited_records is not None:
-                    st.session_state.records = recover_edited_records(edited_records)
-                    save_current_archive()
-                    update_records_count(external_placeholder)  # 更新外部记录数量的显示
+            
+            if edited_records is not None:
+                st.session_state.records = recover_edited_records(edited_records, game_type=game_type)
+                update_records_count(external_placeholder)  # 更新外部记录数量的显示
 
             # 记录管理按钮
             col1, col2 = st.columns(2)
@@ -295,8 +338,76 @@ def update_record_grid(grid, external_placeholder):
                         "清空所有记录",
                         clear_all_records
                     )
+
+            # 确认提交按钮
+            if st.button("提交存档修改"):
+                save_current_archive()
+                update_records_count(external_placeholder)  # 更新外部记录数量的显示
         else:
             st.write("当前没有记录，请添加记录。")
+
+
+def update_sortable_items(sort_grid):
+
+    with sort_grid.container(border=True):
+        st.write("手动排序")
+        st.write("拖动下面的列表，以调整分表中记录的展示顺序")
+        # 用于排序显示的记录（字符串）
+        display_tags = []
+        for i, record in enumerate(st.session_state.records):
+            read_string = get_chart_info_str(record, game_type=cur_game_type)
+            clip_name = record.get("clip_title_name", "")
+            display_tags.append(f"{clip_name} | {read_string} (#{i+1})")
+
+        simple_style = """
+        .sortable-component {
+            background-color: #F6F8FA;
+            font-size: 16px;
+            counter-reset: item;
+        }
+        .sortable-item {
+            background-color: black;
+            color: white;
+        }
+        """
+        
+        # 使用streamlit_sortables组件实现拖拽排序
+        with st.container():
+            sorted_tags = sort_items(
+                display_tags,
+                direction="vertical",
+                custom_style=simple_style
+            )
+
+        if sorted_tags:
+            st.session_state.sortable_records = sorted_tags
+            sorted_records = []
+            for tag in sorted_tags:
+                # 提取索引
+                match = re.search(r'\(#(\d+)\)', tag)
+                if not match:
+                    raise ValueError(f"Unable to match index from string {tag}")
+                index = int(match.group(1)) - 1
+                # 根据索引获取记录
+                sorted_records.append(st.session_state.records[index])
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("应用排序更改", key="apply_sort_changes_manual"):
+                    st.session_state.records = sorted_records
+                    save_current_archive()
+                    st.rerun()
+            with col2:
+                if st.button("同步标题后缀与当前排序一致",
+                            help="仅在勾选了自动编号的情况下生效",
+                            disabled=not st.session_state.generate_setting.get("auto_index", False)):
+                    st.session_state.records = sorted_records
+                    # （手动）同步clip name
+                    for i, record in enumerate(st.session_state.records):
+                        record["clip_title_name"] = f"{st.session_state.generate_setting['clip_prefix']}_{i+1}"
+                    save_current_archive()
+                    st.rerun()
+
 
 def clear_all_records_achievement():    
     # TODO: 修改格式和处理中二
@@ -307,12 +418,10 @@ def clear_all_records_achievement():
             record["fs_status"] = ""
             record["dx_rating"] = 0
             record["dx_score"] = 0
-        save_current_archive()
 
 
 def clear_all_records():
     st.session_state.records = []
-    save_current_archive()
 
 # =============================================================================
 # Page layout starts here
@@ -373,6 +482,7 @@ with st.container(border=True):
     st.write(f"当前用户名: **{username}**")
     archives = db_handler.get_user_save_list(username)
     
+    # 读取已有存档
     if not archives:
         st.warning("未找到任何存档。请先新建一个存档。")
     else:
@@ -391,7 +501,7 @@ with st.container(border=True):
         if st.button("加载此存档进行编辑"):
         
             simple_record_data = db_handler.load_archive_records(username, selected_archive_name)           
-            st.session_state.records = expand_records_data(simple_record_data)
+            st.session_state.records = augment_records_with_chart_data(simple_record_data)
 
             archive_data = db_handler.load_archive_metadata(username, selected_archive_name)
             if archive_data:
@@ -419,13 +529,14 @@ with st.container(border=True):
             index=0,
             horizontal=True
         )
-        st.session_state.archive_meta['sub_type'] = st.radio(
-            "存档记录顺序（best：倒序， custom：正序）", 
-            options=["custom", "best"],
-            index=1,
-            horizontal=True
-        )
         with st.expander("其他选项", expanded=False):
+            st.session_state.archive_meta['sub_type'] = st.radio(
+                "存档子类型",
+                help="旧版本中使用best标记从查分器获取的分表， custom标记自定义创建的分表。此标志现在与分表的排序不再相关，生成视频时，成绩的排序将与此页面显示的顺序一致。",
+                options=["custom", "best"],
+                index=1,
+                horizontal=True
+            )
             st.session_state.archive_meta['game_version'] = st.selectbox(
                 "存档游戏版本（默认与数据库保持最新）",
                 options=["latest"],
@@ -436,12 +547,12 @@ with st.container(border=True):
                 value=st.session_state.archive_meta.get('rating', 0)
             )
 
-    if st.button("新建空白存档"):
-        archive_id, archive_name = db_handler.create_new_archive(username, sub_type="custom")
-        st.session_state.archive_name = archive_name
-        st.session_state.records = []
-        st.success(f"已创建并加载新的空白存档: **{archive_name}**")
-        st.rerun()
+        if st.button("新建空白存档"):
+            archive_id, archive_name = db_handler.create_new_archive(username, sub_type="custom")
+            st.session_state.archive_name = archive_name
+            st.session_state.records = []
+            st.success(f"已创建并加载新的空白存档: **{archive_name}**")
+            st.rerun()
 
 # 存档记录编辑部分
 if 'archive_name' in st.session_state and st.session_state.archive_name:
@@ -452,9 +563,11 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
     with st.expander("添加或修改记录", expanded=True):
         st.markdown("#### 添加新记录")
         with st.expander("添加记录设置", expanded=False):
-            st.session_state.generate_setting['clip_prefix'] = st.text_input("抬头标题前缀", value="Clip")
-            st.session_state.generate_setting['auto_index'] = st.checkbox("自动添加序号", value=True)
-            st.session_state.generate_setting['auto_all_perfect'] = st.checkbox("自动AP", value=True)
+            st.session_state.generate_setting['clip_prefix'] = st.text_input("抬头标题前缀", 
+                                                                             help="生成视频时，此标题将展示在对应乐曲的画面上",
+                                                                             value="Clip")
+            st.session_state.generate_setting['auto_index'] = st.checkbox("自动为标题添加后缀序号", value=True)
+            st.session_state.generate_setting['auto_all_perfect'] = st.checkbox("自动填充理论值成绩", value=True)
 
         col1, col2 = st.columns([3, 1])
         with col1:
@@ -481,101 +594,64 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
         record_count_placeholder = st.empty()
         update_records_count(record_count_placeholder)  # 更新记录数量的显示
 
-        st.markdown("#### 修改当前记录")
+        st.markdown("#### 修改当前分表")
         record_grid = st.container()
         update_record_grid(record_grid, record_count_placeholder)  # 更新记录表格的显示
-    
-    with st.expander("修改存档基本信息", expanded=False):
-        st.session_state.archive_meta['sub_type'] = st.radio(
-            "修改存档记录顺序（best：倒序， custom：正序）", 
-            options=["custom", "best"],
-            index=1 if st.session_state.archive_meta["sub_type"] == "custom" else 0,
-            horizontal=True
-        )
-        with st.expander("其他选项", expanded=False):
-            st.warning("修改存档类型会清空当前存档的所有记录，请谨慎操作！")
-            st.session_state.archive_meta['game_type'] = st.radio(
-                "修改存档类型",
-                options=["maimai", "chunithm"],
-                index=0 if st.session_state.archive_meta["game_type"] == "maimai" else 1,
-                horizontal=True
-            )
-            st.session_state.archive_meta['game_version'] = st.selectbox(
-                "修改存档游戏版本（默认与数据库保持最新）",
-                options=["latest"],
-                index=0
-            )
-            st.session_state.archive_meta['rating'] = st.text_input(
-                "修改存档Rating值",
-                value=st.session_state.archive_meta.get('rating', 0)
-            )
-        if st.button("保存更改"):
-            save_current_archive()
-            st.success("存档信息已保存")
-            st.rerun()
 
-    with st.expander("更改记录排序", expanded=True):
-        st.write("拖动下面的列表，以调整记录的顺序")
-        # 用于排序显示的记录（字符串）
-        display_tags = []
-        for i, record in enumerate(st.session_state.records):
-            read_string = get_chart_info_str(record, game_type=cur_game_type)
-            display_tags.append(f"(#{i+1}) {read_string}")
-
-        simple_style = """
-        .sortable-component {
-            background-color: #F6F8FA;
-            font-size: 16px;
-            counter-reset: item;
-        }
-        .sortable-item {
-            background-color: black;
-            color: white;
-        }
-        """
-        
-        # 使用streamlit_sortables组件实现拖拽排序
+    with st.expander("更改分表排序", expanded=True):
+        st.warning("注意：确认排序修改后请点击“应用排序更改”按钮，否则更改不会生效！")
         with st.container(border=True):
-            sorted_tags = sort_items(
-                display_tags,
-                direction="vertical",
-                custom_style=simple_style
-            )
-
-        if sorted_tags:
-            st.session_state.sortable_records = sorted_tags
-            sorted_records = []
-            for tag in sorted_tags:
-                # 提取索引
-                match = re.search(r'\(#(\d+)\)', tag)
-                if not match:
-                    raise ValueError(f"Unable to match index from string {tag}")
-                index = int(match.group(1)) - 1
-                # 根据索引获取记录
-                sorted_records.append(st.session_state.records[index])
-
-            # st.write("Debug: sorted records")
-            # st.write(sorted_records)
-            col1, col2 = st.columns(2)
+            st.write("快速排序")
+            col1, col2, col3 = st.columns(3)
             with col1:
-                if st.button("应用排序更改"):
-                    st.session_state.records = sorted_records
-                    # 更改排序后需要保存到文件
-                    save_current_archive()
+                if st.button("🎯 按达成率降序排序"):
+                    st.session_state.records.sort(key=lambda r: r.get('achievement', 0), reverse=True)
                     st.rerun()
             with col2:
-                if st.button("同步抬头标题后缀与当前排序一致",
-                            help="仅在勾选了自动编号的情况下生效（请先应用排序更改，再点击按钮同步）",
-                            disabled=not st.session_state.generate_setting.get("auto_index", False)):
-                    # （手动）同步clip name
-                    for i, record in enumerate(st.session_state.records):
-                        record["clip_name"] = f"{st.session_state.generate_setting['clip_prefix']}_{i+1}"
-                    save_current_archive()
+                if st.button("⭐ 按rating降序排序"):
+                    ra_key = 'dx_rating' if cur_game_type == 'maimai' else 'chuni_rating'
+                    st.session_state.records.sort(key=lambda r: r.get(ra_key, 0), reverse=True)
                     st.rerun()
+            with col3:
+                if st.button("🎚️ 按定数降序排序"):
+                    st.session_state.records.sort(key=lambda r: r.get('chart_data', {}).get('difficulty', 0), reverse=True)
+                    st.rerun()
+            if st.button("🔁 反转当前分表顺序"):
+                st.session_state.records.reverse()
+                st.rerun()
+            st.divider() # 添加分割线
+            if st.button("应用排序更改", key="apply_sort_changes_auto"):
+                save_current_archive()
+                st.rerun()
+        
+        sort_grid = st.container()
+        update_sortable_items(sort_grid)
+
+
+    with st.expander("修改存档其他信息", expanded=False):
+        st.warning("更改存档类型会清空当前存档的所有记录，请谨慎操作！")
+        st.session_state.archive_meta['game_type'] = st.radio(
+            "修改存档类型",
+            options=["maimai", "chunithm"],
+            index=0 if st.session_state.archive_meta["game_type"] == "maimai" else 1,
+            horizontal=True
+        )
+        st.session_state.archive_meta['game_version'] = st.selectbox(
+            "修改存档游戏版本（默认与数据库保持最新）",
+            options=["latest"],
+            index=0
+        )
+        st.session_state.archive_meta['rating'] = st.text_input(
+            "修改存档Rating值",
+            value=st.session_state.archive_meta.get('rating', 0)
+        )
+        if st.button("提交修改"):
+            save_current_metadata()
+
 
     # 导航功能按钮
     with st.container(border=True):       
         if st.button("继续下一步"):
-            save_current_archive()
+            save_current_archive() # 导航离开页面前保存更改
             st.session_state.data_updated_step1 = True
             st.switch_page("st_pages/Generate_Pic_Resources.py")

@@ -4,14 +4,17 @@ import json
 import traceback
 from datetime import datetime
 from utils.user_gamedata_handlers import fetch_user_gamedata, update_b50_data_int
-from utils.PageUtils import get_db_manager, process_username, open_file_explorer, LEVEL_LABELS
+from utils.PageUtils import get_db_manager, process_username
 from db_utils.DatabaseDataHandler import get_database_handler
 from utils.PathUtils import get_user_base_dir
 import glob
 
 # Get a handler for database operations
 db_handler = get_database_handler()
-maimai_level_label_list = list(LEVEL_LABELS.values())
+level_label_lists = {
+    "maimai": ["BASIC", "ADVANCED", "EXPERT", "MASTER", "RE:MASTER"],
+    "chunithm": ["BASIC", "ADVANCED", "EXPERT", "MASTER", "ULTIMA"]
+}
 
 @st.dialog("b50数据查看", width="large")
 def view_b50_data(username: str, archive_name: str):
@@ -30,13 +33,18 @@ def view_b50_data(username: str, archive_name: str):
     
     st.info("本窗口为只读模式。如需修改，请前往“编辑/创建自定义B50存档”页面。")
 
+    game_type = b50_data.get('type', 'maimai')
+    show_records = b50_data.get('records', [])
+    for record in show_records:
+        level_index = record.get('level_index', 0)
+        record['level_label'] = level_label_lists.get(game_type, [])[level_index]
+
     st.dataframe(
-        b50_data.get('records', []),
-        column_order=["clip_name", "song_id", "title", "type", "level_label",
-                      "ds", "achievements", "fc", "fs", "ra", "dxScore", "playCount"],
+        show_records,
+        column_order=["clip_name",  "title", "type", "level_label",
+                      "ds", "achievements", "fc", "fs", "ra", "dx_score", "play_count"],
         column_config={
             "clip_name": "抬头标题",
-            "song_id": "曲ID",
             "title": "曲名",
             "type": st.column_config.TextColumn("类型", width=40),
             "level_label": st.column_config.TextColumn("难度", width=60),
@@ -45,8 +53,8 @@ def view_b50_data(username: str, archive_name: str):
             "fc": st.column_config.TextColumn("FC", width=40),
             "fs": st.column_config.TextColumn("FS", width=40),
             "ra": st.column_config.NumberColumn("单曲Ra", format="%d", width=75),
-            "dxScore": st.column_config.NumberColumn("DX分数", format="%d", width=75),
-            "playCount": st.column_config.NumberColumn("游玩次数", format="%d")
+            "dx_score": st.column_config.NumberColumn("DX分数", format="%d", width=75),
+            "play_count": st.column_config.NumberColumn("游玩次数", format="%d")
         }
     )
 
