@@ -286,6 +286,10 @@ class PurePytubefixDownloader(Downloader):
             traceback.print_exc()
             return None
 
+    def get_video_pages(self, video_id):
+        # pytubefix暂时不支持获取分p信息，返回空
+        raise NotImplementedError("PurePytubefixDownloader does not support get_video_pages method.")
+
 class BilibiliDownloader(Downloader):
     def __init__(self, proxy=None, no_credential=False, credential_path="cred_datas/bilibili_cred.pkl", search_max_results=3):
         self.proxy = proxy

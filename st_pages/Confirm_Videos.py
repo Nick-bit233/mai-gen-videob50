@@ -138,7 +138,10 @@ def update_editor(placeholder, config, current_index, dl_instance=None):
             title = escape_markdown_text(video_info['title'])
             st.markdown(f"- 视频标题：{title}")
             st.markdown(f"- 链接：[🔗{id}]({video_info['url']}), 总时长: {video_info['duration']}秒")
-            page_info = dl_instance.get_video_pages(id)
+            try:
+                page_info = dl_instance.get_video_pages(id)
+            except Exception as e:
+                page_info = None
             if page_info and 'p_index' in video_info:
                 page_count = video_info['page_count']
                 p_index = video_info['p_index']
