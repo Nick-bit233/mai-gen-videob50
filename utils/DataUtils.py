@@ -7,7 +7,7 @@ import base64
 import hashlib
 import struct
 from PIL import Image
-from typing import Dict
+from typing import Dict, Union
 
 BUCKET_ENDPOINT = "https://nickbit-maigen-images.oss-cn-shanghai.aliyuncs.com"
 FC_PROXY_ENDPOINT = "https://fish-usta-proxy-efexqrwlmf.cn-shanghai.fcapp.run"
@@ -108,6 +108,7 @@ REVERSE_TYPE_MAP_MAIMAI = {
     10: "宴",
     11: "协",
 }
+
 
 @DeprecationWarning
 def download_metadata(data_type="maimaidx"):
@@ -318,13 +319,20 @@ def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tupl
     else:
         raise ValueError("Unsupported game type for search.")
 
-def query_songs_metadata(game_type: str, fish_record: dict) -> dict:
-    songs_data = load_songs_metadata(game_type) # 读取dxrating data（以maimai为例），从中匹配和水鱼查询结果相同的乐曲
-    for song in songs_data:
-        # TODO: 处理title重名的情况（在dxrating data中会加入后缀，而在水鱼查询结果中不会）
-        if song.get('songId') == fish_record.get('title'):
+def query_songs_metadata(game_type: str, title: str, artist: Union[str, None]=None) -> Union[dict, None]:
+    """查询歌曲元数据（按 title 字段匹配；若存在重名则优先匹配 artist）"""
+    songs_data = load_songs_metadata(game_type)  # 读取dxrating data（以maimai为例）
+    matches = [song for song in songs_data if song.get('title') == title]
+    if not matches:
+        return None
+    if len(matches) == 1 or not artist:
+        return matches[0]
+    # 若有多个匹配，尝试按 artist 精确匹配
+    for song in matches:
+        if song.get('artist') == artist:
             return song
-    return None
+    # 未匹配到指定 artist 时返回第一个找到的
+    return matches[0]
 
 def fish_to_new_record_format(fish_record: dict, game_type: str = "maimai") -> dict:
     """
@@ -354,7 +362,7 @@ def fish_to_new_record_format(fish_record: dict, game_type: str = "maimai") -> d
         raise ValueError("Fish record must have a 'title' field to resolve song_id.")
 
     # query artist and other metadata from songs metadata
-    song = query_songs_metadata(game_type, fish_record)
+    song = query_songs_metadata(game_type, fish_record.get('title'), fish_record.get('artist', None))
     if not song:
         raise LookupError(f"Cannot find song metadata for song_id: {resolved_song_id} in game_type: {game_type}")
     
@@ -400,3 +408,27 @@ def fish_to_new_record_format(fish_record: dict, game_type: str = "maimai") -> d
     }
 
     return record
+
+def get_chunithm_ds_next(metadata: dict) -> Union[float, None]:
+    raise NotImplementedError("Chunithm DS Next retrieval not implemented yet.")
+
+def download_image_from_url(image_code: str, source: str = "dxrating") -> Image.Image:
+    if source == "dxrating":
+        url = f"https://shama.dxrating.net/images/cover/v2/{image_code}.jpg"
+    else:
+        raise ValueError("Unsupported image source.")
+
+    response = requests.get(url, stream=True)
+    if response.status_code == 200:
+        img = Image.open(response.raw).convert("RGBA").resize((400, 400), Image.LANCZOS)
+        return img
+    else:
+        print(f"Failed to download image from {url}. Status code: {response.status_code}")
+        raise FileNotFoundError
+
+
+# if __name__ == "__main__":
+#     # Test download_image_from_url
+#     test_image_code = "da8dcd8ae0c0ea46aed773d9ae3b4121da885f1c758d2dd3f9863a72347a014c"
+#     img = download_image_from_url(test_image_code)
+#     img.show()

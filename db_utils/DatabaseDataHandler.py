@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Tuple, Any, Union
 from unittest import case
 from db_utils.DatabaseManager import DatabaseManager
-from utils.DataUtils import chart_type_str2value, level_label_to_index
+from utils.DataUtils import chart_type_str2value, download_image_from_url, get_chunithm_ds_next, level_label_to_index, query_songs_metadata
 import os
 import json
 from datetime import datetime
@@ -276,13 +276,76 @@ class DatabaseDataHandler:
         
         records = self.db.get_archive_records_simple(archive_id)
         return records
-    
-    def load_archive_for_image_generation(self, username: str, archive_name: str) -> List[Dict]:
-        raise NotImplementedError("This method is deprecated. Use load_archive_complete_config instead.")
+
+    def load_archive_for_image_generation(self, archive_id: int) -> List[Dict]:
+        """Load archive data formatted for image generation scripts."""
+        # load game type
+        archive = self.db.get_archive(archive_id)
+        game_type = archive['game_type']
+
+        # load records with complete fields
+        records = self.db.get_records_for_video_generation(archive_id)
+
+        # format data as "style_config" needed by game type
+        ret_records = []
+        if game_type == 'maimai':
+            # 需要从music metadata中获取max dx score以及封面图片
+            for record in records:
+                title = record['song_name']
+                artist = record['artist']
+                # 获取歌曲元数据
+                metadata = query_songs_metadata(game_type, title, artist)
+                image_code = metadata.get('imageName', None)
+                # 下载封面图片
+                jacket_image = download_image_from_url(image_code)
+                reformat_data = {
+                    'song_id': record['song_id'],
+                    'title': title,
+                    'artist': artist,
+                    'type': record['chart_type'],
+                    'level_index': record['level_index'],
+                    'ds': float(record['difficulty']),
+                    'achievements': f"{record['achievement']:.4f}", # Format as string with 4 decimal places
+                    'fc': record['fc_status'],
+                    'fs': record['fs_status'],
+                    'dxScore': record['dx_score'],
+                    'max_dx_score': record['max_dx_score'],
+                    'jacket': jacket_image,
+                    'ra': record['dx_rating'],
+                    'playCount': record['play_count'],
+                    'clip_name': record['clip_title_name'] or f"Clip_{record['order_in_archive'] + 1}"
+                }
+                ret_records.append(reformat_data)
+        elif game_type == 'chunithm':
+            for record in records:
+                title = record['song_name']
+                artist = record['artist']
+                # 获取歌曲元数据
+                metadata = query_songs_metadata(game_type, title, artist)
+                # TODO: 需要从music metadata中获取多版本定数
+                # ds_next = get_chunithm_ds_next(metadata)
+                reformat_data = {
+                    'song_id': record['song_id'],
+                    'title': record['song_name'],
+                    'artist': record['artist'],
+                    'type': record['chart_type'],
+                    'level_index': record['level_index'],
+                    'ds_cur': float(record['difficulty']),
+                    'ds_next': None,
+                    'score': int(record['achievement']), # Format as integer score
+                    'combo_type': record['fc_status'],
+                    'chain_type': record['fs_status'],
+                    'ra': record['chuni_rating'],
+                    'playCount': record['play_count'],
+                    'clip_name': record['clip_title_name'] or f"Clip_{record['order_in_archive'] + 1}"
+                }
+                ret_records.append(reformat_data)
+
+        return game_type, ret_records
 
     def load_archive_as_old_b50_config(self, username: str, archive_name: str = None) -> Optional[Dict]:
-        """Load B50 data from database.
-           Supported game_type = maimai only, formatted for backward (v0.5~v0.6) compatibility."""
+        """Load B50 data (old format) from database.
+           Use only for backward (v0.5~v0.6) compatibility. Supported game_type = maimai only."""
         archive_id = self.load_save_archive(username, archive_name)
         if not archive_id:
             return None

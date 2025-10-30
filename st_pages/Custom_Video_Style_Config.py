@@ -163,6 +163,7 @@ def update_preview_images(style_config, placeholder, test_string):
         record_template['achievements'] = f"{record_template['achievements']:.4f}"
         content_template['main_image'] = test_image_path
         generate_single_image(
+            game_type="maimai",
             style_config=style_config,
             record_detail=record_template,
             output_path=test_image_path,

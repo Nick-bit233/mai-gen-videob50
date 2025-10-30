@@ -6,6 +6,9 @@ from utils.DataUtils import download_image_data, CHART_TYPE_MAP_MAIMAI
 from utils.PageUtils import load_music_metadata
 from PIL import Image, ImageDraw, ImageFont
 
+# 重构note：成绩图生成模块不再主动获取外部资源（如下载封面、获取谱面详细信息等），而是依赖传入数据
+# 以此减少模块间耦合，简化调用流程，由调用方负责准备所需数据
+
 class MaiImageGenerater:
     def __init__(self, style_config=None):
         self.asset_paths = style_config.get("asset_paths", {})
@@ -149,25 +152,8 @@ class MaiImageGenerater:
         Draw.text(TextPosition, Text, fill=FontColor, font=Font)
         return Image
 
-    def count_dx_stars(self, record_detail: dict):
-        # 计算DX星数
-        music_info = load_music_metadata()
-        # 匹配乐曲id和难度id找到谱面notes数量
-        level_index = int(record_detail['level_index'])
-        song_id = record_detail['song_id']
-        user_dx_score = record_detail['dxScore']
-
+    def count_dx_stars(self, user_dx_score, max_dx_score):
         dx_stars = 0
-        song_metadata = find_single_song_metadata(music_info, record_detail)
-        if song_metadata is None:
-            print(f"未找到乐曲{song_id}的难度{level_index}的max dx score信息。")
-            return dx_stars
-        else:
-            notes_list = song_metadata['charts'][level_index]['notes']
-            # 去除notes_list中的None值（sd谱中含有）
-            notes_list = [note for note in notes_list if note is not None]
-            max_dx_score = sum(notes_list) * 3
-
         match user_dx_score:
             case _ if 0 <= user_dx_score < max_dx_score * 0.85:
                 dx_stars = 0
@@ -189,12 +175,11 @@ class MaiImageGenerater:
         Args:
             record_detail (dict): 成绩记录详情，包含以下字段：
                 - title (str): 乐曲标题
-                - level (int): 等级整数
                 - ds (float): 定数
                 - level_index (int): 难度颜色
                 - song_id (str): 乐曲ID
                 - type (str): 谱面类型
-                - achievements (float): 达成率
+                - achievements (**str**): 达成率
                 - dxScore (int): DX分数
                 - fc (str): FC状态，可选值：空字符串、'fc'、'fcp'、'ap'、'app'
                 - sync (str): SYNC状态，可选值：空字符串、'fs'、'fsd'、'fsdp'
@@ -210,7 +195,7 @@ class MaiImageGenerater:
             assert record_detail['level_index'] in range(0, 5)
             image_asset_path = os.path.join(os.getcwd(),
                                             f"{self.image_root_path}/AchievementBase/{record_detail['level_index']}.png")
-            dx_stars = self.count_dx_stars(record_detail)
+            dx_stars = self.count_dx_stars(record_detail['dxScore'], record_detail.get('max_dx_score', 0))
             with Image.open(image_asset_path) as Background:
                 Background = Background.convert("RGBA")
 
@@ -219,8 +204,8 @@ class MaiImageGenerater:
 
                 # 加载乐曲封面
                 JacketPosition = (44, 53)
-                Jacket = load_music_jacket(music_tag=record_detail["song_id"])
-                if Jacket is None:
+                Jacket = record_detail.get('jacket', None)
+                if Jacket is None or not isinstance(Jacket, Image.Image):  # 如果未输入有效图片数据，则使用默认封面
                     Jacket = Image.open(f"{self.image_root_path}/Jackets/UI_Jacket_000000.png")
                 TempImage.paste(Jacket, JacketPosition, Jacket)
 
@@ -507,7 +492,7 @@ class ChuniImageGenerater:
                 - title (str): 乐曲标题
                 - artist (str): 艺术家
                 - ds_cur (float): 定数（当前版本）
-                - ds_next (float): 定数（下版本）
+                - ds_next (float): 定数（下版本，可留空）
                 - level_index (int): 难度颜色
                 - score (int): 分数
                 - combo_type (str): FC状态，可选值：空字符串、'fc'、'aj'、'ajc'
@@ -622,64 +607,56 @@ class ChuniImageGenerater:
         return background
     
 
-    
-# for maimai dx
-def generate_single_image(style_config, record_detail, output_path, title_text):
+# 入口：生成单个成绩图片    
+def generate_single_image(game_type, style_config, record_detail, output_path, title_text):
+    # 查找对应游戏类型的style_config
     try:
         selected_style_config = None
+        assert isinstance(style_config, list), "从v1.0开始，style_config应为列表格式"
         for i, sub_config in enumerate(style_config):
-            if "type" in sub_config and sub_config["type"] == "maimai":
+            if "type" in sub_config and sub_config["type"] == game_type:
                 selected_style_config = sub_config
                 break
         if selected_style_config is None:
-            raise ValueError("No chunithm style_config found in the provided list.")
+            raise ValueError(f"No {game_type} style_config found in the provided list.")
     except Exception as e:
         raise ValueError(f"Error processing style_configs: {e}")
     
-    function = MaiImageGenerater(style_config=selected_style_config)
-    # 加载通用外框素材
-    background_path = style_config["asset_paths"]["score_image_base"]
-    with Image.open(background_path) as background:
-        # 生成并调整单个成绩图片
+    if game_type == "maimai":
+        function = MaiImageGenerater(style_config=selected_style_config)
+        # 加载通用外框素材
+        background_path = selected_style_config["asset_paths"]["score_image_base"]
+        with Image.open(background_path) as background:
+            # 生成并调整单个成绩图片
+            single_image = function.GenerateOneAchievement(record_detail)
+            new_size = (int(single_image.width * 0.55), int(single_image.height * 0.55))
+            single_image = single_image.resize(new_size, Image.LANCZOS)
+            
+            # 粘贴图片
+            background.paste(single_image, (940, 170), single_image.convert("RGBA"))
+            
+            # 添加标题文字
+            draw = ImageDraw.Draw(background)
+            font = ImageFont.truetype(function.font_path, 50)
+            draw.text((940, 100), title_text, fill=(255, 255, 255), font=font)
+            
+            # 保存图片
+            background.save(output_path)
+    elif game_type == "chunithm":
+        function = ChuniImageGenerater(style_config=selected_style_config)
         single_image = function.GenerateOneAchievement(record_detail)
-        new_size = (int(single_image.width * 0.55), int(single_image.height * 0.55))
-        single_image = single_image.resize(new_size, Image.LANCZOS)
-        
-        # 粘贴图片
-        background.paste(single_image, (940, 170), single_image.convert("RGBA"))
-        
+
         # 添加标题文字
-        draw = ImageDraw.Draw(background)
-        font = ImageFont.truetype(function.font_path, 50)
-        draw.text((940, 100), title_text, fill=(255, 255, 255), font=font)
+        single_image = function.TextDraw(single_image, title_text, (250, 1008), max_width=280,
+                                        font_path=function.ui_font_path,
+                                        font_size=28, font_color=(255, 255, 255), h_align="center")
         
         # 保存图片
-        background.save(output_path)
+        single_image.save(output_path)
+    else:
+        raise ValueError(f"Unsupported game type: {game_type}")
 
-def generate_chuni_single_image(style_config, record_detail, output_path, title_text):
-    try:
-        selected_style_config = None
-        for i, sub_config in enumerate(style_config):
-            if "type" in sub_config and sub_config["type"] == "chunithm":
-                selected_style_config = sub_config
-                break
-        if selected_style_config is None:
-            raise ValueError("No chunithm style_config found in the provided list.")
-    except Exception as e:
-        raise ValueError(f"Error processing style_configs: {e}")
-    
-    function = ChuniImageGenerater(style_config=selected_style_config)
-    single_image = function.GenerateOneAchievement(record_detail)
-
-    # 添加标题文字
-    single_image = function.TextDraw(single_image, title_text, (250, 1008), max_width=280,
-                                     font_path=function.ui_font_path,
-                                     font_size=28, font_color=(255, 255, 255), h_align="center")
-    
-    # 保存图片
-    single_image.save(output_path)
-
-
+@DeprecationWarning
 def check_mask_waring(acc_string, cnt, warned=False):
     if len(acc_string.split('.')[1]) >= 4 and acc_string.split('.')[1][-3:] == "000":
         cnt = cnt + 1
@@ -688,7 +665,7 @@ def check_mask_waring(acc_string, cnt, warned=False):
             warned = True
     return cnt, warned
 
-
+@DeprecationWarning
 def load_music_jacket(music_tag):
     """从本地查找或从线上下载乐曲封面。仅用于maimaiDX。"""
     if type(music_tag) == int:
@@ -712,7 +689,7 @@ def load_music_jacket(music_tag):
         print(f"乐曲封面{image_path}不存在")
         return None
 
-
+@DeprecationWarning
 def find_single_song_metadata(all_metadata, record_detail):
     for music in all_metadata:
         if music['id'] is not None and music['id'] == str(record_detail['song_id']):

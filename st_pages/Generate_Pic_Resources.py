@@ -13,28 +13,16 @@ db_handler = get_database_handler()
 
 def st_generate_b50_images(placeholder, user_id, archive_id, save_paths):
     # get data format for image generation scripts
-    game_type, b50_data = db_handler.load_archive_for_image_generation()
+    game_type, records = db_handler.load_archive_for_image_generation(archive_id)
 
     # read style_config
     style_config = load_style_config()
 
     with placeholder.container(border=True):
         pb = st.progress(0, text="正在生成B50成绩背景图片...")
-        mask_check_cnt = 0
-        mask_warn = False
-        warned = False
-        for index, record_detail in enumerate(b50_data):
-            pb.progress((index + 1) / len(b50_data), text=f"正在生成B50成绩背景图片({index + 1}/{len(b50_data)})")
+        for index, record_detail in enumerate(records):
+            pb.progress((index + 1) / len(records), text=f"正在生成B50成绩背景图片({index + 1}/{len(records)})")
             record_for_gene_image = deepcopy(record_detail)
-            # 处理成绩掩码问题(TODO：修改为在database handler中处理)
-            if game_type == "maimai":
-                acc_string = f"{record_detail['achievements']:.4f}"
-                mask_check_cnt, mask_warn = check_mask_waring(acc_string, mask_check_cnt, mask_warn)
-                if mask_warn and not warned:
-                    st.warning("检测到多个仅有一位小数精度的成绩，请尝试取消查分器设置的成绩掩码以获取精确成绩。如为AP B50或自定义数据请忽略。")
-                    warned = True
-                record_for_gene_image['achievements'] = acc_string
-
             clip_name = record_for_gene_image['clip_name']
             # 标题名称与配置文件中的clip_name一致
             if "_" in clip_name:
@@ -43,15 +31,17 @@ def st_generate_b50_images(placeholder, user_id, archive_id, save_paths):
                 title_text = f"{prefix} {suffix_number}"
             else:
                 title_text = record_for_gene_image['clip_name']
-            # 按照顺序命名生成图片为 0_标题.png, 1_标题.png ...
-            image_save_path = os.path.join(save_paths['image_dir'], f"{index}_{title_text}.png")
+            # 按照顺序命名生成图片为 gametype_0_标题.png, gametype_1_标题.png ...
+            image_save_path = os.path.join(save_paths['image_dir'], f"{game_type}_{index}_{title_text}.png")
             generate_single_image(
+                game_type,
                 style_config,
                 record_for_gene_image,
                 image_save_path,
                 title_text
             )
             # TODO：将生成图片的路径信息存入数据库，方便后续视频生成调用
+
 
 # =============================================================================
 # Page layout starts here
@@ -66,14 +56,10 @@ st.set_page_config(
 st.title("Step 1: 生成B50成绩背景图片")
 
 ### Save Archive Management - Start ###
-if "username" in st.session_state:
-    username = st.session_state.get("username", None)
 
-if "archive_name" in st.session_state:
-    archive_name = st.session_state.get("archive_name", None)
-
-if "archive_id" in st.session_state:
-    archive_id = st.session_state.get("archive_id", None)
+username = st.session_state.get("username", None)
+archive_name = st.session_state.get("archive_name", None)
+archive_id = st.session_state.get("archive_id", None)
 
 if not username:
     st.warning("请先在存档管理页面指定用户名。")
@@ -115,7 +101,7 @@ with st.expander("更换B50存档"):
 
 ### Savefile Management - End ###
 
-if st.session_state.archive_id:
+if archive_id:
     current_paths = get_user_media_dir(username)
     image_path = current_paths['image_dir']
     st.text("生成成绩背景图片")
