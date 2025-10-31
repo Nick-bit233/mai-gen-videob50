@@ -77,7 +77,7 @@ def load_style_config(config_file=DEFAULT_STYLE_CONFIG_FILE_PATH):
 
 
 def update_music_metadata():
-    # TODO: 替换为更新dxrating源
+    # TODO: 替换为新的更新源
     for game_type in ['maimaidx']:
         metadata_dir = './music_metadata/maimaidx'
         if not os.path.exists(metadata_dir):

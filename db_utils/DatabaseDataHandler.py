@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Tuple, Any, Union
 from unittest import case
 from db_utils.DatabaseManager import DatabaseManager
-from utils.DataUtils import chart_type_str2value, download_image_from_url, get_chunithm_ds_next, level_label_to_index, query_songs_metadata
+from utils.DataUtils import chart_type_str2value, get_jacket_image_from_url, get_chunithm_ds_next, level_label_to_index, query_songs_metadata
 import os
 import json
 from datetime import datetime
@@ -297,8 +297,9 @@ class DatabaseDataHandler:
                 metadata = query_songs_metadata(game_type, title, artist)
                 image_code = metadata.get('imageName', None)
                 # 下载封面图片
-                jacket_image = download_image_from_url(image_code)
+                jacket_image = get_jacket_image_from_url(image_code)
                 reformat_data = {
+                    'chart_id': record['chart_id'],
                     'song_id': record['song_id'],
                     'title': title,
                     'artist': artist,
@@ -325,6 +326,7 @@ class DatabaseDataHandler:
                 # TODO: 需要从music metadata中获取多版本定数
                 # ds_next = get_chunithm_ds_next(metadata)
                 reformat_data = {
+                    'chart_id': record['chart_id'],
                     'song_id': record['song_id'],
                     'title': record['song_name'],
                     'artist': record['artist'],
@@ -414,6 +416,19 @@ class DatabaseDataHandler:
     # Configuration table and
     # Video_extra_configs table handler using video_config format
     # --------------------------------------
+    def update_image_config_for_record(self, archive_id: int, chart_id: int, image_path_data: Dict) -> bool:
+        # Update image configuration for a specific record
+        bg_image_path = image_path_data.get('background_image_path', None)
+        achievement_image_path = image_path_data.get('achievement_image_path', None)
+        self.db.set_configuration(
+            archive_id,
+            chart_id,
+            {
+                'background_image_path': bg_image_path,
+                'achievement_image_path': achievement_image_path
+            }
+        )
+
     def save_video_config(self, username: str, video_config: Dict, archive_name: str = None):
         """Save video configuration to the database."""
         archive_id = self.load_save_archive(username, archive_name)

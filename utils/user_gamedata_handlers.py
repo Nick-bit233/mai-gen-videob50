@@ -12,7 +12,7 @@ from utils.DataUtils import FC_PROXY_ENDPOINT, fish_to_new_record_format
 LEVEL_LABEL = ["Basic", "Advanced", "Expert", "Master", "Re:MASTER"]
 
 ################################################
-# Query B50 data from diving-fish.com
+# Query B50 data from diving-fish.com (maimai dx)
 ################################################
 def get_data_from_fish(username, params=None):
     """从水鱼获取数据"""
@@ -45,7 +45,7 @@ def get_data_from_fish(username, params=None):
             
         elif query == "all":
             # get all data from thrid party function call
-            response = requests.get(FC_PROXY_ENDPOINT, params={"username": username}, timeout=60)
+            response = requests.get(FC_PROXY_ENDPOINT, params={"username": username, "game": "maimai"}, timeout=60)
             response.raise_for_status()
 
             return json.loads(response.text)
@@ -63,7 +63,34 @@ def get_data_from_fish(username, params=None):
             raise ValueError("Invalid filter type for MAIMAI DX")
         
     elif type == "chuni":
-        raise NotImplementedError("Only MAIMAI DX is supported for now")
+        if query == "best":
+            url = "https://www.diving-fish.com/api/chunithmprober/query/player"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "username": username,
+            }
+            response = requests.post(url, headers=headers, json=payload)
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 400 or response.status_code == 403:
+                msg = response.json().get("message", None)
+                if not msg:
+                    msg = response.json().get("msg", "水鱼端未知错误")
+                return {"error": f"用户校验失败，返回消息：{msg}"}
+            else:
+                return {"error": f"请求水鱼数据失败，状态码: {response.status_code}，返回消息：{response.json()}"}
+        elif query == "all":
+            # TODO: update Function Call service.
+            raise NotImplementedError("Function Call service for CHUNITHM is not implemented yet.")
+            # response = requests.get(FC_PROXY_ENDPOINT, params={"username": username, "game": "chunithm"}, timeout=60)
+            # response.raise_for_status()
+
+            # return json.loads(response.text)
+        else:
+            raise ValueError("Invalid filter type for CHUNITHM")
     else:
         raise ValueError("Invalid game data type for diving-fish.com")
     
@@ -476,8 +503,8 @@ def generate_data_file_int(parsed_data, params) -> dict:
 
         return new_archive_data
     else:
-        raise ValueError("Only MAIMAI DX is supported for now")
-    
+        raise ValueError("Only MAIMAI DX is supported for now")   
+
 ################################################
 # Deprecated: data merger
 ################################################

@@ -21,6 +21,7 @@ def st_generate_b50_images(placeholder, user_id, archive_id, save_paths):
     with placeholder.container(border=True):
         pb = st.progress(0, text="正在生成B50成绩背景图片...")
         for index, record_detail in enumerate(records):
+            chart_id = record_detail['chart_id']
             pb.progress((index + 1) / len(records), text=f"正在生成B50成绩背景图片({index + 1}/{len(records)})")
             record_for_gene_image = deepcopy(record_detail)
             clip_name = record_for_gene_image['clip_name']
@@ -40,7 +41,20 @@ def st_generate_b50_images(placeholder, user_id, archive_id, save_paths):
                 image_save_path,
                 title_text
             )
-            # TODO：将生成图片的路径信息存入数据库，方便后续视频生成调用
+            # TODO：默认保存曲绘图片到background_image_path字段，便于视频生成调用
+            # default_bg_img = record_for_gene_image['jacket']
+            # bg_save_path = os.path.join(save_paths['image_dir'], f"{game_type}_{index}_{title_text}_bg.png")
+            # from PIL import Image
+            # if default_bg_img:
+            #    default_bg_img.save(bg_save_path)
+            db_handler.update_image_config_for_record(
+                archive_id,
+                chart_id=chart_id,
+                image_path_data={
+                    'achievement_image_path': image_save_path
+                }
+            )
+
 
 
 # =============================================================================

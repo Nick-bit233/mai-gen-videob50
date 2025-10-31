@@ -9,6 +9,7 @@ import struct
 from PIL import Image
 from typing import Dict, Union
 
+# TODO: 服务器bucket用于转存dxrating和otoge-db的metadata
 BUCKET_ENDPOINT = "https://nickbit-maigen-images.oss-cn-shanghai.aliyuncs.com"
 FC_PROXY_ENDPOINT = "https://fish-usta-proxy-efexqrwlmf.cn-shanghai.fcapp.run"
 
@@ -255,7 +256,7 @@ def find_song_by_id(encoded_id, songs_data):
 
 
 def load_songs_metadata(game_type: str) -> dict:
-    # metadata已经更换为dxrating数据源
+    # metadata已经更换为dxrating数据源（TODO：更换为dxrating + otoge-db融合数据源）
     if game_type == "maimai":
         with open("./music_metadata/maimaidx/dxdata.json", 'r', encoding='utf-8') as f:
             songs_data = json.load(f)
@@ -263,8 +264,10 @@ def load_songs_metadata(game_type: str) -> dict:
         assert isinstance(songs_data, list), "songs_data should be a list"
         return songs_data
     elif game_type == "chunithm":
-        raise NotImplementedError("Chunithm metadata loading not implemented yet.")
-        # TODO: implement chunithm metadata loading
+        with open("./music_metadata/chunithm/chunithm_data_fish.json", 'r', encoding='utf-8') as f:
+            songs_data = json.load(f)
+        assert isinstance(songs_data, list), "songs_data should be a list"
+        return songs_data
     else:
         raise ValueError("Unsupported game type for metadata loading.")
 
@@ -412,7 +415,7 @@ def fish_to_new_record_format(fish_record: dict, game_type: str = "maimai") -> d
 def get_chunithm_ds_next(metadata: dict) -> Union[float, None]:
     raise NotImplementedError("Chunithm DS Next retrieval not implemented yet.")
 
-def download_image_from_url(image_code: str, source: str = "dxrating") -> Image.Image:
+def get_jacket_image_from_url(image_code: str, source: str = "dxrating") -> Image.Image:
     if source == "dxrating":
         url = f"https://shama.dxrating.net/images/cover/v2/{image_code}.jpg"
     else:
@@ -426,9 +429,16 @@ def download_image_from_url(image_code: str, source: str = "dxrating") -> Image.
         print(f"Failed to download image from {url}. Status code: {response.status_code}")
         raise FileNotFoundError
 
+# def download_metadata_chunithm():
+#     url = f"https://www.diving-fish.com/api/chunithmprober/music_data"
+#     response = requests.get(url)
+#     if response.status_code == 200:
+#         ret = response.json()
+#         with open(r"C:\ProjectsAndTricks\mai-gen-videob50\music_metadata\chunithm\chunithm_data_fish.json", 'w', encoding='utf-8') as f:
+#             json.dump(ret, f, ensure_ascii=False, indent=4)
+#     else:
+#         print(f"Failed to download metadata from {url}. Status code: {response.status_code}")
+#         raise FileNotFoundError
 
 # if __name__ == "__main__":
-#     # Test download_image_from_url
-#     test_image_code = "da8dcd8ae0c0ea46aed773d9ae3b4121da885f1c758d2dd3f9863a72347a014c"
-#     img = download_image_from_url(test_image_code)
-#     img.show()
+#     download_metadata_chunithm()

@@ -246,7 +246,7 @@ class DatabaseManager:
             if row:
                 return dict(row)
             return None
-        
+
     # Archive management methods
     def create_archive(self, user_id: int, archive_name: str, game_type: str, sub_type: str, 
                        rating_mai: Optional[int] = None, rating_chu: Optional[float] = None, game_version: str = 'latest') -> int:
