@@ -6,10 +6,10 @@ import ast
 import traceback
 from copy import deepcopy
 from utils.PathUtils import *
-from utils.PageUtils import get_db_manager, process_username
+from utils.PageUtils import get_db_manager, process_username, get_game_type_text
 from db_utils.DatabaseDataHandler import get_database_handler
 from utils.DataUtils import search_songs, level_label_to_index, chart_type_value2str
-from utils.dxnet_extension import compute_rating
+from utils.dxnet_extension import compute_chunithm_rating, compute_rating
 
 # 检查streamlit扩展组件安装情况
 try:
@@ -252,7 +252,7 @@ def update_record_grid(grid, external_placeholder):
                     r['dx_score'] = chart_data.get('max_dx_score', 0)
             if game_type == "chunithm":
                 # 计算chuni_rating
-                raise NotImplementedError("Chunithm rating calculation not implemented yet.")
+                r['chuni_rating'] = compute_chunithm_rating(ds=ds, score=r.get('achievement', 0))
 
         return to_update_records
         
@@ -315,7 +315,47 @@ def update_record_grid(grid, external_placeholder):
                     width='stretch'
                 )
             elif game_type == "chunithm":
-                raise NotImplementedError("Chunithm record editing not implemented yet.")
+                edited_records = st.data_editor(
+                    showing_records,
+                    column_order=["clip_title_name", "chart_info", "achievement", "fc_status", "fs_status", "chuni_rating", "play_count"],
+                    column_config={
+                        "clip_title_name": "抬头标题",
+                        "chart_info": "乐曲信息",
+                        "achievement": st.column_config.NumberColumn(
+                            "分数",
+                            min_value=0,
+                            max_value=1010000,
+                            format="%d",
+                            required=True
+                        ),
+                        "fc_status": st.column_config.SelectboxColumn(
+                            "FC状况",
+                            options=["", "fc", "aj", "ajc"],
+                            width=60,
+                            required=False
+                        ),
+                        "fs_status": st.column_config.SelectboxColumn(
+                            "Chain状况",
+                            options=["", "fc", "fcr"],  # no-chain-play，full-chain，full-chain-rainbow
+                            width=60,
+                            required=False
+                        ),
+                        "chuni_rating": st.column_config.NumberColumn(
+                            "单曲Ra",
+                            format="%.2f",
+                            width=65,
+                            required=True
+                        ),
+                        "play_count": st.column_config.NumberColumn(
+                            "游玩次数",
+                            format="%d",
+                            required=False
+                        )
+                    },
+                    num_rows="dynamic",
+                    height=400,
+                    width='stretch'
+                )
             else:
                 raise ValueError(f"Unsupported game type: {game_type}")
             
@@ -427,6 +467,13 @@ def clear_all_records():
 # Page layout starts here
 # ==============================================================================
 
+# Start with getting G_type from session state
+G_type = st.session_state.get('game_type', 'maimai')
+
+st.header("编辑自定义分表")
+
+st.markdown(f"> 您正在使用 **{get_game_type_text(G_type)}** 视频生成模式。")
+
 # 用户名输入和校验
 if not st.session_state.get("username", None):
     with st.container(border=True):
@@ -480,7 +527,7 @@ else:
 
 with st.container(border=True):
     st.write(f"当前用户名: **{username}**")
-    archives = db_handler.get_user_save_list(username)
+    archives = db_handler.get_user_save_list(username, game_type=G_type)
     
     # 读取已有存档
     if not archives:
@@ -522,14 +569,7 @@ with st.container(border=True):
     st.markdown("> 注意：新建存档会刷新本页面中任何未保存的修改，如有正在编辑的存档，请先保存更改！")
 
     with st.container(border=True):
-        st.write("新建存档选项")
-        st.session_state.archive_meta['game_type'] = st.radio(
-            "选择存档游戏类型",
-            options=["maimai", "chunithm"],
-            index=0,
-            horizontal=True
-        )
-        with st.expander("其他选项", expanded=False):
+        with st.expander("新建存档选项", expanded=False):
             st.session_state.archive_meta['sub_type'] = st.radio(
                 "存档子类型",
                 help="旧版本中使用best标记从查分器获取的分表， custom标记自定义创建的分表。此标志现在与分表的排序不再相关，生成视频时，成绩的排序将与此页面显示的顺序一致。",
@@ -548,7 +588,8 @@ with st.container(border=True):
             )
 
         if st.button("新建空白存档"):
-            archive_id, archive_name = db_handler.create_new_archive(username, sub_type="custom")
+            archive_id, archive_name = db_handler.create_new_archive(username, sub_type="custom", game_type=G_type)
+            st.session_state.archive_meta['game_type'] = G_type
             st.session_state.archive_name = archive_name
             st.session_state.records = []
             st.success(f"已创建并加载新的空白存档: **{archive_name}**")
@@ -557,8 +598,8 @@ with st.container(border=True):
 # 存档记录编辑部分
 if 'archive_name' in st.session_state and st.session_state.archive_name:
     st.subheader(f"正在编辑: {st.session_state.archive_name}")
-    cur_game_type = st.session_state.archive_meta.get("game_type", "maimai")
-    st.markdown(f"> 当前存档游戏类型: **{cur_game_type}**")
+    cur_game_type = G_type
+    # st.markdown(f"> 当前存档游戏类型: **{cur_game_type}**")
 
     with st.expander("添加或修改记录", expanded=True):
         st.markdown("#### 添加新记录")
@@ -629,7 +670,7 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
 
 
     with st.expander("修改存档其他信息", expanded=False):
-        st.warning("更改存档类型会清空当前存档的所有记录，请谨慎操作！")
+        st.warning("更改存档类型会清空当前存档的所有记录，您需要重新在首页切换模式后编辑，请谨慎操作！")
         st.session_state.archive_meta['game_type'] = st.radio(
             "修改存档类型",
             options=["maimai", "chunithm"],

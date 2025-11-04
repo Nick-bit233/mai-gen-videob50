@@ -4,7 +4,7 @@ import traceback
 from copy import deepcopy
 from datetime import datetime
 from utils.ImageUtils import generate_single_image, check_mask_waring
-from utils.PageUtils import load_style_config, open_file_explorer
+from utils.PageUtils import get_game_type_text, load_style_config, open_file_explorer
 from db_utils.DatabaseDataHandler import get_database_handler
 from utils.PathUtils import get_user_media_dir
 
@@ -56,7 +56,6 @@ def st_generate_b50_images(placeholder, user_id, archive_id, save_paths):
             )
 
 
-
 # =============================================================================
 # Page layout starts here
 # ==============================================================================
@@ -67,7 +66,12 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# Start with getting G_type from session state
+G_type = st.session_state.get('game_type', 'maimai')
+
 st.title("Step 1: 生成B50成绩背景图片")
+
+st.markdown(f"> 您正在使用 **{get_game_type_text(G_type)}** 视频生成模式。")
 
 ### Save Archive Management - Start ###
 
@@ -79,7 +83,7 @@ if not username:
     st.warning("请先在存档管理页面指定用户名。")
     st.stop()
 st.write(f"当前用户名: **{username}**")
-archives = db_handler.get_user_save_list(username)
+archives = db_handler.get_user_save_list(username, game_type=G_type)
 
 with st.expander("更换B50存档"):
     if not archives:

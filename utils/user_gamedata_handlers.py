@@ -20,8 +20,7 @@ def get_data_from_fish(username, params=None):
         params = {}
     type = params.get("type", "maimai")
     query = params.get("query", "best")
-    # MAIMAI DX 的请求
-    if type == "maimai":
+    if type == "maimai":  # MAIMAI 的请求
         if query == "best":
             url = "https://www.diving-fish.com/api/maimaidxprober/query/player"
             headers = {
@@ -62,7 +61,7 @@ def get_data_from_fish(username, params=None):
         else:
             raise ValueError("Invalid filter type for MAIMAI DX")
         
-    elif type == "chuni":
+    elif type == "chunithm":  # CHUNITHM 的请求
         if query == "best":
             url = "https://www.diving-fish.com/api/chunithmprober/query/player"
             headers = {
@@ -87,7 +86,6 @@ def get_data_from_fish(username, params=None):
             raise NotImplementedError("Function Call service for CHUNITHM is not implemented yet.")
             # response = requests.get(FC_PROXY_ENDPOINT, params={"username": username, "game": "chunithm"}, timeout=60)
             # response.raise_for_status()
-
             # return json.loads(response.text)
         else:
             raise ValueError("Invalid filter type for CHUNITHM")
@@ -95,9 +93,10 @@ def get_data_from_fish(username, params=None):
         raise ValueError("Invalid game data type for diving-fish.com")
     
 ################################################
-# Maimai B50 data handlers from diving-fish.com
+# B50 data handlers from diving-fish.com
 ################################################
 def fetch_user_gamedata(raw_file_path, username, params, source="fish") -> dict:
+    """Entry point function for st_pages"""
     if source == "fish":
         try:
             fish_data = get_data_from_fish(username, params)
@@ -114,14 +113,14 @@ def fetch_user_gamedata(raw_file_path, username, params, source="fish") -> dict:
         if 'msg' in fish_data:
             raise Exception(f"Error: 从水鱼获得B50数据失败。错误信息：{fish_data['msg']}")
         
-        # 生成数据文件
-        return generate_config_file_from_fish(fish_data, params)
+        # 解析查分器数据，并生成适用于写入数据库的配置字典
+        return generate_archive_data_from_fish(fish_data, params)
     else:
         raise ValueError("Invalid source for fetching game data")
 
 
-def generate_config_file_from_fish(fish_data, params) -> dict:
-    """根据从水鱼获取的原始数据，生成B50数据配置文件
+def generate_archive_data_from_fish(fish_data, params) -> dict:
+    """根据从水鱼获取的原始数据，生成存档初始化数据配置
     Args:
         fish_data (dict): 从水鱼获取的原始数据
         data_file_path (str): 生成的数据文件路径
@@ -135,13 +134,16 @@ def generate_config_file_from_fish(fish_data, params) -> dict:
     type = params.get("type", "maimai")
     query = params.get("query", "best")
     filter = params.get("filter", None)
+
+    sub_type_tag = ""
+    to_modify_data = None
+
     if type == "maimai":
         if query == "best":
             # 解析fish b50数据
             charts_data = fish_data['charts']
             b35_data = charts_data['sd']
             b15_data = charts_data['dx']
-
             # 为初始化数据添加clip_title_name字段，
             for i in range(len(b35_data)):
                 song = b35_data[i]
@@ -151,18 +153,8 @@ def generate_config_file_from_fish(fish_data, params) -> dict:
                 song = b15_data[i]
                 song['clip_title_name'] = f"NewBest_{i + 1}" 
             # 合并b35_data和b15_data到同一列表
-            b50_data = b35_data + b15_data
-            # 统一转换为数据库记录格式
-            new_record_data = [fish_to_new_record_format(song, type) for song in b50_data]
-
-            new_archive_data = {
-                "type": type,
-                "sub_type": "best",
-                "username": fish_data['username'],
-                "rating_mai": fish_data['rating'],
-                "game_version": "latest_CN",
-                "initial_records": new_record_data
-            }
+            to_modify_data = b35_data + b15_data
+            sub_type_tag = "best"
         else:
             if not filter:
                 raise ValueError("Error: 查询类型为all时，必须提供filter参数。")
@@ -173,22 +165,42 @@ def generate_config_file_from_fish(fish_data, params) -> dict:
                     data_list = filter_maimai_ap_data(fish_data, top_len)
                     if len(data_list) < top_len:
                         print(f"Warning: 仅找到{len(data_list)}条AP数据，生成实际数据长度小于top_len={top_len}的配置。")
-                    new_archive_data = {
-                        "type": type,
-                        "sub_type": "ap",
-                        "username": fish_data['username'],
-                        "rating_mai": fish_data['rating'],
-                        "game_version": "latest_CN",
-                        "initial_records": data_list
-                    }
+                    to_modify_data = data_list
+                    sub_type_tag = "ap"
                 else:
                     raise ValueError("Error: 目前仅支持tag为ap的查询类型。")
-        return new_archive_data
     elif type == "chunithm":
-        # TODO: 支持chunithm查询接口
-        raise NotImplementedError("Only MAIMAI DX is supported for now")
+        if query == "best":
+            # 解析fish chunithm数据（仅保留b30）
+            charts_data = fish_data['records']['b30']
+            # 为初始化数据添加clip_title_name字段，
+            for i in range(len(charts_data)):
+                song = charts_data[i]
+                song['clip_title_name'] = f"Best_{i + 1}"
+            to_modify_data = charts_data
+            sub_type_tag = "best"
+        else:
+            raise ValueError("Error: 暂未支持chunithm ap列表查询。")
     else:
         raise ValueError("Invalid game data type for diving-fish.com")
+    
+    # 统一转换为数据库记录格式
+    new_record_data = [fish_to_new_record_format(song, type) for song in to_modify_data]
+
+    # 构建默认排序（默认倒序） # TODO: 该项排序可以自定义，记得取消生成视频时的排序选项
+    for i in range(len(new_record_data)):
+        new_record_data[i]['order_in_archive'] = len(new_record_data) - i
+
+    new_archive_data = {
+        "game_type": type,
+        "sub_type": sub_type_tag,
+        "username": fish_data['username'],
+        "rating_mai": fish_data['rating'] if type == "maimai" else 0,
+        "rating_chu": fish_data['rating'] if type == "chunithm" else 0.0,
+        "game_version": "latest_CN",
+        "initial_records": new_record_data
+    }
+    return new_archive_data
 
 
 def filter_maimai_ap_data(fish_data, top_len=50):

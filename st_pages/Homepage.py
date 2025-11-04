@@ -1,5 +1,5 @@
 import streamlit as st
-from utils.PageUtils import change_theme, update_music_metadata, DEFAULT_STYLE_CONFIG_FILE_PATH, get_db_manager
+from utils.PageUtils import change_theme, get_game_type_text, update_music_metadata, DEFAULT_STYLE_CONFIG_FILE_PATH, get_db_manager
 from db_utils.DataMigration import old_data_migration
 from utils.themes import THEME_COLORS, DEFAULT_STYLES
 from utils.WebAgentUtils import st_init_cache_pathes
@@ -55,10 +55,13 @@ def should_update_metadata(threshold_hours=24):
 
 st.image("md_res/icon.png", width=256)
 
+G_type = st.session_state.get('game_type', 'maimai')
+
 st.title("Mai-gen Videob50 视频生成器")
 
 st.write("当前版本: v1.0.0 alpha test")
 
+st.markdown(f"> 您正在使用 **{get_game_type_text(G_type)}** 视频生成模式。")
 st.markdown(
     """
     请按照下列引导步骤操作，以生成您的B50视频。
@@ -85,16 +88,32 @@ try:
 except Exception as e:
     st.error(f"初始化数据库时出错: {e}")
 
-st.write("从旧版本导入数据")
-with st.container(border=True):
-    st.write("如果您有旧版本的存档数据，可以点击下面的按钮，选择旧版本文件夹导入您的历史数据。")
-    st.warning("请勿重复导入数据，以免造成冗余损坏。")
-    if st.button("导入数据"):
-        try:
-            old_data_migration() # TODO: 未开发完成
-            st.success("数据导入成功！")
-        except Exception as e:
-            st.error(f"导入数据时出错: {e}")
+if G_type == "maimai":
+    switch_btn_text = "切换到中二节奏视频生成器"
+else:
+    switch_btn_text = "切换到舞萌DX视频生成器"
+
+if st.button(switch_btn_text):
+    st.session_state.game_type = "chunithm" if G_type == "maimai" else "maimai"
+    # 清空已加载的存档信息
+    st.session_state.pop('archive_id', None)
+    st.session_state.pop('archive_name', None)
+    st.session_state.pop('archive_meta', None)
+    st.session_state.pop('records', None)
+    st.session_state.data_updated_step1 = False
+    st.rerun()
+
+if G_type == "maimai":
+    st.write("从旧版本导入数据")
+    with st.container(border=True):
+        st.write("如果您有旧版本的存档数据，可以点击下面的按钮，选择旧版本文件夹导入您的历史数据。")
+        st.warning("请勿重复导入数据，以免造成冗余损坏。")
+        if st.button("导入数据"):
+            try:
+                old_data_migration() # TODO: 未开发完成
+                st.success("数据导入成功！")
+            except Exception as e:
+                st.error(f"导入数据时出错: {e}")
 
 st.write("单击下面的按钮开始。在开始制作前，您也可以考虑先自定义视频模板的样式。")
 

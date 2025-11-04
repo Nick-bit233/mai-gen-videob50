@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Tuple, Any, Union
 from unittest import case
 from db_utils.DatabaseManager import DatabaseManager
-from utils.DataUtils import chart_type_str2value, get_jacket_image_from_url, get_chunithm_ds_next, level_label_to_index, query_songs_metadata
+from utils.DataUtils import chart_type_str2value, get_jacket_image_from_url, level_label_to_index, query_songs_metadata
 import os
 import json
 from datetime import datetime
@@ -83,11 +83,12 @@ class DatabaseDataHandler:
             
         return None
     
-    def get_user_save_list(self, username: str) -> List[Dict]:
-        """Get list of all save archives for a user"""
+    def get_user_save_list(self, username: str, game_type: Optional[str] = None) -> List[Dict]:
+        """Get list of all save archives for a given user and optional game_type filter."""
         user_id = self.set_current_user(username)
-        return self.db.get_user_archives(user_id)
-    
+        archives = self.db.get_user_archives(user_id, game_type)
+        return archives
+
     def delete_save_archive(self, username: str, archive_name: str) -> bool:
         """Delete a save archive"""
         user_id = self.set_current_user(username)

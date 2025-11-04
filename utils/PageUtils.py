@@ -23,6 +23,14 @@ DEFAULT_STYLE_CONFIG_FILE_PATH = "./static/video_style_config.json"
 #     4: "RE:MASTER",
 # }
 
+def get_game_type_text(game_type: str) -> str:
+    """Returns a UI label for the game type."""
+    if game_type == "maimai":
+        return "舞萌DX"
+    elif game_type == "chunithm":
+        return "中二节奏"
+    else:
+        return "UNKNOWN"
 
 def remove_invalid_chars(text: str) -> str:
     """Removes characters that are invalid for Windows file paths."""

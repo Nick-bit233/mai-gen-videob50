@@ -4,7 +4,7 @@ import json
 import traceback
 from datetime import datetime
 from utils.user_gamedata_handlers import fetch_user_gamedata, update_b50_data_int
-from utils.PageUtils import get_db_manager, process_username
+from utils.PageUtils import get_db_manager, process_username, get_game_type_text
 from db_utils.DatabaseDataHandler import get_database_handler
 from utils.PathUtils import get_user_base_dir
 import glob
@@ -102,10 +102,10 @@ def handle_new_data(username: str, source: str, raw_file_path: str, params: dict
             st.error(f"不支持的数据源: {source}")
             return
         
-        ### debug: 存储new_archive_data
-        # debug_path = f"./b50_datas/debug_new_archive_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        # with open(debug_path, "w", encoding="utf-8") as f:
-        #     json.dump(new_archive_data, f, ensure_ascii=False, indent=4)
+        ## debug: 存储new_archive_data
+        debug_path = f"./b50_datas/debug_new_archive_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        with open(debug_path, "w", encoding="utf-8") as f:
+            json.dump(new_archive_data, f, ensure_ascii=False, indent=4)
 
         archive_id, archive_name = db_handler.create_new_archive(
             username=username,
@@ -132,7 +132,12 @@ def handle_new_data(username: str, source: str, raw_file_path: str, params: dict
 # Page layout starts here
 # ==============================================================================
 
-st.header("第一步：获取和管理B50成绩存档")
+# Start with getting G_type from session state
+G_type = st.session_state.get('game_type', 'maimai')
+
+st.header("从第三方查分器获取分表")
+
+st.markdown(f"> 您正在使用 **{get_game_type_text(G_type)}** 视频生成模式。")
 
 # --- 1. Username Input ---
 with st.container(border=True):
@@ -169,13 +174,14 @@ if st.session_state.get('config_saved', False):
     user_base_dir = get_user_base_dir(safe_username)
     os.makedirs(user_base_dir, exist_ok=True)
 
+    tab1, tab2 = st.tabs(["🗃 管理已有存档", "📦 创建新存档"])
+
     # --- 2. Manage Existing Archives ---
-    st.subheader("管理本地存档")
-    with st.container(border=True):
-        archives = db_handler.get_user_save_list(username)
+    with tab1:
+        archives = db_handler.get_user_save_list(username, game_type=G_type)
         
         if not archives:
-            st.info("您还没有任何本地存档，请从下方“新建存档”区域开始。")
+            st.info("您还没有任何本地存档，请选择右侧“创建新存档”页签。")
         else:
             archive_names = [a['archive_name'] for a in archives]
             
@@ -206,59 +212,53 @@ if st.session_state.get('config_saved', False):
                     confirm_delete_archive(username, selected_archive_name)
 
     # --- 3. Create New Archives ---
-    st.subheader("新建存档")
-    with st.container(border=True):
+    with tab2:
         st.info("从外部数据源获取您的B50成绩，并创建一个新的本地存档。")
         
         # Data from FISH (CN Server)
         with st.expander("从水鱼查分器获取（国服）"):
             st.write(f"将以用户名 **{username}** 从查分器获取数据。")
-            b50_raw_file = f"{user_base_dir}/b50_raw.json"
-            if st.button("获取 B50 数据"):
-                handle_new_data(username, source="fish", 
-                                raw_file_path=b50_raw_file,
-                                params={"type": "maimai", "query": "best"})
-            if st.button("获取 AP B50 数据"):
-                handle_new_data(username, source="fish",
-                                raw_file_path=b50_raw_file,
-                                params={"type": "maimai", "query": "all", "filter": {"tag": "ap", "top": 50}})
+            
+            if G_type == "maimai":
+                b50_raw_file = f"{user_base_dir}/maimai_b50_raw.json"
+                if st.button("获取 B50 数据"):
+                    handle_new_data(username, source="fish", 
+                                    raw_file_path=b50_raw_file,
+                                    params={"type": "maimai", "query": "best"})
+                if st.button("获取 AP B50 数据"):
+                    handle_new_data(username, source="fish",
+                                    raw_file_path=b50_raw_file,
+                                    params={"type": "maimai", "query": "all", "filter": {"tag": "ap", "top": 50}})
+            
+            elif G_type == "chunithm":
+                b50_raw_file = f"{user_base_dir}/chunithm_b50_raw.json"
+                st.info("注意：水鱼中二节奏国服数据源目前无法获取N20数据，将默认仅获取B30数据。")
+                if st.button("获取 B30 数据"):
+                    handle_new_data(username, source="fish", 
+                                    raw_file_path=b50_raw_file,
+                                    params={"type": "chunithm", "query": "best"})
+            else:
+                st.error(f"错误的游戏类型: {G_type}，请返回首页刷新重试。")
 
         # Data from DX Web (INTL/JP Server)
         with st.expander("从 DX Rating Net 导入（国际服/日服）"):
-            st.write("请将maimai DX NET(官网)获取的源代码，或 DX Rating 网站导出的JSON代码粘贴到下方。")
-            data_input = st.text_area("粘贴源代码或JSON", height=200)
-            
-            if st.button("从粘贴内容创建新存档"):
-                if data_input:
-                    file_type = "json" if data_input.strip().startswith("[{") else "html"
-                    b50_raw_file = f"{user_base_dir}/b50_raw.{file_type}"
-                    handle_new_data(username, source="intl",
-                                    raw_file_path=b50_raw_file,
-                                    params={"type": "maimai", "query": "best"}, parser=file_type)
-                else:
-                    st.warning("输入框内容为空。")
+            if G_type == "maimai":
+                st.write("请将maimai DX NET(官网)获取的源代码，或 DX Rating 网站导出的JSON代码粘贴到下方。")
+                data_input = st.text_area("粘贴源代码或JSON", height=200)
+                
+                if st.button("从粘贴内容创建新存档"):
+                    if data_input:
+                        file_type = "json" if data_input.strip().startswith("[{") else "html"
+                        b50_raw_file = f"{user_base_dir}/b50_raw.{file_type}"
+                        handle_new_data(username, source="intl",
+                                        raw_file_path=b50_raw_file,
+                                        params={"type": "maimai", "query": "best"}, parser=file_type)
+                    else:
+                        st.warning("输入框内容为空。")
+            else:
+                st.warning("暂未支持从国际服/日服数据导入中二节奏数据，如有需要请在左侧导航栏使用自定义B50功能手动配置。")
 
-    # --- 4. Data Migration (Legacy) ---
-    with st.expander("从旧版本（v0.4.x 及以下）迁移数据"):
-        st.info("此功能已废弃，请使用首页的“导入数据”按钮进行数据迁移。")
-        
-        # # Use safe_username for directory operations
-        # legacy_data_path = st.text_input("输入旧版 `b50_datas` 文件夹的路径", 
-        #                                  help=f"例如: C:\\old_project\\b50_datas\\{safe_username}")
-
-        # if st.button("开始迁移"):
-        #     if os.path.isdir(legacy_data_path):
-        #         try:
-        #             with st.spinner("正在迁移旧存档..."):
-        #                 count = db_handler.import_from_json(legacy_data_path)
-        #             st.success(f"成功迁移了 {count} 个旧存档！请在上方“管理本地存档”区域查看。")
-        #             st.rerun()
-        #         except Exception as e:
-        #             st.error(f"迁移过程中发生错误: {e}")
-        #     else:
-        #         st.error("输入的路径无效或不是一个文件夹。")
-
-    # --- 5. Navigation ---
+    # --- Navigation ---
     st.divider()
     if st.session_state.get('data_updated_step1', False) and st.session_state.get('archive_name'):
         st.success(f"当前已加载存档: **{st.session_state.archive_name}**")

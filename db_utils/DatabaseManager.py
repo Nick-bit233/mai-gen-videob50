@@ -259,16 +259,23 @@ class DatabaseManager:
             ''', (user_id, archive_name, game_type, sub_type, rating_mai, rating_chu, game_version))
             conn.commit()
             return cursor.lastrowid
-    
-    def get_user_archives(self, user_id: int) -> List[Dict]:
+
+    def get_user_archives(self, user_id: int, game_type: Optional[str] = None) -> List[Dict]:
         """Get all save archives for a user"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('''
-                SELECT * FROM archives 
-                WHERE user_id = ? 
-                ORDER BY created_at DESC
-            ''', (user_id,))
+            if game_type:
+                cursor.execute('''
+                    SELECT * FROM archives 
+                    WHERE user_id = ? AND game_type = ?
+                    ORDER BY created_at DESC
+                ''', (user_id, game_type))
+            else:
+                cursor.execute('''
+                    SELECT * FROM archives 
+                    WHERE user_id = ? 
+                    ORDER BY created_at DESC
+                ''', (user_id,))
             archives = []
             for row in cursor.fetchall():
                 archive = dict(row)

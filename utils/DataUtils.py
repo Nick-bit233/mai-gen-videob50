@@ -95,6 +95,17 @@ def level_label_to_index(game_type: str, label: str) -> int:
             case _:
                 return 5
 
+def chunithm_fc_status_to_label(fc_status: int) -> str:
+    match fc_status:
+        case "fullcombo":
+            return "fc"
+        case "alljustice":
+            return "aj"
+        case "AJC":
+            return "ajc"
+        case _:
+            return "none"
+
 # TODO：重构数据格式以及工具函数，支持dxrating数据格式和未来的中二数据格式，以下方法均已弃用
 # 曲绘数据将尝试从dxrating接口获取
 CHART_TYPE_MAP_MAIMAI =  {   
@@ -264,7 +275,7 @@ def load_songs_metadata(game_type: str) -> dict:
         assert isinstance(songs_data, list), "songs_data should be a list"
         return songs_data
     elif game_type == "chunithm":
-        with open("./music_metadata/chunithm/chunithm_data_fish.json", 'r', encoding='utf-8') as f:
+        with open("./music_metadata/chunithm/chuni_data_otoge_ex.json", 'r', encoding='utf-8') as f:
             songs_data = json.load(f)
         assert isinstance(songs_data, list), "songs_data should be a list"
         return songs_data
@@ -370,12 +381,14 @@ def fish_to_new_record_format(fish_record: dict, game_type: str = "maimai") -> d
         raise LookupError(f"Cannot find song metadata for song_id: {resolved_song_id} in game_type: {game_type}")
     
     resolved_artist = song.get('artist', None)
+    # try get total notes for counting maimai dx max score, for chunithm it's always 0 (for now)
     resolved_total_notes = song.get('noteCounts', {}).get('total', 0)
-    if not resolved_total_notes:  # 防止数据源传入NULL
+    if not resolved_total_notes:  # to avoid null from data source
         resolved_total_notes = 0
-    # check difficulty from metadata if missing
+
     resolved_ds = fish_record.get('ds', 0.0)
-    if resolved_ds is None or resolved_ds == 0.0:
+    # check difficulty from metadata if missing (only for maimai now)
+    if resolved_ds is None or resolved_ds == 0.0 and game_type == "maimai":
         sheets = song.get('sheets', [])
         for s in sheets:
             s_level_index = level_label_to_index(game_type, s['difficulty'])
@@ -392,28 +405,43 @@ def fish_to_new_record_format(fish_record: dict, game_type: str = "maimai") -> d
         'song_name': fish_record.get('title'),
         'artist': resolved_artist,
         'max_dx_score': resolved_total_notes * 3,
-        'video_path': fish_record.get('video_path', None)
+        'video_path': None
     }
 
-    record = {
-        'chart_data': chart_data,
-        'order_in_archive': 0,
-        'achievement': fish_record.get('achievements'),
-        'fc_status': fish_record.get('fc'),
-        'fs_status': fish_record.get('fs'),
-        'dx_score': fish_record.get('dxScore', None),
-        'dx_rating': fish_record.get('ra', 0),
-        'chuni_rating': fish_record.get('chuni_rating', 0),
-        'play_count': fish_record.get('play_count', 0),
-        'clip_title_name': fish_record.get('clip_title_name'),
-        # Store the original record as JSON string (ensure_ascii=True to escape unicode like the example)
-        'raw_data': json.dumps(fish_record, ensure_ascii=True)
-    }
+    if game_type == "maimai":
+        record = {
+            'chart_data': chart_data,
+            'order_in_archive': 0, # Do not modify order here, will be set when inserting to DB
+            'achievement': fish_record.get('achievements'),
+            'fc_status': fish_record.get('fc'),
+            'fs_status': fish_record.get('fs'),
+            'dx_score': fish_record.get('dxScore', None),
+            'dx_rating': fish_record.get('ra', 0),
+            'chuni_rating': 0,
+            'play_count': fish_record.get('play_count', 0),
+            'clip_title_name': fish_record.get('clip_title_name'),
+            # Store the original record as JSON string (ensure_ascii=True to escape unicode like the example)
+            'raw_data': json.dumps(fish_record, ensure_ascii=True)
+        }
+    elif game_type == "chunithm":
+        record = {
+            'chart_data': chart_data,
+            'order_in_archive': 0,
+            'achievement': fish_record.get('score'),
+            'fc_status': chunithm_fc_status_to_label(fish_record.get('fc', None)),
+            'fs_status': fish_record.get('fs', None),
+            'dx_score': None,
+            'dx_rating': 0,
+            'chuni_rating': fish_record.get('ra', 0),
+            'play_count': fish_record.get('play_count', 0),
+            'clip_title_name': fish_record.get('clip_title_name'),
+            # Store the original record as JSON string (ensure_ascii=True to escape unicode like the example)
+            'raw_data': json.dumps(fish_record, ensure_ascii=True)
+        }
+    else:
+        raise ValueError("Unsupported game type for record conversion.")
 
     return record
-
-def get_chunithm_ds_next(metadata: dict) -> Union[float, None]:
-    raise NotImplementedError("Chunithm DS Next retrieval not implemented yet.")
 
 def get_jacket_image_from_url(image_code: str, source: str = "dxrating") -> Image.Image:
     if source == "dxrating":

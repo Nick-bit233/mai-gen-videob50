@@ -93,11 +93,12 @@ class MaiImageGenerater:
             case _ if Star == 5:
                 with Image.open(f"{self.image_root_path}/Stars/5.png") as _star:
                     return _star.copy()
+            case _:
+                with Image.open(f"{self.image_root_path}/Stars/0.png") as _star:
+                    return _star.copy()
 
     def ComboStatusLoader(self, ComboStatus: int = 0):
         match ComboStatus:
-            case _ if ComboStatus == '' or ComboStatus is None:
-                return Image.new('RGBA', (80, 80), (0, 0, 0, 0))
             case _ if ComboStatus == 'fc':
                 with Image.open(f"{self.image_root_path}/ComboStatus/1.png") as _comboStatus:
                     return _comboStatus.copy()
@@ -110,11 +111,11 @@ class MaiImageGenerater:
             case _ if ComboStatus == 'app':
                 with Image.open(f"{self.image_root_path}/ComboStatus/4.png") as _comboStatus:
                     return _comboStatus.copy()
+            case _:
+                return Image.new('RGBA', (80, 80), (0, 0, 0, 0))
 
     def SyncStatusLoader(self, SyncStatus: int = 0):
         match SyncStatus:
-            case _ if SyncStatus == '' or SyncStatus is None:
-                return Image.new('RGBA', (80, 80), (0, 0, 0, 0))
             case _ if SyncStatus == 'fs':
                 with Image.open(f"{self.image_root_path}/SyncStatus/1.png") as _syncStatus:
                     return _syncStatus.copy()
@@ -130,6 +131,8 @@ class MaiImageGenerater:
             case _ if SyncStatus == 'sync':
                 with Image.open(f"{self.image_root_path}/SyncStatus/5.png") as _syncStatus:
                     return _syncStatus.copy()
+            case _:
+                return Image.new('RGBA', (80, 80), (0, 0, 0, 0))
 
     def TextDraw(self, Image, Text: str = "", Position: tuple = (0, 0)):
         # 文本居中绘制
@@ -406,8 +409,6 @@ class ChuniImageGenerater:
 
     def ComboStatusLoader(self, combo_status: str = ""):
         match combo_status:
-            case _ if combo_status == '' or combo_status is None:
-                return Image.new('RGBA', (80, 80), (0, 0, 0, 0))
             case _ if combo_status == 'fc':
                 with Image.open(f"{self.image_root_path}/ComboStatus/11.png") as _comboStatus:
                     return _comboStatus.copy()
@@ -417,17 +418,19 @@ class ChuniImageGenerater:
             case _ if combo_status == 'ajc':
                 with Image.open(f"{self.image_root_path}/ComboStatus/13.png") as _comboStatus:
                     return _comboStatus.copy()
+            case _:
+                return Image.new('RGBA', (80, 80), (0, 0, 0, 0))
                 
     def ChainStatusLoader(self, chain_status: str = ""):
         match chain_status:
-            case _ if chain_status == '' or chain_status is None:
-                return Image.new('RGBA', (80, 80), (0, 0, 0, 0))
             case _ if chain_status == 'fc':
                 with Image.open(f"{self.image_root_path}/ComboStatus/21.png") as _chainStatus:
                     return _chainStatus.copy()
             case _ if chain_status == 'fcr':
                 with Image.open(f"{self.image_root_path}/ComboStatus/22.png") as _chainStatus:
                     return _chainStatus.copy()
+            case _:
+                return Image.new('RGBA', (80, 80), (0, 0, 0, 0))
         
     def TextDraw(self, image, text: str = "", pos: tuple = (0, 0), max_width: int = 2000,
                  font_path=None, font_size=32, font_color=(255, 255, 255), h_align: str = "center"):
@@ -502,6 +505,15 @@ class ChuniImageGenerater:
         Returns:
             Background (Image.Image): 处理后的成绩记录图片
         """
+        def modified_ds_next(ds_cur: float, ds_next: float) -> str:
+            if not ds_cur or ds_cur <= 0.0: 
+                return str(ds_next)
+            elif ds_next > ds_cur:
+                return str(ds_next) + "↑" 
+            elif ds_next < ds_cur:
+                return str(ds_next) + "↓"
+            else:
+                return str(ds_next) + "→"
 
         # Initialize Background as None outside the try block
         background = None
@@ -534,19 +546,15 @@ class ChuniImageGenerater:
                 ds_cur = record_detail["ds_cur"]
                 ds_next = record_detail["ds_next"]
                 ds_cur_text = str(ds_cur)
-                if ds_cur <= 0.0:  # 不在当前版本的谱面，使用0来标记无定数
+                if not ds_cur or ds_cur <= 0.0:  # 不在当前版本的谱面，使用0来标记无定数
                     ds_cur_text = "--"
+                if not ds_next or ds_next <= 0.0:  # 未有新版本数据的谱面，使用0来标记无定数
+                    ds_next_text = "--"
+                else:
+                    ds_next_text = modified_ds_next(ds_cur, ds_next)
                 _temp_img = self.TextDraw(_temp_img, ds_cur_text , ds_cur_pos,
                                           font_path=self.title_font_path, 
                                           font_size=45, font_color=(77, 77, 77), h_align="center")
-                if ds_cur <= 0.0: 
-                    ds_next_text = str(ds_next)
-                elif ds_next > ds_cur:
-                    ds_next_text = str(ds_next) + "↑" 
-                elif ds_next < ds_cur:
-                    ds_next_text = str(ds_next) + "↓"
-                else:
-                    ds_next_text = str(ds_next) + "→"
                 _temp_img = self.TextDraw(_temp_img, ds_next_text , ds_next_pos,
                                           font_path=self.title_font_path, 
                                           font_size=45, font_color=(77, 77, 77), h_align="center")
@@ -647,9 +655,10 @@ def generate_single_image(game_type, style_config, record_detail, output_path, t
         single_image = function.GenerateOneAchievement(record_detail)
 
         # 添加标题文字
-        single_image = function.TextDraw(single_image, title_text, (250, 1008), max_width=280,
+        title_text = '#' + title_text
+        single_image = function.TextDraw(single_image, title_text, (248, 1016), max_width=280,
                                         font_path=function.ui_font_path,
-                                        font_size=28, font_color=(255, 255, 255), h_align="center")
+                                        font_size=32, font_color=(255, 255, 255), h_align="center")
         
         # 保存图片
         single_image.save(output_path)
