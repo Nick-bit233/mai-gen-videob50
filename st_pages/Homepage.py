@@ -56,10 +56,11 @@ def should_update_metadata(threshold_hours=24):
 st.image("md_res/icon.png", width=256)
 
 G_type = st.session_state.get('game_type', 'maimai')
+cur_version = "v1.0"  # TODO: read from database table
 
 st.title("Mai-gen Videob50 视频生成器")
 
-st.write("当前版本: v1.0.0 alpha test")
+st.write(f"当前版本: {cur_version} alpha test")
 
 st.markdown(f"> 您正在使用 **{get_game_type_text(G_type)}** 视频生成模式。")
 st.markdown(
@@ -77,7 +78,7 @@ st_init_cache_pathes()
 
 # 初始化视频模板样式配置
 if not os.path.exists(DEFAULT_STYLE_CONFIG_FILE_PATH):
-    default_style_config = DEFAULT_STYLES['Prism']
+    default_style_config = DEFAULT_STYLES.get(cur_version, DEFAULT_STYLES['v1.0'])
     with open(DEFAULT_STYLE_CONFIG_FILE_PATH, "w") as f:
         json.dump(default_style_config, f, indent=4)
 
