@@ -277,6 +277,15 @@ class DatabaseDataHandler:
         
         records = self.db.get_archive_records_simple(archive_id)
         return records
+    
+    def load_charts_of_archive_records(self, username: str, archive_name: str) -> List[Dict]:
+        """Load all charts for a given archive."""
+        archive_id = self.load_save_archive(username, archive_name)
+        if not archive_id:
+            return []
+        
+        charts = self.db.get_charts_of_archive(archive_id)
+        return charts
 
     def load_archive_for_image_generation(self, archive_id: int) -> List[Dict]:
         """Load archive data formatted for image generation scripts."""

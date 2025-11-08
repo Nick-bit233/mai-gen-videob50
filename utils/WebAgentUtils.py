@@ -2,64 +2,74 @@ import json
 import os
 import random
 
+from copy import deepcopy
 from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
+from utils.DataUtils import chart_type_value2str, level_index_to_label
 
-def get_keyword(downloader_type, title_name, level_index, type):
-    match level_index:
-        case 0:
+def get_keyword(downloader_type, game_type, title_name, difficulty_name, type):
+    match difficulty_name:
+        case "BASIC":
             dif_CN_name = "绿谱"
             dif_name = "Basic"
-        case 1:
+        case "ADVANCE":
             dif_CN_name = "黄谱"
             dif_name = "Advance"
-        case 2:
+        case "EXPERT":
             dif_CN_name = "红谱"
             dif_name = "Expert"
-        case 3:
+        case "MASTER":
             dif_CN_name = "紫谱"
             dif_name = "Master"
-        case 4:
+        case "RE:MASTER":
             dif_CN_name = "白谱"
             dif_name = "Re:MASTER"
+        case "ULTIMA":
+            dif_CN_name = "黑谱"
+            dif_name = "ULTIMA"
         case _:
             dif_CN_name = ""
             dif_name = ""
             print(f"Warning: {title_name}具有未指定的谱面难度！")
-    if downloader_type == "youtube":
-        suffix = "AP【maimaiでらっくす外部出力】"
-        return f"{title_name} {'DX譜面' if type != 'SD' else ''} {dif_name} {suffix}"
-    elif downloader_type == "bilibili":
-        prefix = "【maimai】【谱面确认】"
-        return f"{prefix} {'DX谱面' if type != 'SD' else '标准谱面'} {title_name} {dif_CN_name} {dif_name} "
-    
 
-def search_one_video(downloader, song_data):
-    title_name = song_data['title']
-    difficulty_name = song_data['level_label']
-    level_index = song_data['level_index']
-    type = song_data['type']
+    type_mapping = {0: ("标准", "SD"), 1: ("DX谱面", "DX")}
+    type_CN_name, type_name = type_mapping.get(type, ("", "")) if game_type == "maimai" else ("", "")
+
+    dif_game_name = "maimaiでらっく 外部出力" if game_type == "maimai" else "CHUNITHM チュウニズム 譜面確認"
+    dif_game_CN_name = "maimai 舞萌DX 谱面确认" if game_type == "maimai" else "CHUNITHM 中二节奏 谱面确认"
+    if downloader_type == "youtube":
+        return f"{dif_game_name} {title_name} {type_name} {dif_name}"
+    elif downloader_type == "bilibili":
+        return f"{dif_game_CN_name} {title_name} {type_CN_name} {dif_CN_name}  "
+    
+def search_one_video(downloader, chart_data):
+    game_type = chart_data['game_type']
+    title_name = chart_data['song_name']
+    difficulty_name = level_index_to_label(game_type, chart_data['level_index'])
+    type = chart_data['chart_type']
     dl_type = "youtube" if isinstance(downloader, PurePytubefixDownloader) \
                 else "bilibili" if isinstance(downloader, BilibiliDownloader) \
                 else "None"
-    keyword = get_keyword(dl_type, title_name, level_index, type)
+    keyword = get_keyword(dl_type, game_type, title_name, difficulty_name, type)
 
     print(f"搜索关键词: {keyword}")
     videos = downloader.search_video(keyword)
 
+    ret_chart_data = deepcopy(chart_data)
+
     if len(videos) == 0:
-        output_info = f"Error: 没有找到{title_name}-{difficulty_name}({level_index})-{type}的视频"
+        output_info = f"Error: 没有找到{title_name}-{difficulty_name}-{type}的视频"
         print(output_info)
-        song_data['video_info_list'] = []
-        song_data['video_info_match'] = {}
-        return song_data, output_info
+        ret_chart_data['video_info_list'] = []
+        ret_chart_data['video_info_match'] = {}
+        return ret_chart_data, output_info
 
     match_index = 0
     output_info = f"首个搜索结果: {videos[match_index]['title']}, {videos[match_index]['url']}"
     print(f"首个搜索结果: {videos[match_index]['title']}, {videos[match_index]['url']}")
 
-    song_data['video_info_list'] = videos
-    song_data['video_info_match'] = videos[match_index]
-    return song_data, output_info
+    ret_chart_data['video_info_list'] = videos
+    ret_chart_data['video_info_match'] = videos[match_index]
+    return ret_chart_data, output_info
 
 
 def download_one_video(downloader, song, video_download_path, high_res=False):

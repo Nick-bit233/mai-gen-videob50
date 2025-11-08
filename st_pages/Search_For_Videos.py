@@ -5,10 +5,11 @@ import random
 import traceback
 import streamlit as st
 from datetime import datetime
-from utils.PageUtils import load_record_config, save_record_config, read_global_config, write_global_config
+from utils.PageUtils import read_global_config, write_global_config, get_game_type_text
 from utils.PathUtils import get_data_paths, get_user_versions
 from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
 from utils.WebAgentUtils import search_one_video
+from db_utils.DatabaseDataHandler import get_database_handler
 
 G_config = read_global_config()
 _downloader = G_config.get('DOWNLOADER', 'bilibili')
@@ -20,56 +21,58 @@ _use_auto_po_token = G_config.get('USE_AUTO_PO_TOKEN', False)
 _use_oauth = G_config.get('USE_OAUTH', False)
 _customer_po_token = G_config.get('CUSTOMER_PO_TOKEN', '')
 
+db_handler = get_database_handler()
+G_type = st.session_state.get('game_type', 'maimai')
+
+# =============================================================================
+# Page layout starts here
+# ==============================================================================
+
 st.header("Step 2: 谱面确认视频搜索和抓取")
+st.markdown(f"> 您正在使用 **{get_game_type_text(G_type)}** 视频生成模式。")
 
 ### Savefile Management - Start ###
-if "username" in st.session_state:
-    st.session_state.username = st.session_state.username
-
-if "save_id" in st.session_state:
-    st.session_state.save_id = st.session_state.save_id
-
 username = st.session_state.get("username", None)
-save_id = st.session_state.get("save_id", None)
+archive_name = st.session_state.get("archive_name", None)
+archive_id = st.session_state.get("archive_id", None)
 current_paths = None
 data_loaded = False
 
 if not username:
-    st.error("请先获取指定用户名的B50存档！")
+    st.warning("请先在存档管理页面指定用户名。")
     st.stop()
-
-if save_id:
-    # load save data
-    current_paths = get_data_paths(username, save_id)
-    data_loaded = True
-    with st.container(border=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            st.write("当前存档")
-        with col2:
-            st.write(f"用户名：{username}，存档时间：{save_id} ")
-else:
-    st.warning("未索引到存档，请先加载存档数据！")
+st.write(f"当前用户名: **{username}**")
+archives = db_handler.get_user_save_list(username, game_type=G_type)
 
 with st.expander("更换B50存档"):
-    st.info("如果要更换用户，请回到存档管理页面指定其他用户名。")
-    versions = get_user_versions(username)
-    if versions:
-        with st.container(border=True):
-            selected_save_id = st.selectbox(
-                "选择存档",
-                versions,
-                format_func=lambda x: f"{username} - {x} ({datetime.strptime(x.split('_')[0], '%Y%m%d').strftime('%Y-%m-%d')})"
-            )
-            if st.button("使用此存档（只需要点击一次！）"):
-                if selected_save_id:
-                    st.session_state.save_id = selected_save_id
-                    st.rerun()
-                else:
-                    st.error("无效的存档路径！")
-    else:
-        st.warning("未找到任何存档，请先在存档管理页面获取存档！")
+    if not archives:
+        st.warning("未找到任何存档。请先新建或加载存档。")
         st.stop()
+    else:
+        archive_names = [a['archive_name'] for a in archives]
+        try:
+            current_archive_index = archive_names.index(st.session_state.get('archive_name'))
+        except (ValueError, TypeError):
+            current_archive_index = 0
+        
+        st.markdown("##### 加载本地存档")
+        selected_archive_name = st.selectbox(
+            "选择存档进行加载",
+            archive_names,
+            index=current_archive_index
+        )
+        if st.button("加载此存档（只需要点击一次！）"):
+
+            archive_id = db_handler.load_save_archive(username, selected_archive_name)
+            st.session_state.archive_id = archive_id
+        
+            archive_data = db_handler.load_archive_metadata(username, selected_archive_name)
+            if archive_data:
+                st.session_state.archive_name = selected_archive_name
+                st.success(f"已加载存档 **{selected_archive_name}**")
+                st.rerun()
+            else:
+                st.error("加载存档数据失败。")
 ### Savefile Management - End ###
 
 st.write("视频抓取设置")
@@ -184,62 +187,50 @@ def st_init_downloader():
     
     return dl_instance
 
-# b50 config文件位置
-b50_data_file = current_paths['data_file']
-# 根据下载器类型的b50_config副本
-if downloader == "youtube":
-    b50_config_file = current_paths['config_yt']
-elif downloader == "bilibili":
-    b50_config_file = current_paths['config_bi']
-
-if not os.path.exists(b50_data_file):
-    st.error("未找到b50数据文件，请检查B50存档的数据完整性！")
-    st.stop()
-
-if not os.path.exists(b50_config_file):
-    # 复制b50_data_file到b50_config_file
-    shutil.copy(b50_data_file, b50_config_file)
-    st.toast(f"已生成平台{downloader}的b50索引文件")
-
-# 对比以及合并b50_data_file和b50_config_file
-# TODO: 修改为用户主动更新数据与合并
-# b50_data = load_record_config(b50_data_file)
-# b50_config = load_record_config(b50_config_file)
-# merged_b50_config, update_count = merge_b50_data(b50_data, b50_config)
-# save_record_config(b50_config_file, merged_b50_config)
-# if update_count > 0:
-#     st.toast(f"已加载平台{downloader}的b50索引，共更新{update_count}条数据")
-
 def st_search_b50_videoes(dl_instance, placeholder, search_wait_time):
     # read b50_data
-    b50_records = load_record_config(b50_config_file)
-    record_len = len(b50_records)
+    chart_list = db_handler.load_charts_of_archive_records(username, archive_name)
+    record_len = len(chart_list)
 
     with placeholder.container(border=True, height=560):
         with st.spinner("正在搜索b50视频信息..."):
             progress_bar = st.progress(0)
             write_container = st.container(border=True, height=400)
             i = 0
-            for song in b50_records:
+            for chart in chart_list:
+                chart_id = chart['chart_id']
+                song_id = chart['song_id']
                 i += 1
-                progress_bar.progress(i / record_len, text=f"正在搜索({i}/{record_len}): {song['title']}")
-                if 'video_info_match' in song and song['video_info_match']:
-                    write_container.write(f"跳过({i}/{record_len}): {song['title']} ，已储存有相关视频信息")
+                progress_bar.progress(i / record_len, text=f"正在搜索({i}/{record_len}): {song_id}")
+                # 如果有，从session state中读取缓存搜索结果
+                if chart_id in st.session_state.search_results:
+                    write_container.write(f"跳过({i}/{record_len}): {song_id} ，已储存有相关视频信息")
                     continue
                 
-                song_data, ouput_info = search_one_video(dl_instance, song)
+                ret_data, ouput_info = search_one_video(dl_instance, chart)
                 write_container.write(f"【{i}/{record_len}】{ouput_info}")
 
-                # 每次搜索后都写入b50_data_file
-                save_record_config(b50_config_file, b50_records)
+                # 搜索结果缓存在session state中（不再进行持久存储）
+                st.session_state.search_results[chart_id] = ret_data
+                # save_record_config(b50_config_file, b50_records)
                 
                 # 等待几秒，以减少被检测为bot的风险
                 if search_wait_time[0] > 0 and search_wait_time[1] > search_wait_time[0]:
                     time.sleep(random.randint(search_wait_time[0], search_wait_time[1]))
 
-# 仅在配置已保存时显示"开始预生成"按钮
+# 仅在配置已保存时显示搜索控件
 if st.session_state.get('config_saved_step2', False):
     info_placeholder = st.empty()
+
+    if 'search_results' not in st.session_state:
+        st.session_state.search_results = {}
+
+    # 对于中二生成器，显示跳过搜索的提示
+    if G_type == "chunithm" and st.session_state.downloader_type == "bilibili":
+        with st.container(border=True):
+            st.warning("【提示】由于B站已上传的中二谱面确认视频数量较少，以及自动搜索采用搜索接口等原因，搜索中二视频的命中率较低。我们推荐您可以跳过自动搜索步骤，在下一个页面对每个分表条目，手动输入谱面视频的BV号进行手动确认。如果想要跳过搜索，请点击下面的按钮")
+            if st.button("跳过自动搜索"):
+                st.switch_page("st_pages/Confirm_Videos.py")
 
     button_label = "开始搜索"
     st.session_state.search_completed = False
@@ -252,6 +243,8 @@ if st.session_state.get('config_saved_step2', False):
             st_search_b50_videoes(dl_instance, info_placeholder, search_wait_time)
             st.session_state.search_completed = True  # Reset error flag if successful
             st.success("搜索完成！请点击下一步按钮检查搜索到的视频信息，以及下载视频。")
+            # debug：
+            print(st.session_state.search_results)
         except Exception as e:
             st.session_state.search_completed = False
             st.error(f"搜索过程中出现错误: {e}, 请尝试重新搜索")

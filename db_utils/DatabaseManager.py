@@ -246,6 +246,41 @@ class DatabaseManager:
             if row:
                 return dict(row)
             return None
+    
+    def get_charts_of_archive(self, archive_id: int) -> List[Dict]:
+        """Get all charts associated with an archive (of every records)"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT
+                    r.id AS record_id,
+                    r.archive_id,
+                    r.order_in_archive,
+                    c.id AS chart_id,
+                    c.game_type,
+                    c.song_id,
+                    c.chart_type,
+                    c.difficulty,
+                    c.level_index,
+                    c.song_name,
+                    c.artist,
+                    c.video_path
+                FROM
+                    records r
+                JOIN
+                    charts c ON r.chart_id = c.id
+                WHERE
+                    r.archive_id = ?
+                ORDER BY
+                    r.order_in_archive ASC;
+            ''', (archive_id,))
+            
+            results = cursor.fetchall()
+            charts = []
+            for row in results:
+                row_dict = dict(row)
+                charts.append(row_dict)
+            return charts
 
     # Archive management methods
     def create_archive(self, user_id: int, archive_name: str, game_type: str, sub_type: str, 

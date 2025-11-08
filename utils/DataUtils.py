@@ -94,6 +94,42 @@ def level_label_to_index(game_type: str, label: str) -> int:
                 return 4
             case _:
                 return 5
+    else:
+        return -1
+
+def level_index_to_label(game_type: str, index: int) -> str:
+    """Convert level index to label."""
+    if game_type == "maimai":
+        match index:
+            case 0:
+                return "BASIC"
+            case 1:
+                return "ADVANCED"
+            case 2:
+                return "EXPERT"
+            case 3:
+                return "MASTER"
+            case 4:
+                return "RE:MASTER"
+            case 5:
+                return "UNKNOWN"
+    elif game_type == "chunithm":
+        match index:
+            case 0:
+                return "BASIC"
+            case 1:
+                return "ADVANCED"
+            case 2:
+                return "EXPERT"
+            case 3:
+                return "MASTER"
+            case 4:
+                return "ULTIMA"
+            case 5:
+                return "UNKNOWN"
+    else:
+        return "UNKNOWN"
+
 
 def chunithm_fc_status_to_label(fc_status: int) -> str:
     match fc_status:
@@ -101,7 +137,7 @@ def chunithm_fc_status_to_label(fc_status: int) -> str:
             return "fc"
         case "alljustice":
             return "aj"
-        case "AJC":
+        case "AJC":  # TODO: 检测查分器接口是否返回AJC flag
             return "ajc"
         case _:
             return "none"

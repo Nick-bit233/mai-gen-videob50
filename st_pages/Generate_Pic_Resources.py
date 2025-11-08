@@ -109,10 +109,8 @@ with st.expander("更换B50存档"):
         
             archive_data = db_handler.load_archive_metadata(username, selected_archive_name)
             if archive_data:
-                # 除了存档修改页面，其他页面均只读存档，因此将game_type等信息存入session_state
-                st.session_state.game_type = archive_data.get('game_type', 'maimai')
                 st.session_state.archive_name = selected_archive_name
-                st.success(f"已加载存档 **{selected_archive_name}** ，游戏类型: {st.session_state.game_type}。")
+                st.success(f"已加载存档 **{selected_archive_name}**")
                 st.rerun()
             else:
                 st.error("加载存档数据失败。")
