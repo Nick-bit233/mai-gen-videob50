@@ -114,11 +114,36 @@ class DatabaseDataHandler:
     def load_chart_by_id(self, chart_id: int) -> Optional[Dict]:
         """Retrieve chart metadata by chart_id"""
         return self.db.get_chart(chart_id)
+    
+    def update_chart_video_metadata(self, chart_id: int, video_info_match: Dict) -> Optional[Dict]:
+        """Update video metadata (matched video WEB info) for a chart."""
+        if video_info_match: 
+             # video_metadata == chart_data['video_info_match']
+            self.db.update_chart(
+                chart_id=chart_id,
+                chart_data={
+                    'video_metadata': video_info_match
+                }
+            )
+            return self.load_chart_by_id(chart_id)
+        return None
+    
+    def update_chart_video_path(self, chart_id: int, video_path: str) -> Optional[Dict]:
+        """Update video path (static, local) for a chart."""
+        if video_path: 
+            self.db.update_chart(
+                chart_id=chart_id,
+                chart_data={
+                    'video_path': video_path
+                }
+            )
+            return self.load_chart_by_id(chart_id)
+        return None
 
     # --------------------------------------
     # Record and archive update handler from json data
     # --------------------------------------
-    def update_archive_metadata(self, username: str, archive_name: str, metadata: Dict) -> bool:
+    def update_archive_metadata(self, username: str, archive_name: str, metadata: Dict) -> Optional[Dict]:
         """Update metadata fields of an existing archive."""
         archive_id = self.load_save_archive(username, archive_name)
         if not archive_id:
@@ -129,8 +154,8 @@ class DatabaseDataHandler:
         
         if update_data:
             self.db.update_archive(archive_id, update_data)
-            return True
-        return False
+            return self.load_archive_metadata(username, archive_name)
+        return None
 
     def update_archive_records(self, username: str, new_records_data: List[Dict], archive_name: str) -> int:
         """

@@ -222,7 +222,7 @@ class DatabaseManager:
             
             # If not, create it
             # Define all possible fields for a chart
-            all_fields = unique_keys + ['difficulty', 'song_name', 'artist', 'max_dx_score', 'video_path']
+            all_fields = unique_keys + ['difficulty', 'song_name', 'artist', 'max_dx_score', 'video_path', 'video_metadata']
             
             # Prepare for insertion
             columns = [field for field in all_fields if field in chart_data and chart_data[field] is not None]
@@ -244,9 +244,44 @@ class DatabaseManager:
             cursor.execute('SELECT * FROM charts WHERE id = ?', (chart_id,))
             row = cursor.fetchone()
             if row:
-                return dict(row)
+                chart_data = dict(row)
+                if chart_data.get('video_metadata'):
+                    chart_data['video_metadata'] = json.loads(chart_data['video_metadata'])
+                return chart_data
             return None
     
+    def update_chart(self, chart_id: int, chart_data: Dict) -> Optional[Dict]:
+        """Update chart metadata by chart_id"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            updateable_fields = ['game_type', 'song_id', 'chart_type', 'level_index', 'difficulty', 
+                                 'song_name', 'artist', 'max_dx_score', 'video_path', 'video_metadata']
+            filtered_data = {k: v for k, v in chart_data.items() if k in updateable_fields and v is not None}
+            if not filtered_data: 
+                return self.get_chart(chart_id)
+
+            set_clauses = []
+            update_values = []
+
+            for field, value in filtered_data.items():
+                set_clauses.append(f'{field} = ?')
+                if field == 'video_metadata':
+                    update_values.append(json.dumps(value))
+                else:
+                    update_values.append(value)
+            
+            update_values.append(chart_id)
+            update_query = f'''
+                UPDATE charts 
+                SET {', '.join(set_clauses)} 
+                WHERE id = ?
+            '''
+            cursor.execute(update_query, update_values)
+            conn.commit()
+            return self.get_chart(chart_id)
+
+    # Group of charts fetch methods
     def get_charts_of_archive(self, archive_id: int) -> List[Dict]:
         """Get all charts associated with an archive (of every records)"""
         with self.get_connection() as conn:
@@ -256,6 +291,7 @@ class DatabaseManager:
                     r.id AS record_id,
                     r.archive_id,
                     r.order_in_archive,
+                    r.clip_title_name,
                     c.id AS chart_id,
                     c.game_type,
                     c.song_id,
@@ -264,7 +300,8 @@ class DatabaseManager:
                     c.level_index,
                     c.song_name,
                     c.artist,
-                    c.video_path
+                    c.video_path,
+                    c.video_metadata
                 FROM
                     records r
                 JOIN
@@ -279,6 +316,8 @@ class DatabaseManager:
             charts = []
             for row in results:
                 row_dict = dict(row)
+                if row_dict.get('video_metadata'):
+                    row_dict['video_metadata'] = json.loads(row_dict['video_metadata'])
                 charts.append(row_dict)
             return charts
 
@@ -330,7 +369,7 @@ class DatabaseManager:
                 return archive
             return None
     
-    def update_archive(self, archive_id: int, update_data: Dict):
+    def update_archive(self, archive_id: int, update_data: Dict) -> Optional[Dict]:
         """Update an existing archive"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -342,7 +381,7 @@ class DatabaseManager:
             filtered_data = {k: v for k, v in update_data.items() if k in updateable_fields and v is not None}
             
             if not filtered_data:
-                return # Nothing to update
+                return self.get_archive(archive_id)
             
             set_clauses = []
             values = []
@@ -364,6 +403,7 @@ class DatabaseManager:
             
             cursor.execute(update_query, values)
             conn.commit()
+            return self.get_archive(archive_id)
     
     def get_active_archives(self, user_id: int) -> List[Dict]:
         """Get only active archives for a user"""
@@ -381,7 +421,7 @@ class DatabaseManager:
                 archives.append(archive)
             return archives
     
-    # Record management methods
+    # Single Record management methods
     def add_record(self, archive_id: int, chart_id: int, record_data: Dict) -> int:
         """Add a new record to an archive"""
         with self.get_connection() as conn:
@@ -453,12 +493,12 @@ class DatabaseManager:
                     c.artist,
                     c.max_dx_score,
                     c.video_path,
+                    c.video_metadata,
                     conf.background_image_path,
                     conf.achievement_image_path,
                     conf.video_slice_start,
                     conf.video_slice_end,
-                    conf.comment_text,
-                    conf.video_metadata
+                    conf.comment_text
                 FROM
                     records r
                 JOIN
@@ -480,7 +520,7 @@ class DatabaseManager:
                 return record
             return None
 
-    def update_record(self, record_id: int, update_data: Dict):
+    def update_record(self, record_id: int, update_data: Dict) -> Optional[Dict]:
         """Update an existing record"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -493,7 +533,7 @@ class DatabaseManager:
             filtered_data = {k: v for k, v in update_data.items() if k in updateable_fields and v is not None}
             
             if not filtered_data:
-                return # Nothing to update
+                return self.get_record(record_id) # Nothing to update
             
             set_clauses = []
             values = []
@@ -515,7 +555,9 @@ class DatabaseManager:
             
             cursor.execute(update_query, values)
             conn.commit()
+            return self.get_record(record_id)
 
+    # Group of Records fetch methods
     def get_records_for_video_generation(self, archive_id: int, retrieve_raw_data: bool = False) -> List[Dict]:
         """
         Get all records for an archive, joined with chart and configuration data.
@@ -547,12 +589,12 @@ class DatabaseManager:
                     c.artist,
                     c.max_dx_score,
                     c.video_path,
+                    c.video_metadata,
                     conf.background_image_path,
                     conf.achievement_image_path,
                     conf.video_slice_start,
                     conf.video_slice_end,
-                    conf.comment_text,
-                    conf.video_metadata
+                    conf.comment_text
                 FROM
                     records r
                 JOIN
@@ -607,11 +649,11 @@ class DatabaseManager:
             
             existing_id = cursor.fetchone()
             
-            # Fields for the configurations table
+            # Fields for the configurations table (removed video_metadata)
             config_fields = [
                 'background_image_path', 'achievement_image_path',
                 'video_slice_start', 'video_slice_end', 
-                'comment_text', 'video_metadata'
+                'comment_text'
             ]
             
             # Filter out None values from config_data
@@ -625,10 +667,7 @@ class DatabaseManager:
                     if field in filtered_config:
                         update_clauses.append(f"{field} = ?")
                         value = filtered_config[field]
-                        if field == 'metadata':
-                            update_values.append(json.dumps(value or {}))
-                        else:
-                            update_values.append(value)
+                        update_values.append(value)
                 
                 if not update_clauses:
                     return # Nothing to update
@@ -646,10 +685,7 @@ class DatabaseManager:
                     if field in filtered_config:
                         columns.append(field)
                         value = filtered_config[field]
-                        if field == 'metadata':
-                            values.append(json.dumps(value or {}))
-                        else:
-                            values.append(value)
+                        values.append(value)
                 
                 if len(columns) > 2: # Only insert if there's data
                     placeholders = ', '.join(['?'] * len(columns))
@@ -668,7 +704,6 @@ class DatabaseManager:
             row = cursor.fetchone()
             if row:
                 config = dict(row)
-                config['metadata'] = json.loads(config.get('metadata') or '{}')
                 return config
             return None
     

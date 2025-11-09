@@ -130,8 +130,27 @@ def level_index_to_label(game_type: str, index: int) -> str:
     else:
         return "UNKNOWN"
 
+def get_record_chart_tags(record_data: List[Dict]) -> List[str]:
+    """Get tags from record/chart group query data. These tags are used by st_page compoents for navigation to certain record"""
+    ret_tags = []
+    for r in record_data:
+        game_type = r.get("game_type", "maimai")
+        clip_title_name = r.get("clip_title_name", "")
+        song_id = r.get("song_id", "")
+        chart_type = r.get("chart_type", -1)
+        level_label = level_index_to_label(game_type, r.get("level_index", -1))
+        if game_type == "maimai":
+            ret_tags.append(
+                f"{clip_title_name}: {song_id} ({chart_type_value2str(chart_type, game_type)}) [{level_label}]"
+            )
+        else:
+            ret_tags.append(
+                f"{clip_title_name}: {song_id} [{level_label}]"
+            )
+    return ret_tags
 
 def chunithm_fc_status_to_label(fc_status: int) -> str:
+
     match fc_status:
         case "fullcombo":
             return "fc"

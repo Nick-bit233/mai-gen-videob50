@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS charts (
     song_name TEXT,
     artist TEXT,
     video_path TEXT, -- Path to the reference video file, stored in charts instead of configurations.
+    video_metadata TEXT,    -- JSON for other config data like video source URL
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(game_type, song_id, chart_type, level_index)
@@ -81,7 +82,6 @@ CREATE TABLE IF NOT EXISTS configurations (
     video_slice_start REAL, -- Custom start time for the video clip
     video_slice_end REAL,   -- Custom end time for the video clip
     comment_text TEXT,      -- User comment to display on the video
-    video_metadata TEXT,    -- JSON for other config data like video source URL (TODO: move to chart table)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (archive_id) REFERENCES archives(id) ON DELETE CASCADE,

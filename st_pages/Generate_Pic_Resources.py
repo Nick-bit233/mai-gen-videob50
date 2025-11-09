@@ -10,6 +10,8 @@ from utils.PathUtils import get_user_media_dir
 
 # Initialize database handler
 db_handler = get_database_handler()
+# Start with getting G_type from session state
+G_type = st.session_state.get('game_type', 'maimai')
 
 def st_generate_b50_images(placeholder, user_id, archive_id, save_paths):
     # get data format for image generation scripts
@@ -58,16 +60,13 @@ def st_generate_b50_images(placeholder, user_id, archive_id, save_paths):
 
 # =============================================================================
 # Page layout starts here
-# ==============================================================================
+# =============================================================================
 st.set_page_config(
     page_title="Step 1: 生成B50成绩背景图片",
     page_icon="🖼️",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
-
-# Start with getting G_type from session state
-G_type = st.session_state.get('game_type', 'maimai')
 
 st.title("Step 1: 生成B50成绩背景图片")
 

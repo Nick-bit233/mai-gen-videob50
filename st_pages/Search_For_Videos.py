@@ -210,9 +210,9 @@ def st_search_b50_videoes(dl_instance, placeholder, search_wait_time):
                 ret_data, ouput_info = search_one_video(dl_instance, chart)
                 write_container.write(f"【{i}/{record_len}】{ouput_info}")
 
-                # 搜索结果缓存在session state中（不再进行持久存储）
+                # 搜索结果缓存在session state中
+                # TODO: 考虑是不再进行持久存储（切换存档时需要清除search_results缓存），还是将搜索结果存储到数据库中（新添字段）
                 st.session_state.search_results[chart_id] = ret_data
-                # save_record_config(b50_config_file, b50_records)
                 
                 # 等待几秒，以减少被检测为bot的风险
                 if search_wait_time[0] > 0 and search_wait_time[1] > search_wait_time[0]:
@@ -226,11 +226,13 @@ if st.session_state.get('config_saved_step2', False):
         st.session_state.search_results = {}
 
     # 对于中二生成器，显示跳过搜索的提示
-    if G_type == "chunithm" and st.session_state.downloader_type == "bilibili":
-        with st.container(border=True):
-            st.warning("【提示】由于B站已上传的中二谱面确认视频数量较少，以及自动搜索采用搜索接口等原因，搜索中二视频的命中率较低。我们推荐您可以跳过自动搜索步骤，在下一个页面对每个分表条目，手动输入谱面视频的BV号进行手动确认。如果想要跳过搜索，请点击下面的按钮")
-            if st.button("跳过自动搜索"):
-                st.switch_page("st_pages/Confirm_Videos.py")
+    with st.container(border=True):
+        st.warning("【提示】 如果您遇到自动搜索失败，或大多数谱面的默认搜索结果完全不正确的情况，多半与第三方查询接口有关，难以立刻修复。请考虑使用手动输入谱面视频的BV号的方法。点击下方按钮可以跳过自动搜索，跳转到下一个页面进行操作。")
+        if st.button("跳过自动搜索"):
+            dl_instance = st_init_downloader()
+            # 缓存downloader对象
+            st.session_state.downloader = dl_instance
+            st.switch_page("st_pages/Confirm_Videos.py")
 
     button_label = "开始搜索"
     st.session_state.search_completed = False
@@ -243,8 +245,7 @@ if st.session_state.get('config_saved_step2', False):
             st_search_b50_videoes(dl_instance, info_placeholder, search_wait_time)
             st.session_state.search_completed = True  # Reset error flag if successful
             st.success("搜索完成！请点击下一步按钮检查搜索到的视频信息，以及下载视频。")
-            # debug：
-            print(st.session_state.search_results)
+            # print(st.session_state.search_results)  # debug：打印搜索结果
         except Exception as e:
             st.session_state.search_completed = False
             st.error(f"搜索过程中出现错误: {e}, 请尝试重新搜索")
