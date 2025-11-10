@@ -130,23 +130,24 @@ def level_index_to_label(game_type: str, index: int) -> str:
     else:
         return "UNKNOWN"
 
-def get_record_chart_tags(record_data: List[Dict]) -> List[str]:
+
+def format_record_tag(game_type: str, clip_title_name: str, song_id: str, chart_type: int, level_index: int):
+    level_label = level_index_to_label(game_type, level_index)
+    if game_type == "maimai":
+        return f"{clip_title_name}: {song_id} ({chart_type_value2str(chart_type, game_type)}) [{level_label}]"
+    else:
+        return f"{clip_title_name}: {song_id} [{level_label}]"
+
+def get_record_tags_from_data_dict(records_data: List[Dict]) -> List[str]:
     """Get tags from record/chart group query data. These tags are used by st_page compoents for navigation to certain record"""
     ret_tags = []
-    for r in record_data:
+    for r in records_data:
         game_type = r.get("game_type", "maimai")
         clip_title_name = r.get("clip_title_name", "")
         song_id = r.get("song_id", "")
         chart_type = r.get("chart_type", -1)
-        level_label = level_index_to_label(game_type, r.get("level_index", -1))
-        if game_type == "maimai":
-            ret_tags.append(
-                f"{clip_title_name}: {song_id} ({chart_type_value2str(chart_type, game_type)}) [{level_label}]"
-            )
-        else:
-            ret_tags.append(
-                f"{clip_title_name}: {song_id} [{level_label}]"
-            )
+        level_index = r.get("level_index", -1)
+        ret_tags.append(format_record_tag(game_type, clip_title_name, song_id, chart_type, level_index))
     return ret_tags
 
 def chunithm_fc_status_to_label(fc_status: int) -> str:

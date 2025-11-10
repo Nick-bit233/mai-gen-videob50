@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 from utils.PageUtils import escape_markdown_text, read_global_config, get_game_type_text
 from utils.WebAgentUtils import download_one_video, get_keyword
-from utils.DataUtils import get_record_chart_tags, level_index_to_label
+from utils.DataUtils import get_record_tags_from_data_dict, level_index_to_label
 from db_utils.DatabaseDataHandler import get_database_handler
 
 G_config = read_global_config()
@@ -256,8 +256,6 @@ st.markdown(f"> 您正在使用 **{get_game_type_text(G_type)}** 视频生成模
 username = st.session_state.get("username", None)
 archive_name = st.session_state.get("archive_name", None)
 archive_id = st.session_state.get("archive_id", None)
-current_paths = None
-data_loaded = False
 
 if not username:
     st.warning("请先在存档管理页面指定用户名。")
@@ -335,7 +333,7 @@ else:
     st.info("没有缓存的搜索结果，请尝试手动添加匹配视频信息！")
 
 # 获取所有视频片段的ID
-record_ids = get_record_chart_tags(to_edit_chart_data)
+record_ids = get_record_tags_from_data_dict(to_edit_chart_data)
 # 使用session_state来存储当前选择的视频片段索引
 if 'current_index' not in st.session_state:
     st.session_state.current_index = 0

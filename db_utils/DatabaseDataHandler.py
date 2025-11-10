@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Tuple, Any, Union
 from unittest import case
 from db_utils.DatabaseManager import DatabaseManager
-from utils.DataUtils import chart_type_str2value, get_jacket_image_from_url, level_label_to_index, query_songs_metadata
+from utils.DataUtils import get_jacket_image_from_url, query_songs_metadata, format_record_tag
 import os
 import json
 from datetime import datetime
@@ -465,87 +465,69 @@ class DatabaseDataHandler:
         )
 
     def save_video_config(self, username: str, video_config: Dict, archive_name: str = None):
-        """Save video configuration to the database."""
+        """Save video configuration(main) to the database."""
         archive_id = self.load_save_archive(username, archive_name)
         if not archive_id:
             raise ValueError("No active archive found to save configuration.")
         
-        # Save intro/ending/extra configurations
-        for config_type in ['intro', 'ending', 'extra']:
-            if config_type in video_config:
-                # Assuming single config item for now, extend if multiple are needed
-                self.db.set_extra_video_config(archive_id, config_type, video_config[config_type])
-        
-        # Save main (record-specific) configurations
-        if 'main' in video_config:
-            records = self.db.get_records_for_video_generation(archive_id)
-            record_map = {
-                (str(r['song_id']), r['level_index']): r['chart_id'] 
-                for r in records
-            }
-
-            for main_config in video_config['main']:
-                lookup_key = (
-                    str(main_config.get('song_id')), 
-                    main_config.get('level_index')
-                )
-                chart_id = record_map.get(lookup_key)
-                
-                if chart_id:
-                    config_data = {
-                        'background_image_path': main_config.get('main_image'),
-                        'achievement_image_path': main_config.get('achievement_image'),
-                        'video_slice_start': main_config.get('start'),
-                        'video_slice_end': main_config.get('end'),
-                        'comment_text': main_config.get('text'),
-                        'video_metadata': json.dumps({
-                            'video_url': main_config.get('video_url'),
-                            'video_platform': main_config.get('video_platform'),
-                            'video_id': main_config.get('video_id'),
-                            'video_p_index': main_config.get('video_p_index', 0)
-                        })
-                    }
-                    self.db.set_configuration(archive_id, chart_id, config_data)
+        # Save main (chart/record-specific) configurations
+        for entry in video_config:
+            chart_id = entry.get('chart_id', None)
+            
+            if chart_id:
+                config_data = {
+                    'background_image_path': entry.get('bg_image'),
+                    'achievement_image_path': entry.get('achievement_image'),
+                    'video_slice_start': entry.get('start'),
+                    'video_slice_end': entry.get('end'),
+                    'comment_text': entry.get('text')
+                }
+                self.db.set_configuration(archive_id, chart_id, config_data)
+            else:
+                raise ValueError("Invalid video configuration entry: missing chart_id")
     
     def load_video_config(self, username: str, archive_name: str = None) -> Dict:
-        """Load video configuration from the database."""
+        """Load video configuration(main) from the database."""
         archive_id = self.load_save_archive(username, archive_name)
         if not archive_id:
-            return {'intro': [], 'ending': [], 'extra': [], 'main': []}
-        
-        # Load intro/ending/extra configurations
-        extra_configs = self.db.get_all_extra_video_configs(archive_id)
-        video_config = {'intro': [], 'ending': [], 'extra': [], 'main': []}
-        for cfg in extra_configs:
-            if cfg['config_type'] in video_config:
-                video_config[cfg['config_type']].append(cfg['config_data'])
+            raise ValueError("No active archive found to load configuration.")
 
         # Load main configurations
-        records_with_configs = self.db.get_records_for_video_generation(archive_id)
-        
-        for record in records_with_configs:
-            video_meta = json.loads(record.get('video_metadata') or '{}')
-            main_config = {
-                'id': f"{record['song_id']}_{record['level_index']}",
-                'achievement_title': record['clip_title_name'] or f"{record['song_name']}-{record['chart_type']}",
-                'song_id': record['song_id'],
-                'level_index': record['level_index'],
-                'type': record['chart_type'],
-                'main_image': record.get('background_image_path'),
+        full_records = self.db.get_records_for_video_generation(archive_id)
+        ret_video_config = []
+        for record in full_records:
+            video_metadata = record.get('video_metadata', None)
+            # print(f"type: {type(video_metadata)}, content: {video_metadata}")
+            # Parse default value if no metadata found in the database
+            duration = video_metadata.get('duration', 0) if video_metadata else 0
+            video_url = video_metadata.get('url', None) if video_metadata else None
+            video_id = video_metadata.get('id', None) if video_metadata else None
+
+            entry = {
+                'game_type': record.get('game_type'),
+                'chart_id': record.get('chart_id', None),
+                'bg_image': record.get('background_image_path'),
                 'achievement_image': record.get('achievement_image_path'),
-                'video': record.get('video_path'), # From charts table
-                'duration': (record.get('video_slice_end', 10.0) or 10.0) - (record.get('video_slice_start', 0.0) or 0.0),
                 'start': record.get('video_slice_start'),
                 'end': record.get('video_slice_end'),
                 'text': record.get('comment_text'),
-                'video_url': video_meta.get('video_url'),
-                'video_platform': video_meta.get('video_platform'),
-                'video_id': video_meta.get('video_id'),
+                'video': record.get('video_path'),  # From charts table: c.video_path
+                'duration': duration,
+                'video_url': video_url,
+                'video_id': video_id,
+                'clip_title_name': record.get('clip_title_name'),
+                'record_tag': format_record_tag(
+                    record.get('game_type'), record.get('clip_title_name'), 
+                    record.get('song_id'), record.get('chart_type', -1), record.get('level_index', -1)
+                )
             }
-            video_config['main'].append(main_config)
-        
-        return video_config
+            ret_video_config.append(entry)
+        return ret_video_config
     
+
+    def save_extra_video_config(self, username: str, video_config: Dict, archive_name: str = None):
+        pass
+
     # ----------------------------------
     # Migration helpers
     # TODO: Not finished, refactor to migration old data under v0.6

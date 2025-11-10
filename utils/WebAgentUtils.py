@@ -81,10 +81,12 @@ def download_one_video(downloader, db_handler, song, video_download_path, high_r
     
     # Check if video already exists
     video_path = os.path.join(video_download_path, f"{clip_file_name}.mp4")
+    # 转换为绝对路径
+    abs_video_path = os.path.abspath(video_path)
     if os.path.exists(video_path):
         print(f"已找到谱面视频的缓存: {clip_tag}")
         # Write video path info to database
-        db_handler.update_chart_video_path(chart_id=song['chart_id'], video_path=video_path)
+        db_handler.update_chart_video_path(chart_id=song['chart_id'], video_path=abs_video_path)
         return {"status": "skip", "info": f"已找到谱面视频的缓存: {clip_tag}"}
         
     if 'video_info_match' not in song or not song['video_info_match']:
@@ -100,7 +102,7 @@ def download_one_video(downloader, db_handler, song, video_download_path, high_r
                                 high_res=high_res,
                                 p_index=video_info.get('p_index', 0))
         # Write video path info to database
-        db_handler.update_chart_video_path(chart_id=song['chart_id'], video_path=video_path)
+        db_handler.update_chart_video_path(chart_id=song['chart_id'], video_path=abs_video_path)
         return {"status": "success", "info": f"下载{clip_tag}完成"}
     except Exception as e:
         print(f"Error: 谱面视频下载失败: {clip_tag}，error: {e}")
@@ -118,7 +120,8 @@ def st_init_cache_pathes():
         if not os.path.exists(path):
             os.makedirs(path)
 
-
+# 弃用，自动初始化默认值，不再需要手动初始化
+@DeprecationWarning
 def st_gene_resource_config(records, config_sub_type,
                             images_path, videoes_path, output_file,
                             clip_start_interval, clip_play_time, default_comment_placeholders):

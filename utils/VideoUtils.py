@@ -194,7 +194,12 @@ def create_info_segment(clip_config, style_config, resolution):
     return composite_clip.with_duration(clip_config['duration'])
 
 
-def create_video_segment(clip_config, style_config, resolution):
+def create_video_segment(
+        game_type: str,
+        clip_config, 
+        style_config, 
+        resolution
+    ):
     print(f"正在合成视频片段: {clip_config['id']}")
     
     # 配置文字样式选项
@@ -620,11 +625,16 @@ def render_all_video_clips(resources, style_config,
             clip = modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time)
             vfile_prefix += 1
 
-
-def render_one_video_clip(config, style_config, video_file_name, video_output_path, video_res, video_bitrate):
+# TODO: load video generate config from database, no config param
+def render_one_video_clip(
+        game_type: str,
+        config: dict, 
+        style_config, 
+        video_file_name, video_output_path, video_res, video_bitrate
+    ):
     print(f"正在合成视频片段: {video_file_name}")
     try:
-        clip = create_video_segment(config, style_config, video_res)
+        clip = create_video_segment(game_type, config, style_config, video_res)
         clip.write_videofile(os.path.join(video_output_path, video_file_name), 
                              fps=30, threads=4, preset='ultrafast', bitrate=video_bitrate)
         clip.close()
