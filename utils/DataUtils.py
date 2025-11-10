@@ -6,8 +6,9 @@ import requests
 import base64
 import hashlib
 import struct
+import random
 from PIL import Image
-from typing import Dict, Union
+from typing import Dict, Union, Optional
 
 # TODO: 服务器bucket用于转存dxrating和otoge-db的metadata
 BUCKET_ENDPOINT = "https://nickbit-maigen-images.oss-cn-shanghai.aliyuncs.com"
@@ -130,6 +131,22 @@ def level_index_to_label(game_type: str, index: int) -> str:
     else:
         return "UNKNOWN"
 
+def get_valid_time_range(s: Optional[int], e: Optional[int], 
+                         default_duration: int = 10, default_start_interval = (15, 30) ):
+    """ get a range of valid video start and end time, random value returned if null value input """
+    if not (s or e) or (s < 0 or e < 0):  # 输入的时间不合法，随机初始化一组时间
+        duration = default_duration
+        clip_start_interval = default_start_interval
+        start = random.randint(clip_start_interval[0], clip_start_interval[1])
+        end = start + duration
+    else:
+        start, end = s, e
+        if end <= 0: 
+            end = 1
+        # 如果起始时间大于等于结束时间，调整起始时间
+        if start >= end:
+            start = end - 1
+    return start, end
 
 def format_record_tag(game_type: str, clip_title_name: str, song_id: str, chart_type: int, level_index: int):
     level_label = level_index_to_label(game_type, level_index)

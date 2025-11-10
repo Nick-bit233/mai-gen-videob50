@@ -3,66 +3,67 @@ import traceback
 import os
 
 from datetime import datetime
-from utils.PageUtils import load_style_config, open_file_explorer, load_video_config, read_global_config, write_global_config
-from utils.PathUtils import get_data_paths, get_user_versions
+from utils.PageUtils import load_style_config, open_file_explorer, read_global_config, write_global_config, get_game_type_text
+from utils.PathUtils import get_user_base_dir, get_user_media_dir
 from utils.VideoUtils import render_all_video_clips, combine_full_video_direct, combine_full_video_ffmpeg_concat_gl, render_complete_full_video
+from db_utils.DatabaseDataHandler import get_database_handler
 
+G_config = read_global_config()
+G_type = st.session_state.get('game_type', 'maimai')
+style_config = load_style_config()
+db_handler = get_database_handler()
+
+# =============================================================================
+# Page layout starts here
+# ==============================================================================
 st.header("Step 5: 视频生成")
+
+st.markdown(f"> 您正在使用 **{get_game_type_text(G_type)}** 视频生成模式。")
 
 st.info("在执行视频生成前，请确保已经完成了4-1和4-2步骤，并且检查所有填写的配置无误。")
 
-G_config = read_global_config()
-style_config = load_style_config()
-
 ### Savefile Management - Start ###
-if "username" in st.session_state:
-    st.session_state.username = st.session_state.username
-
-if "save_id" in st.session_state:
-    st.session_state.save_id = st.session_state.save_id
-
 username = st.session_state.get("username", None)
-save_id = st.session_state.get("save_id", None)
-current_paths = None
-data_loaded = False
+archive_name = st.session_state.get("archive_name", None)
+archive_id = st.session_state.get("archive_id", None)
 
 if not username:
-    st.error("请先获取指定用户名的B50存档！")
+    st.warning("请先在存档管理页面指定用户名。")
     st.stop()
-
-if save_id:
-    # load save data
-    current_paths = get_data_paths(username, save_id)
-    data_loaded = True
-    with st.container(border=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            st.write("当前存档")
-        with col2:
-            st.write(f"用户名：{username}，存档时间：{save_id} ")
-else:
-    st.warning("未索引到存档，请先加载存档数据！")
+st.write(f"当前用户名: **{username}**")
+archives = db_handler.get_user_save_list(username, game_type=G_type)
 
 with st.expander("更换B50存档"):
-    st.info("如果要更换用户，请回到存档管理页面指定其他用户名。")
-    versions = get_user_versions(username)
-    if versions:
-        with st.container(border=True):
-            selected_save_id = st.selectbox(
-                "选择存档",
-                versions,
-                format_func=lambda x: f"{username} - {x} ({datetime.strptime(x.split('_')[0], '%Y%m%d').strftime('%Y-%m-%d')})"
-            )
-            if st.button("使用此存档（只需要点击一次！）"):
-                if selected_save_id:
-                    st.session_state.save_id = selected_save_id
-                    st.rerun()
-                else:
-                    st.error("无效的存档路径！")
-    else:
-        st.warning("未找到任何存档，请先在存档管理页面获取存档！")
+    if not archives:
+        st.warning("未找到任何存档。请先新建或加载存档。")
         st.stop()
-if not save_id:
+    else:
+        archive_names = [a['archive_name'] for a in archives]
+        try:
+            current_archive_index = archive_names.index(st.session_state.get('archive_name'))
+        except (ValueError, TypeError):
+            current_archive_index = 0
+        
+        st.markdown("##### 加载本地存档")
+        selected_archive_name = st.selectbox(
+            "选择存档进行加载",
+            archive_names,
+            index=current_archive_index
+        )
+        if st.button("加载此存档（只需要点击一次！）"):
+
+            archive_id = db_handler.load_save_archive(username, selected_archive_name)
+            st.session_state.archive_id = archive_id
+        
+            archive_data = db_handler.load_archive_metadata(username, selected_archive_name)
+            if archive_data:
+                st.session_state.archive_name = selected_archive_name
+                st.success(f"已加载存档 **{selected_archive_name}**")
+                st.rerun()
+            else:
+                st.error("加载存档数据失败。")
+if not archive_id:
+    st.warning("未找到有效的存档！")
     st.stop()
 ### Savefile Management - End ###
 
@@ -101,16 +102,20 @@ with st.container(border=True):
 v_mode_index = options.index(mode_str)
 v_bitrate_kbps = f"{v_bitrate}k"
 
-video_output_path = current_paths['output_video_dir']
+user_media_paths = get_user_media_dir(username)
+video_output_path = user_media_paths['output_video_dir']
+
 if not os.path.exists(video_output_path):
     os.makedirs(video_output_path)
 
-# 读取存档的video config文件
-video_config_file = current_paths['video_config']
-if not os.path.exists(video_config_file):
-    st.error(f"未找到视频内容配置文件{video_config_file}，请检查前置步骤是否完成，以及B50存档的数据完整性！")
+# 读取存档的 video_config，只读，用于生成视频
+try:
+    video_configs = db_handler.load_video_config(username, archive_name)
+except Exception as e:
+    st.error(f"读取存档配置失败: {e}")
+    with st.expander("错误详情"):
+        st.error(traceback.format_exc())
     st.stop()
-video_configs = load_video_config(video_config_file)
 
 def save_video_render_config():
     # 保存配置

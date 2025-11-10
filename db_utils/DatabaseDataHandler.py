@@ -524,9 +524,51 @@ class DatabaseDataHandler:
             ret_video_config.append(entry)
         return ret_video_config
     
+    def load_extra_video_config(self, username: str, config_type: str, archive_name: str = None):
+        """
+        Load extra video configuration from the database.
+        
+        Args:
+            username: The username to load configuration for
+            archive_name: The archive name (optional, uses current if not provided)
+            
+        Returns:
+            List of configuration data dictionaries, ordered by config_index
+        """
+        archive_id = self.load_save_archive(username, archive_name)
+        if not archive_id:
+            raise ValueError("No active archive found to load configuration.")
 
-    def save_extra_video_config(self, username: str, video_config: Dict, archive_name: str = None):
-        pass
+        # Load extra video configurations
+        extra_configs = self.db.get_all_extra_video_configs(archive_id, config_type)
+        return extra_configs
+
+    def save_extra_video_config(self, username: str, config_type: str, config_data_list: List, archive_name: str = None):
+        """
+        Save extra video configuration to the database.
+        
+        Args:
+            username: The username to save configuration for
+            config_type: The type of configuration (e.g., 'intro', 'ending', 'extra')
+            config_data_list: List of configuration data dictionaries
+            archive_name: The archive name (optional, uses current if not provided)
+        """
+        archive_id = self.load_save_archive(username, archive_name)
+        if not archive_id:
+            raise ValueError("No active archive found to save configuration.")
+        
+        # Delete existing configurations of this type
+        # with self.db.get_connection() as conn:
+        #     cursor = conn.cursor()
+        #     cursor.execute('''
+        #         DELETE FROM extra_video_configs 
+        #         WHERE archive_id = ? AND config_type = ?
+        #     ''', (archive_id, config_type))
+        #     conn.commit()
+        
+        # Save new configurations with proper indexing
+        for index, config_data in enumerate(config_data_list):
+            self.db.set_extra_video_config(archive_id, config_type, config_data, index)
 
     # ----------------------------------
     # Migration helpers

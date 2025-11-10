@@ -51,10 +51,14 @@ def st_download_video(placeholder, dl_instance, G_config, charts_data):
             i = 0
             record_len = len(charts_data)
             for song in charts_data:
+                c_id = song['chart_id']
                 i += 1
                 if 'video_info_match' not in song or not song['video_info_match']:
-                    write_container.write(f"跳过({i}/{record_len}): {song['song_id']} ，因为没有视频信息而无法下载，请检查前置步骤是否完成")
+                    write_container.write(f"跳过({i}/{record_len}): {song['song_id']} ，因为没有视频信息而无法下载，请检查是否至少确定了一条视频信息")
                     continue
+                else:
+                    # 自动进行一次数据库保存
+                    db_handler.update_chart_video_metadata(c_id, song['video_info_match'])
                 
                 video_info = song['video_info_match']
                 title = escape_markdown_text(video_info['title'])

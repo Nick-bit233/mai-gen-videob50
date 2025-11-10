@@ -707,7 +707,7 @@ class DatabaseManager:
                 return config
             return None
     
-    # Extra video configuration methods (no changes needed)
+    # Extra video configuration methods
     def set_extra_video_config(self, archive_id: int, config_type: str, config_data: Dict, config_index: int = 0):
         """Set extra video configuration (intro, ending, global settings)"""
         with self.get_connection() as conn:

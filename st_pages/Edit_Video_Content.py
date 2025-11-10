@@ -1,15 +1,14 @@
-from random import randint
 import streamlit as st
 import os
 import traceback
 from datetime import datetime
 from utils.PageUtils import load_style_config, open_file_explorer, get_video_duration, read_global_config, get_game_type_text
 from utils.PathUtils import get_user_base_dir, get_user_media_dir
-from utils.WebAgentUtils import st_gene_resource_config
+from utils.DataUtils import get_valid_time_range
 from utils.VideoUtils import render_one_video_clip
 from db_utils.DatabaseDataHandler import get_database_handler
 
-DEFAULT_VIDEO_MAX_DURATION = 180
+DEFAULT_VIDEO_MAX_DURATION = 240
 
 G_config = read_global_config()
 G_type = st.session_state.get('game_type', 'maimai')
@@ -133,23 +132,10 @@ def update_preview(preview_placeholder, config, current_index):
             else:
                 video_duration = DEFAULT_VIDEO_MAX_DURATION
 
-        def get_valid_time_range(s: int, e: int):
-            if not (s or e) or (s < 0 or e < 0):  # 输入的时间不合法，随机初始化一组时间
-                duration = G_config.get('CLIP_PLAY_TIME', 10)
-                clip_start_interval = G_config.get('CLIP_START_INTERVAL', [15, 30])
-                start = randint(clip_start_interval[0], clip_start_interval[1])
-                end = start + duration
-            else:
-                start, end = s, e
-                if end <= 0: 
-                    end = 1
-                # 如果起始时间大于等于结束时间，调整起始时间
-                if start >= end:
-                    start = end - 1
-            return start, end
-
         # 获取有效的时间范围
-        start_time, end_time = get_valid_time_range(start, end)
+        start_time, end_time = get_valid_time_range(start, end, 
+                                                    G_config['CLIP_PLAY_TIME'],
+                                                    G_config['CLIP_START_INTERVAL'])
         show_start_minutes = int(start_time // 60)
         show_start_seconds = int(start_time % 60)
         show_end_minutes = int(end_time // 60)
@@ -261,9 +247,9 @@ if 'downloader_type' in st.session_state:
 else:
     downloader_type = G_config['DOWNLOADER']
 
-# 读取存档的video_config 查询（包含存储在chart表中的配置）
+# 读取存档的 video_config 查询（包含存储在chart表中的配置）
 try:
-    video_config = db_handler.load_video_config(username, archive_name)
+    video_configs = db_handler.load_video_config(username, archive_name)
 except Exception as e:
     st.error(f"读取存档配置失败: {e}")
     with st.expander("错误详情"):
@@ -274,24 +260,9 @@ st.info("在编辑前，您可以选择前往视频模板样式设置页面配�
 if st.button("视频模板样式设置", key="style_button"):
     st.switch_page("st_pages/Custom_Video_Style_Config.py")
 
-# if not video_config or 'main' not in video_config:
-#     st.warning("该存档还没有视频内容的配置文件。请先点击下方按钮，生成配置后方可编辑。")
-#     if st.button("生成视频内容配置"):
-#         st.toast("正在生成……")
-#         try:
-#             video_config = st_gene_resource_config(records, config_subtype,
-#                                             image_output_path, video_download_path, video_config_output_file,
-#                                             G_config['CLIP_START_INTERVAL'], G_config['CLIP_PLAY_TIME'], G_config['DEFAULT_COMMENT_PLACEHOLDERS'])
-#             st.success("视频配置生成完成！")
-#             st.rerun()
-#         except Exception as e:
-#             st.error(f"视频配置生成失败，请检查步骤1-3是否正常完成！")
-#             st.error(f"详细错误信息: {traceback.format_exc()}")
-#             video_config = None
-
-if video_config:
+if video_configs:
     # 获取每条记录的tag索引
-    tags = [entry.get('record_tag') for entry in video_config]
+    tags = [entry.get('record_tag') for entry in video_configs]
     # 使用session_state来存储当前选择的视频片段索引
     if 'current_index' not in st.session_state:
         st.session_state.current_index = 0
@@ -301,18 +272,18 @@ if video_config:
 
     # 片段预览和编辑组件，使用empty容器
     preview_placeholder = st.empty()
-    update_preview(preview_placeholder, video_config, st.session_state.current_index)
+    update_preview(preview_placeholder, video_configs, st.session_state.current_index)
 
     # 快速跳转组件的实现
     def on_jump_to_clip(target_index):
-        print(f"跳转到视频片段: {target_index}")
+        # print(f"跳转到视频片段: {target_index}")
         if target_index != st.session_state.current_index:
             # 保存当前配置到数据库
-            db_handler.save_video_config(username, video_config, archive_name)
+            db_handler.save_video_config(username, video_configs, archive_name)
             st.toast("配置已保存！")
             # 更新session_state
             st.session_state.current_index = target_index
-            update_preview(preview_placeholder, video_config, st.session_state.current_index)
+            update_preview(preview_placeholder, video_configs, st.session_state.current_index)
         else:
             st.toast("已经是当前视频片段！")
     
@@ -343,7 +314,7 @@ if video_config:
     
     # 保存配置按钮
     if st.button("保存配置"):
-        db_handler.save_video_config(username, video_config, archive_name)
+        db_handler.save_video_config(username, video_configs, archive_name)
         st.success("配置已保存！")
 
     with st.expander("获得当前片段的预览图像"):
@@ -355,10 +326,10 @@ if video_config:
             os.makedirs(video_output_path, exist_ok=True)
         v_res = G_config['VIDEO_RES']
         v_bitrate_kbps = f"{G_config['VIDEO_BITRATE']}k"
-        target_config = video_config[st.session_state.current_index]
+        target_config = video_configs[st.session_state.current_index]
         target_video_filename = get_output_video_name_with_timestamp(target_config['clip_title_name'])
         if st.button("导出视频"):
-            db_handler.save_video_config(username, video_config, archive_name)
+            db_handler.save_video_config(username, video_configs, archive_name)
             with st.spinner(f"正在导出视频片段{target_video_filename} ……"):
                 res = render_one_video_clip(
                     game_type=target_config['game_type'],

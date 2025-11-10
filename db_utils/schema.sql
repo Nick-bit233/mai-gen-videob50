@@ -95,10 +95,11 @@ CREATE TABLE IF NOT EXISTS extra_video_configs (
     archive_id INTEGER NOT NULL,
     config_type TEXT NOT NULL, -- e.g., 'intro', 'ending', 'extra'
     config_index INTEGER DEFAULT 0, -- For ordering multiple intros/endings
-    config_data TEXT, -- User comment to display on the video
+    config_data TEXT, -- JSON for config content, like comment text and duration
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (archive_id) REFERENCES archives(id) ON DELETE CASCADE
+    UNIQUE (archive_id, config_type, config_index) -- Unique ex_config for a type of config within an archive
 );
 
 -- Assets table: Tracks generated or used assets like images and videos
