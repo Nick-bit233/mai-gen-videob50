@@ -19,44 +19,65 @@ level_label_lists = {
 @st.dialog("b50数据查看", width="large")
 def view_b50_data(username: str, archive_name: str):
     """Displays the records of a selected archive in a read-only table."""
-    b50_data = db_handler.load_archive_as_old_b50_config(username, archive_name)
+    game_type, b50_data = db_handler.load_archive_as_old_b50_config(username, archive_name)
     
     if not b50_data:
         st.error("无法加载存档数据。")
         return
-
-    st.markdown(f"""
-    - **用户名**: {b50_data.get('username')}
-    - **存档名**: {archive_name}
-    - **DX Rating**: {b50_data.get('rating_mai', 0)}
-    """, unsafe_allow_html=True)
     
+    st.markdown(f"""
+        - **用户名**: {username}
+        - **存档名**: {archive_name}
+        """, unsafe_allow_html=True)
+
+    if game_type == "maimai":
+        st.markdown(f"""**DX Rating**: {b50_data.get('rating_mai', 0)}""", unsafe_allow_html=True)
+        show_records = b50_data.get('records', [])
+    else:
+        show_records = b50_data
+
     st.info("本窗口为只读模式。如需修改，请前往“编辑/创建自定义B50存档”页面。")
 
-    game_type = b50_data.get('type', 'maimai')
-    show_records = b50_data.get('records', [])
     for record in show_records:
         level_index = record.get('level_index', 0)
         record['level_label'] = level_label_lists.get(game_type, [])[level_index]
 
-    st.dataframe(
-        show_records,
-        column_order=["clip_name",  "title", "type", "level_label",
-                      "ds", "achievements", "fc", "fs", "ra", "dx_score", "play_count"],
-        column_config={
-            "clip_name": "抬头标题",
-            "title": "曲名",
-            "type": st.column_config.TextColumn("类型", width=40),
-            "level_label": st.column_config.TextColumn("难度", width=60),
-            "ds": st.column_config.NumberColumn("定数", format="%.1f", width=60),
-            "achievements": st.column_config.NumberColumn("达成率", format="%.4f"),
-            "fc": st.column_config.TextColumn("FC", width=40),
-            "fs": st.column_config.TextColumn("FS", width=40),
-            "ra": st.column_config.NumberColumn("单曲Ra", format="%d", width=75),
-            "dx_score": st.column_config.NumberColumn("DX分数", format="%d", width=75),
-            "play_count": st.column_config.NumberColumn("游玩次数", format="%d")
-        }
-    )
+    if game_type == "maimai":
+        st.dataframe(
+            show_records,
+            column_order=["clip_name",  "title", "type", "level_label",
+                        "ds", "achievements", "fc", "fs", "ra", "dx_score", "play_count"],
+            column_config={
+                "clip_name": "抬头标题",
+                "title": "曲名",
+                "type": st.column_config.TextColumn("类型", width=40),
+                "level_label": st.column_config.TextColumn("难度", width=60),
+                "ds": st.column_config.NumberColumn("定数", format="%.1f", width=60),
+                "achievements": st.column_config.NumberColumn("达成率", format="%.4f"),
+                "fc": st.column_config.TextColumn("FC", width=40),
+                "fs": st.column_config.TextColumn("FS", width=40),
+                "ra": st.column_config.NumberColumn("单曲Ra", format="%d", width=75),
+                "dx_score": st.column_config.NumberColumn("DX分数", format="%d", width=75),
+                "play_count": st.column_config.NumberColumn("游玩次数", format="%d")
+            }
+        )
+    elif game_type == "chunithm":
+        st.dataframe(
+            show_records,
+            column_order=["clip_name",  "title",  "level_label",
+                        "ds_cur", "score", "combo_type", "chain_type", "ra", "play_count"],
+            column_config={
+                "clip_name": "抬头标题",
+                "title": "曲名",
+                "level_label": st.column_config.TextColumn("难度", width=80),
+                "ds_cur": st.column_config.NumberColumn("国服定数", format="%.1f", width=60),
+                "score": st.column_config.NumberColumn("分数", format="%d"),
+                "combo_type": st.column_config.TextColumn("连击", width=60),
+                "chain_type": st.column_config.TextColumn("连锁", width=60),
+                "ra": st.column_config.NumberColumn("单曲Ra", format="%.2f", width=75),
+                "play_count": st.column_config.NumberColumn("游玩次数", format="%d")
+            }
+        )
 
     if st.button("返回"):
         st.rerun()

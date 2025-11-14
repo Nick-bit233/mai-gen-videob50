@@ -311,8 +311,7 @@ def update_record_grid(grid, external_placeholder):
                         )
                     },
                     num_rows="dynamic",
-                    height=400,
-                    width='stretch'
+                    height=400
                 )
             elif game_type == "chunithm":
                 edited_records = st.data_editor(
@@ -353,8 +352,7 @@ def update_record_grid(grid, external_placeholder):
                         )
                     },
                     num_rows="dynamic",
-                    height=400,
-                    width='stretch'
+                    height=400
                 )
             else:
                 raise ValueError(f"Unsupported game type: {game_type}")
@@ -601,9 +599,11 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
     cur_game_type = G_type
     # st.markdown(f"> 当前存档游戏类型: **{cur_game_type}**")
 
-    with st.expander("添加或修改记录", expanded=True):
+    tab1, tab2, tab3 = st.tabs(["添加或修改记录", "更改分表排序", "修改存档其他信息"])
+
+    with tab1:
         st.markdown("#### 添加新记录")
-        with st.expander("添加记录设置", expanded=False):
+        with st.expander("添加记录设置", expanded=True):
             st.session_state.generate_setting['clip_prefix'] = st.text_input("抬头标题前缀", 
                                                                              help="生成视频时，此标题将展示在对应乐曲的画面上",
                                                                              value="Clip")
@@ -625,7 +625,7 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
         with col2:
             st.write("") # Spacer
             st.write("") # Spacer
-            if st.button("➕ 添加选中歌曲", disabled=not search_result, width='stretch'):
+            if st.button("➕ 添加选中歌曲", disabled=not search_result):
                 print(f"Search result: {search_result}")
                 new_index = len(st.session_state.records) + 1
                 new_record = create_empty_record(search_result, game_type=cur_game_type, index=new_index)
@@ -639,7 +639,7 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
         record_grid = st.container()
         update_record_grid(record_grid, record_count_placeholder)  # 更新记录表格的显示
 
-    with st.expander("更改分表排序", expanded=True):
+    with tab2:
         st.warning("注意：确认排序修改后请点击“应用排序更改”按钮，否则更改不会生效！")
         with st.container(border=True):
             st.write("快速排序")
@@ -668,8 +668,7 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
         sort_grid = st.container()
         update_sortable_items(sort_grid)
 
-
-    with st.expander("修改存档其他信息", expanded=False):
+    with tab3:
         st.warning("更改存档类型会清空当前存档的所有记录，您需要重新在首页切换模式后编辑，请谨慎操作！")
         st.session_state.archive_meta['game_type'] = st.radio(
             "修改存档类型",
@@ -688,7 +687,6 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
         )
         if st.button("提交修改"):
             save_current_metadata()
-
 
     # 导航功能按钮
     with st.container(border=True):       

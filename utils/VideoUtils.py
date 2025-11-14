@@ -82,6 +82,56 @@ def create_blank_image(width, height, color=(0, 0, 0, 0)):
     return np.array(image)
 
 
+def save_jacket_background_image(img_data: Image.Image, save_path: str):
+    try:
+        # 高斯模糊处理图片
+        jacket_array = blur_image(img_data, blur_radius=5)
+
+        # Ensure we have a PIL Image
+        if isinstance(jacket_array, np.ndarray):
+            jacket_image = Image.fromarray(jacket_array)
+        elif isinstance(jacket_array, Image.Image):
+            jacket_image = jacket_array
+        else:
+            # Fallback: try to coerce to array then to image
+            jacket_image = Image.fromarray(np.array(jacket_array))
+
+        # 直接从原图中裁出最大的 16:9 区域（居中），然后等比缩放到 1920x1080（不拉伸）
+        target_w, target_h = 1920, 1080
+        target_ar = target_w / target_h
+
+        orig_w, orig_h = jacket_image.size
+        if orig_w == 0 or orig_h == 0:
+            raise ValueError("Invalid jacket image size")
+
+        orig_ar = orig_w / orig_h
+
+        if abs(orig_ar - target_ar) < 1e-6:
+            # 已经是 16:9，直接缩放到目标分辨率
+            crop_box = (0, 0, orig_w, orig_h)
+        elif orig_ar > target_ar:
+            # 图片比 16:9 更宽：保留高度，裁剪宽度
+            crop_h = orig_h
+            crop_w = int(round(crop_h * target_ar))
+            left = int(round((orig_w - crop_w) / 2))
+            top = 0
+            crop_box = (left, top, left + crop_w, top + crop_h)
+        else:
+            # 图片比 16:9 更高（更窄）：保留宽度，裁剪高度
+            crop_w = orig_w
+            crop_h = int(round(crop_w / target_ar))
+            left = 0
+            top = int(round((orig_h - crop_h) / 2))
+            crop_box = (left, top, left + crop_w, top + crop_h)
+
+        jacket_image = jacket_image.crop(crop_box)  # 执行裁剪
+        jacket_image = jacket_image.resize((target_w, target_h), resample=Image.LANCZOS)  # 等比缩放到目标 1920x1080（使用高质量重采样）
+        jacket_image.save(save_path)  # 保存图片
+    except Exception as e:
+        print(f"Warning: 保存曲绘背景图片{save_path}失败 - {str(e)}")
+
+
+
 def normalize_audio_volume(clip, target_dbfs=-20):
     """均衡化音频响度到指定的分贝值"""
     if clip.audio is None:
@@ -383,21 +433,6 @@ def create_video_segment(
             bg_clip = bg_image_clip
     else:
         bg_clip = bg_image_clip
-    # # TODO: 对于maimai的默认曲绘模糊作背景，预先在生成图片时处理并保存到数据库，以支持bg_image_path为用户自定义的图像
-    # jacket_bg_image_path = clip_config['bg_image']
-    # jacket_raw = Image.open(jacket_bg_image_path).convert("RGBA") if jacket_bg_image_path and os.path.exists(jacket_bg_image_path) else None
-    # if jacket_raw:
-    #     # 高斯模糊处理图片
-    #     jacket_array = blur_image(jacket_raw, blur_radius=5)
-    #     # 创建 ImageClip
-    #     jacket_image = ImageClip(jacket_array).with_duration(clip_config['duration'])
-    #     # 将jacket图片按视频分辨率宽度等比例缩放，以填充整个背景
-    #     jacket_image = jacket_image.with_effects([vfx.Resize(width=resolution[0])])
-    #     # 设置偏移位置
-    #     jacket_image_offset = (0, -0.5)
-    # else:
-    #     print(f"Video Generator Warning: {clip_config['clip_title_name']} 载入配置的背景图片失败, 将使用默认背景")
-    #     jacket_image = ImageClip(default_bg_path).with_duration(clip_config['duration'])
 
     # 拆分clip处理逻辑到单独的函数
     video_clip, video_pos = edit_game_video_clip(game_type, clip_config, resolution)

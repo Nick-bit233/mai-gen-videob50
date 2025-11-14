@@ -110,7 +110,10 @@ if not os.path.exists(video_output_path):
 
 # 读取存档的 video_config，只读，用于生成视频
 try:
-    main_configs, intro_configs, ending_configs = db_handler.load_full_config_for_composite_video(username, archive_name)
+    main_configs, intro_configs, ending_configs = db_handler.load_full_config_for_composite_video(
+                                                                username=username,
+                                                                archive_name=archive_name
+                                                            )
 except Exception as e:
     st.error(f"读取存档配置失败: {e}")
     with st.expander("错误详情"):

@@ -7,11 +7,14 @@ from utils.ImageUtils import generate_single_image, check_mask_waring
 from utils.PageUtils import get_game_type_text, load_style_config, open_file_explorer
 from db_utils.DatabaseDataHandler import get_database_handler
 from utils.PathUtils import get_user_media_dir
+from utils.VideoUtils import save_jacket_background_image
 
 # Initialize database handler
 db_handler = get_database_handler()
 # Start with getting G_type from session state
 G_type = st.session_state.get('game_type', 'maimai')
+
+# Postprocessing function to generate B50 images
 
 def st_generate_b50_images(placeholder, user_id, archive_id, save_paths):
     # get data format for image generation scripts
@@ -43,19 +46,30 @@ def st_generate_b50_images(placeholder, user_id, archive_id, save_paths):
                 image_save_path,
                 title_text
             )
-            # TODO：默认保存曲绘图片到background_image_path字段，便于视频生成调用
-            # default_bg_img = record_for_gene_image['jacket']
-            # bg_save_path = os.path.join(save_paths['image_dir'], f"{game_type}_{index}_{title_text}_bg.png")
-            # from PIL import Image
-            # if default_bg_img:
-            #    default_bg_img.save(bg_save_path)
-            db_handler.update_image_config_for_record(
-                archive_id,
-                chart_id=chart_id,
-                image_path_data={
-                    'achievement_image_path': image_save_path
-                }
-            )
+            if game_type == "maimai":
+                # 生成曲绘图片的模糊背景
+                jacket_img_data = record_for_gene_image['jacket']  # type - PIL.Image
+                bg_save_path = os.path.join(save_paths['image_dir'], f"{game_type}_{chart_id}_bg.png")
+                # 如果已经存在背景图片（同一首曲目），则跳过生成
+                if not os.path.exists(bg_save_path):
+                    save_jacket_background_image(jacket_img_data, bg_save_path)
+                # 保存背景图片路径到background_image_path字段，便于视频生成调用
+                db_handler.update_image_config_for_record(
+                    archive_id,
+                    chart_id=chart_id,
+                    image_path_data={
+                        'achievement_image_path': image_save_path,
+                        'background_image_path': bg_save_path
+                    }
+                )
+            else:
+                db_handler.update_image_config_for_record(
+                    archive_id,
+                    chart_id=chart_id,
+                    image_path_data={
+                        'achievement_image_path': image_save_path
+                    }
+                )
 
 
 # =============================================================================

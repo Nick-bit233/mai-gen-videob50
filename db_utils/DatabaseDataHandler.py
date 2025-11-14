@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Tuple, Any, Union
 from unittest import case
 from db_utils.DatabaseManager import DatabaseManager
-from utils.DataUtils import get_jacket_image_from_url, query_songs_metadata, format_record_tag
+from utils.DataUtils import get_jacket_image_from_url, query_songs_metadata, format_record_tag, get_valid_time_range
 import os
 import json
 from datetime import datetime
@@ -331,7 +331,7 @@ class DatabaseDataHandler:
                 # 获取歌曲元数据
                 metadata = query_songs_metadata(game_type, title, artist)
                 image_code = metadata.get('imageName', None)
-                # 下载封面图片
+                # 下载封面图片(pillow Image对象) # TODO：优化下载等待速度和提前缓存机制
                 jacket_image = get_jacket_image_from_url(image_code)
                 reformat_data = {
                     'chart_id': record['chart_id'],
@@ -380,7 +380,7 @@ class DatabaseDataHandler:
 
         return game_type, ret_records
     
-    def load_archive_as_old_b50_config(self, username: str, archive_name: str = None) -> Optional[Dict]:
+    def load_archive_as_old_b50_config(self, username: str, archive_name: str = None):
         """Load B50 data (old format) from database.
            Use only for backward (v0.5~v0.6) compatibility. Supported game_type = maimai only."""
         archive_id = self.load_save_archive(username, archive_name)
@@ -393,7 +393,7 @@ class DatabaseDataHandler:
         
         game_type = archive['game_type']
         if game_type != 'maimai':
-            raise NotImplementedError("Only 'maimai' game type is supported for old b50 format.")
+            return self.load_archive_for_image_generation(archive_id)
 
         records = self.db.get_records_with_extented_data(archive_id)
         # Reconstruct b50_data format
@@ -427,7 +427,7 @@ class DatabaseDataHandler:
             }
             b50_data['records'].append(record_data)
 
-        return b50_data
+        return game_type, b50_data
     
     def load_archive_complete_config(self, username: str, archive_name: str) -> Optional[Dict]:
         """Load complete archive info including metadata, all records with full video config."""
@@ -538,9 +538,10 @@ class DatabaseDataHandler:
 
         main_configs, intro_configs, ending_configs = [], [], []
         for record in full_records:
-            start = record.get('video_slice_start', 0)
-            end = record.get('video_slice_end', 0)
-            duration = start - end if end > start else 0
+            s = record.get('video_slice_start', 0)
+            e = record.get('video_slice_end', 0)
+            start, end = get_valid_time_range(s, e)
+            duration = start - end
             entry = {
                 'game_type': record.get('game_type'),
                 'chart_id': record.get('chart_id', None),

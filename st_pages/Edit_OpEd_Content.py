@@ -39,7 +39,8 @@ def edit_context_widget(ex_config_type):
                 }
             ]
         else:
-            st.session_state[ex_key] = ex_configs
+            # 加载已有配置字典
+            st.session_state[ex_key] = [e.get('config_data') for e in ex_configs]
 
     items = st.session_state[ex_key]
     
