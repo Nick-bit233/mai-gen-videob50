@@ -558,10 +558,10 @@ class DatabaseManager:
             return self.get_record(record_id)
 
     # Group of Records fetch methods
-    def get_records_for_video_generation(self, archive_id: int, retrieve_raw_data: bool = False) -> List[Dict]:
+    def get_records_with_extented_data(self, archive_id: int, retrieve_raw_data: bool = False) -> List[Dict]:
         """
         Get all records for an archive, joined with chart and configuration data.
-        This is the primary method for fetching data to generate a video.
+        This is the primary method for fetching most of the data for editing config.
         """
         with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -618,6 +618,45 @@ class DatabaseManager:
                     row_dict['video_metadata'] = json.loads(row_dict['video_metadata'])
                 parsed_results.append(row_dict)
             return parsed_results
+
+    # def get_records_for_composite_video(self, archive_id: int) -> List[Dict]:
+    #     """Gets all records for an archive with only the fields needed for composite video generation."""
+    #     with self.get_connection() as conn:
+    #         cursor = conn.cursor()
+    #         # get joint data
+    #         cursor.execute('''
+    #             SELECT
+    #                 r.id AS record_id,
+    #                 r.archive_id,
+    #                 r.chart_id,
+    #                 r.order_in_archive,
+    #                 r.clip_title_name,
+    #                 c.game_type,
+    #                 c.song_id,
+    #                 c.chart_type,
+    #                 c.song_name,
+    #                 c.artist,
+    #                 c.video_path,
+    #                 c.video_metadata,
+    #                 conf.background_image_path,
+    #                 conf.achievement_image_path,
+    #                 conf.video_slice_start,
+    #                 conf.video_slice_end,
+    #                 conf.comment_text,            
+    #             FROM
+    #                 records r
+    #             JOIN
+    #                 charts c ON r.chart_id = c.id
+    #             LEFT JOIN
+    #                 configurations conf ON r.archive_id = conf.archive_id AND r.chart_id = conf.chart_id
+    #             WHERE
+    #                 r.archive_id = ?
+    #             ORDER BY
+    #                 r.order_in_archive ASC;
+    #         ''', (archive_id,))
+
+    #         results = cursor.fetchall()
+    #         return [dict(row) for row in results]
 
     def get_archive_records_simple(self, archive_id: int) -> List[Dict]:
         """Gets all records for an archive without joining other tables."""

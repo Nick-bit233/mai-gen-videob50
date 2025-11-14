@@ -249,7 +249,7 @@ else:
 
 # 读取存档的 video_config 查询（包含存储在chart表中的配置）
 try:
-    video_configs = db_handler.load_video_config(username, archive_name)
+    video_configs = db_handler.load_video_configs(username, archive_name)
 except Exception as e:
     st.error(f"读取存档配置失败: {e}")
     with st.expander("错误详情"):

@@ -246,7 +246,7 @@ class DatabaseDataHandler:
         )
         
         # Get all records and their associated data from the source archive
-        source_records = self.db.get_records_for_video_generation(source_archive_id)
+        source_records = self.db.get_records_with_extented_data(source_archive_id)
         
         with self.db.get_connection() as conn:
             for record in source_records:
@@ -319,7 +319,7 @@ class DatabaseDataHandler:
         game_type = archive['game_type']
 
         # load records with complete fields
-        records = self.db.get_records_for_video_generation(archive_id)
+        records = self.db.get_records_with_extented_data(archive_id)
 
         # format data as "style_config" needed by game type
         ret_records = []
@@ -379,7 +379,7 @@ class DatabaseDataHandler:
                 ret_records.append(reformat_data)
 
         return game_type, ret_records
-
+    
     def load_archive_as_old_b50_config(self, username: str, archive_name: str = None) -> Optional[Dict]:
         """Load B50 data (old format) from database.
            Use only for backward (v0.5~v0.6) compatibility. Supported game_type = maimai only."""
@@ -395,7 +395,7 @@ class DatabaseDataHandler:
         if game_type != 'maimai':
             raise NotImplementedError("Only 'maimai' game type is supported for old b50 format.")
 
-        records = self.db.get_records_for_video_generation(archive_id)
+        records = self.db.get_records_with_extented_data(archive_id)
         # Reconstruct b50_data format
         b50_data = {
             'version': self.db.get_schema_version(),
@@ -439,7 +439,7 @@ class DatabaseDataHandler:
         if not archive:
             return None
         
-        records = self.db.get_records_for_video_generation(archive_id)
+        records = self.db.get_records_with_extented_data(archive_id)
         
         complete_info = {
             'archive': archive,
@@ -485,19 +485,20 @@ class DatabaseDataHandler:
                 self.db.set_configuration(archive_id, chart_id, config_data)
             else:
                 raise ValueError("Invalid video configuration entry: missing chart_id")
-    
-    def load_video_config(self, username: str, archive_name: str = None) -> Dict:
+
+    def load_video_configs(self, username: str, archive_name: str = None, with_extras=False) -> Dict:
         """Load video configuration(main) from the database."""
         archive_id = self.load_save_archive(username, archive_name)
         if not archive_id:
             raise ValueError("No active archive found to load configuration.")
 
-        # Load main configurations
-        full_records = self.db.get_records_for_video_generation(archive_id)
-        ret_video_config = []
+        # Load main records configurations
+        full_records = self.db.get_records_with_extented_data(archive_id)
+
+        ret_configs = []
         for record in full_records:
             video_metadata = record.get('video_metadata', None)
-            # print(f"type: {type(video_metadata)}, content: {video_metadata}")
+
             # Parse default value if no metadata found in the database
             duration = video_metadata.get('duration', 0) if video_metadata else 0
             video_url = video_metadata.get('url', None) if video_metadata else None
@@ -521,9 +522,54 @@ class DatabaseDataHandler:
                     record.get('song_id'), record.get('chart_type', -1), record.get('level_index', -1)
                 )
             }
-            ret_video_config.append(entry)
-        return ret_video_config
-    
+            ret_configs.append(entry)
+
+        return ret_configs
+
+    def load_full_config_for_composite_video(self, archive_id: int=None, username: str = None, archive_name: str = None) -> Dict:
+        # Load archive by id if provided, else by username and archive_name
+        if archive_id is None:
+            archive_id = self.load_save_archive(username, archive_name)
+            if not archive_id:
+                raise ValueError("No active archive found to load configuration.")
+        
+        # Load main records configurations
+        full_records = self.db.get_records_with_extented_data(archive_id)
+
+        main_configs, intro_configs, ending_configs = [], [], []
+        for record in full_records:
+            start = record.get('video_slice_start', 0)
+            end = record.get('video_slice_end', 0)
+            duration = start - end if end > start else 0
+            entry = {
+                'game_type': record.get('game_type'),
+                'chart_id': record.get('chart_id', None),
+                'bg_image': record.get('background_image_path'),
+                'main_image': record.get('achievement_image_path'),
+                'start': start,
+                'end': end,
+                'text': record.get('comment_text'),
+                'video': record.get('video_path'),
+                'duration': duration,
+                'clip_title_name': record.get('clip_title_name'),
+            }
+            main_configs.append(entry)
+        
+        intro_extra_configs = self.load_extra_video_config(username, 'intro', archive_name)
+        ending_extra_configs = self.load_extra_video_config(username, 'ending', archive_name)
+
+        # Unpack extra configs by config_data key
+        for config in intro_extra_configs:
+            # order(config_index) has been handled in the query
+            config_data = config.get('config_data', {})
+            intro_configs.append(config_data)
+
+        for config in ending_extra_configs:
+            config_data = config.get('config_data', {})
+            ending_configs.append(config_data)
+
+        return main_configs, intro_configs, ending_configs
+
     def load_extra_video_config(self, username: str, config_type: str, archive_name: str = None):
         """
         Load extra video configuration from the database.
@@ -583,7 +629,7 @@ class DatabaseDataHandler:
     def export_to_json(self, username: str, archive_name: str, output_path: str):
         """Export archive data to JSON format for backup"""
         b50_data = self.load_archive_as_old_b50_config(username, archive_name)
-        video_config = self.load_video_config(username, archive_name)
+        video_config = self.load_video_configs(username, archive_name)
         
         export_data = {
             'b50_data': b50_data,
@@ -633,7 +679,7 @@ def update_user_data(username: str, b50_data: Dict, archive_name: str = None) ->
 def load_video_config(username: str, archive_name: str = None) -> Dict:
     """Load video configuration (backward compatibility)"""
     handler = get_database_handler()
-    return handler.load_video_config(username, archive_name)
+    return handler.load_video_configs(username, archive_name)
 
 
 def save_video_config(username: str, video_config: Dict, archive_name: str = None):

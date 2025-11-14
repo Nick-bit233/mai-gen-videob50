@@ -110,7 +110,7 @@ if not os.path.exists(video_output_path):
 
 # 读取存档的 video_config，只读，用于生成视频
 try:
-    video_configs = db_handler.load_video_config(username, archive_name)
+    main_configs, intro_configs, ending_configs = db_handler.load_full_config_for_composite_video(username, archive_name)
 except Exception as e:
     st.error(f"读取存档配置失败: {e}")
     with st.expander("错误详情"):
@@ -137,14 +137,10 @@ if st.button("开始生成视频"):
             with placeholder.container(border=True, height=560):
                 st.warning("生成过程中请不要手动跳转到其他页面，或刷新本页面，否则可能导致生成失败！")
                 with st.spinner("正在生成所有视频片段……"):
-                    render_all_video_clips(resources=video_configs,
-                                           style_config=style_config,
-                                           video_output_path=video_output_path,
-                                           video_res=video_res,
-                                           video_bitrate=v_bitrate_kbps,
-                                           auto_add_transition=False,
-                                           trans_time=trans_time,
-                                           force_render=force_render_clip)
+                    render_all_video_clips(
+                        game_type=G_type,
+                        
+                    )
                     st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
             st.success("视频片段生成结束！点击下方按钮打开视频所在文件夹")
         except Exception as e:
@@ -156,15 +152,20 @@ if st.button("开始生成视频"):
                 st.info("请注意，生成完整视频通常需要一定时间，您可以在控制台窗口中查看进度")
                 st.warning("生成过程中请不要手动跳转到其他页面，或刷新本页面，否则可能导致生成失败！")
                 with st.spinner("正在生成完整视频……"):
-                    output_info = render_complete_full_video(configs=video_configs, 
-                                                             style_config=style_config,
-                                                             username=username,
-                                                             video_output_path=video_output_path, 
-                                                             video_res=video_res, 
-                                                             video_bitrate=v_bitrate_kbps,
-                                                             video_trans_enable=trans_enable, 
-                                                             video_trans_time=trans_time, 
-                                                             full_last_clip=False)
+                    output_info = render_complete_full_video(
+                        username=username,
+                        game_type=G_type,
+                        main_configs=main_configs,
+                        intro_configs=intro_configs,
+                        ending_configs=ending_configs,
+                        style_config=style_config,
+                        video_output_path=video_output_path,
+                        video_res=video_res,
+                        video_bitrate=v_bitrate_kbps,
+                        auto_add_transition=trans_enable,
+                        video_trans_time=trans_time,
+                        full_last_clip=False
+                    )
                     st.write(f"【{output_info['info']}")
             st.success("完整视频生成结束！点击下方按钮打开视频所在文件夹")
         except Exception as e:
@@ -188,11 +189,14 @@ with st.container(border=True):
         video_res = (v_res_width, v_res_height)
         with st.spinner("正在生成所有视频片段……"):
             render_all_video_clips(
-                resources=video_configs, 
+                game_type=G_type,
                 style_config=style_config,
+                main_configs=main_configs,
                 video_output_path=video_output_path, 
                 video_res=video_res, 
                 video_bitrate=v_bitrate_kbps,
+                intro_configs=intro_configs,
+                ending_configs=ending_configs,
                 auto_add_transition=trans_enable, 
                 trans_time=trans_time,
                 force_render=force_render_clip
@@ -224,17 +228,20 @@ with st.container(border=True):
             video_res = (v_res_width, v_res_height)
             with st.spinner("正在生成所有视频片段……"):
                 render_all_video_clips(
-                    resources=video_configs, 
+                    game_type=G_type,
                     style_config=style_config,
+                    main_configs=main_configs,
                     video_output_path=video_output_path, 
                     video_res=video_res, 
                     video_bitrate=v_bitrate_kbps,
+                    intro_configs=intro_configs,
+                    ending_configs=ending_configs,
                     auto_add_transition=trans_enable,
                     trans_time=trans_time,
                     force_render=force_render_clip
                 )
                 st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
             with st.spinner("正在拼接视频……"):
-                combine_full_video_ffmpeg_concat_gl(video_output_path, video_res, trans_name, trans_time)
+                combine_full_video_ffmpeg_concat_gl(video_output_path, trans_name, trans_time)
                 st.info("已启动视频拼接任务，请在控制台窗口查看进度……")
             st.success("所有任务已退出，请从上方按钮打开文件夹查看视频生成结果")

@@ -28,10 +28,20 @@ THEME_COLORS = {
 }
 
 default_static_dir = "./static/assets"
-DEFAULT_CONENT_TEXT_STYLE = {
+DEFAULT_CONTENT_TEXT_STYLE_M = {
     "font_size": 28,
     "font_color": "#FFFFFF",
     "inline_max_chara": 24,
+    "enable_stroke": True,
+    "stroke_color": "#000000",
+    "stroke_width": 2,
+    "interline": 6.5,
+    "horizontal_align": "left",
+}
+DEFAULT_CONTENT_TEXT_STYLE_C = {
+    "font_size": 28,
+    "font_color": "#FF8000",
+    "inline_max_chara": 18,
     "enable_stroke": True,
     "stroke_color": "#000000",
     "stroke_width": 2,
@@ -65,9 +75,10 @@ DEFAULT_STYLES = {
             },
             "options":{
                 "override_content_default_bg": False,
+                "content_use_video_bg": False
             },
             "intro_text_style": DEFAULT_INTRO_TEXT_STYLE,
-            "content_text_style": DEFAULT_CONENT_TEXT_STYLE
+            "content_text_style": DEFAULT_CONTENT_TEXT_STYLE_M
         }
     ]
     ,
@@ -86,9 +97,10 @@ DEFAULT_STYLES = {
             },
             "options": {
                 "override_content_default_bg": False,
+                "content_use_video_bg": True
             },
             "intro_text_style": DEFAULT_INTRO_TEXT_STYLE,
-            "content_text_style": DEFAULT_CONENT_TEXT_STYLE
+            "content_text_style": DEFAULT_CONTENT_TEXT_STYLE_M
         },
         {
             "type": "chunithm",
@@ -101,12 +113,13 @@ DEFAULT_STYLES = {
                 "intro_bgm": os.path.join(default_static_dir, "audios/intro_chunithm_verse.mp3"),
                 "ui_font": os.path.join(default_static_dir, "fonts/SweiBellLegCJKsc-Black.ttf"),
                 "comment_font": os.path.join(default_static_dir, "fonts/SOURCEHANSANSSC-BOLD.OTF"),
+                "content_bg_video": os.path.join(default_static_dir, "bg_clips/opening_bg_chunithm_verse.mp4"),
             },
             "options": {
                 "override_content_default_bg": False,
             },
             "intro_text_style": DEFAULT_INTRO_TEXT_STYLE,
-            "content_text_style": DEFAULT_CONENT_TEXT_STYLE
+            "content_text_style": DEFAULT_CONTENT_TEXT_STYLE_C
         }
     ]
 }
