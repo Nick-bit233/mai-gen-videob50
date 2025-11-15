@@ -5,11 +5,9 @@ from copy import deepcopy
 from pathlib import Path
 from datetime import datetime
 from utils.themes import DEFAULT_STYLES
-from utils.PageUtils import read_global_config, write_global_config, DEFAULT_STYLE_CONFIG_FILE_PATH
+from utils.PageUtils import read_global_config, get_game_type_text, DEFAULT_STYLE_CONFIG_FILE_PATH
 from utils.ImageUtils import generate_single_image
 from utils.VideoUtils import get_video_preview_frame
-
-st.header("视频样式配置")
 
 DEFAULT_STYLE_KEY = "Prism"
 video_style_config_path = DEFAULT_STYLE_CONFIG_FILE_PATH
@@ -25,8 +23,9 @@ os.makedirs(os.path.join(user_static_dir, "audios"), exist_ok=True)
 os.makedirs(os.path.join(user_static_dir, "fonts"), exist_ok=True)
 os.makedirs(os.path.join(user_static_dir, "bg_clips"), exist_ok=True)
 
-# 读取全局配置
-G_config = read_global_config()
+
+G_config = read_global_config()  # 读取全局配置
+G_type = st.session_state.get('game_type', 'maimai')  # 当前游戏类型
 
 solips = """现在的孩子冲到机厅就是把其他人从机子上赶下来 
 然后投币扫码 上机 选择模式 选区域 
@@ -43,15 +42,22 @@ solips = """现在的孩子冲到机厅就是把其他人从机子上赶下来
 if os.path.exists(video_style_config_path):
     with open(video_style_config_path, "r") as f:
         custom_styles = json.load(f)
-    current_style = custom_styles
+    current_style = deepcopy(custom_styles.get(G_type, {}))
+    print(f"Loaded custom style for {G_type}: {current_style.get('style_name', 'Unnamed Style')}")
 else:
-    current_style = deepcopy(DEFAULT_STYLES[DEFAULT_STYLE_KEY])
+    current_style = deepcopy(DEFAULT_STYLES.get(G_type, {})[-1]) # 默认使用最后一个预设样式
 
 def save_style_config(style_config, is_custom_style):
     """保存样式配置到文件"""
+    with open(video_style_config_path, "r") as f:
+        custom_styles = json.load(f)
+
+    # 仅替换当前游戏类型的样式配置
+    custom_styles[G_type] = style_config
+
     with open(video_style_config_path, "w") as f:
-        json.dump(style_config, f, indent=4)
-    
+        json.dump(custom_styles, f, indent=4)
+
     st.success("样式配置已保存！", icon="✅")
 
 
@@ -230,31 +236,41 @@ def show_current_style_preview(to_preview_style=None):
             st.write(f"片头片尾字体: {os.path.basename(current_asset_config['ui_font'])}")
             st.write(f"评论文本字体: {os.path.basename(current_asset_config['comment_font'])}")
 
-# UI部分
+# =============================================================================
+# Page layout starts here
+# ==============================================================================
+
+st.header("自定义视频素材和样式")
+
+st.markdown(f"> 您正在使用 **{get_game_type_text(G_type)}** 视频生成模式。")
+
 st.write("在这里配置视频生成时使用的背景图片、背景音乐、字体等素材。")
 
 # 样式选择区域
 with st.container(border=True):
     st.subheader("选择预设样式")
+
+    default_style_list = DEFAULT_STYLES.get(G_type, "maimai")
     
     # 样式选择菜单
-    style_options = list(DEFAULT_STYLES.keys())
+    style_options = [t.get("style_name", "未命名样式") for t in default_style_list]
+    len_style_options = len(style_options)
 
     selected_style_name = st.radio(
         "视频样式预设",
         options=style_options,
-        index=1
+        index=0  # TODO: read current style index
     )
     if st.button("应用"):
-        # 切换样式时加载对应配置
-        if selected_style_name in DEFAULT_STYLES:
-            current_style = deepcopy(DEFAULT_STYLES[selected_style_name])
-            current_options = selected_style_name
-            # 保存配置
-            save_style_config(current_style, is_custom_style=False)
-            st.success(f"已切换到{selected_style_name}！")
-        else:
-            st.error(f"未找到预设样式资源：{selected_style_name}")
+        for entry in default_style_list:
+            if entry.get("style_name", "") == selected_style_name:
+                current_style  = deepcopy(entry)
+                current_options = selected_style_name
+                # 保存配置
+                save_style_config(current_style, is_custom_style=False)
+                st.success(f"已切换到{selected_style_name}！")
+                break
+        st.error(f"未找到预设样式资源：{selected_style_name}")
 
 custom_setting_area = st.container(border=True)
 custom_preview_area = st.container(border=True)

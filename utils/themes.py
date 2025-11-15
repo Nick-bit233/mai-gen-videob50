@@ -60,9 +60,10 @@ DEFAULT_INTRO_TEXT_STYLE = {
 }
 
 DEFAULT_STYLES = {
-    "v0.3": [
+    "maimai": [
         {
             "type": "maimai",
+            "style_name": "Buddies",
             "asset_paths":{
                 "score_image_assets_path": os.path.join(default_static_dir, "images"),
                 "score_image_base": os.path.join(default_static_dir, "images/content_base_maimai.png"),
@@ -79,12 +80,10 @@ DEFAULT_STYLES = {
             },
             "intro_text_style": DEFAULT_INTRO_TEXT_STYLE,
             "content_text_style": DEFAULT_CONTENT_TEXT_STYLE_M
-        }
-    ]
-    ,
-    "v1.0": [
+        },
         {
             "type": "maimai",
+            "style_name": "Prism",
             "asset_paths": {
                 "score_image_assets_path": os.path.join(default_static_dir, "images"),
                 "score_image_base": os.path.join(default_static_dir, "images/content_base_maimai.png"),
@@ -102,8 +101,11 @@ DEFAULT_STYLES = {
             "intro_text_style": DEFAULT_INTRO_TEXT_STYLE,
             "content_text_style": DEFAULT_CONTENT_TEXT_STYLE_M
         },
+    ],
+    "chunithm": [
         {
             "type": "chunithm",
+            "style_name": "Verse",
             "asset_paths": {
                 "score_image_assets_path": os.path.join(default_static_dir, "images/Chunithm"),
                 "score_image_base": os.path.join(default_static_dir, "images/Chunithm/content_base_chunithm_verse.png"),
