@@ -1,29 +1,39 @@
 import os
 
 THEME_COLORS = {
-    "Prism": {
-        "primaryColor": "#ff87a3",
-        "backgroundColor": "#e0fff0",
-        "secondaryBackgroundColor": "#ccf3ff",
-        "textColor": "#003076"
+    "maimai": {
+        "Prism": {
+            "primaryColor": "#ff87a3",
+            "backgroundColor": "#e0fff0",
+            "secondaryBackgroundColor": "#ccf3ff",
+            "textColor": "#003076"
+        },
+        "Festival": {
+            "primaryColor": "#4deee2",
+            "backgroundColor": "#faffca",
+            "secondaryBackgroundColor": "#dfbbff",
+            "textColor": "#7d308d"
+        },
+        "Buddies": {
+            "primaryColor": "#e54271",
+            "backgroundColor": "#e08b0b",
+            "secondaryBackgroundColor": "#0c315b",
+            "textColor": "#fbf0f4"
+        },
+        "Circle": {
+            "primaryColor": "#002DE8",
+            "backgroundColor": "#FFD7EF",
+            "secondaryBackgroundColor": "#FFAEDE",
+            "textColor": "#8801C2"
+        }
     },
-    "Festival": {
-        "primaryColor": "#4deee2",
-        "backgroundColor": "#faffca",
-        "secondaryBackgroundColor": "#dfbbff",
-        "textColor": "#7d308d"
-    },
-    "Buddies": {
-        "primaryColor": "#e54271",
-        "backgroundColor": "#e08b0b",
-        "secondaryBackgroundColor": "#0c315b",
-        "textColor": "#fbf0f4"
-    },
-    "Circle": {
-        "primaryColor": "#002DE8",
-        "backgroundColor": "#FFD7EF",
-        "secondaryBackgroundColor": "#FFAEDE",
-        "textColor": "#8801C2"
+    "chunithm": {
+        "Verse": {
+            "primaryColor": "#1EAD85",
+            "backgroundColor": "#CFF1FF",
+            "secondaryBackgroundColor": "#BFFFEF",
+            "textColor": "#5D2E94"
+        }
     }
 }
 

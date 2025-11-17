@@ -53,6 +53,15 @@ def should_update_metadata(threshold_hours=24):
     
     return False
 
+@st.dialog("刷新主题")
+def refresh_theme(theme_name=None):
+    st.info("主题已更改，要刷新并应用主题吗？")
+    if st.button("刷新并应用", key=f"confirm_refresh_theme"):
+        if theme_name:
+            st.session_state.theme = theme_name
+        st.toast("新主题已应用！")
+        st.rerun()
+
 st.image("md_res/icon.png", width=256)
 
 G_type = st.session_state.get('game_type', 'maimai')
@@ -102,7 +111,13 @@ if st.button(switch_btn_text):
     st.session_state.pop('archive_meta', None)
     st.session_state.pop('records', None)
     st.session_state.data_updated_step1 = False
-    st.rerun()
+    # 改变默认主题
+    if st.session_state.game_type == "maimai":
+        change_theme(THEME_COLORS["maimai"]["Circle"])
+        refresh_theme(theme_name="Circle")
+    else:
+        change_theme(THEME_COLORS["chunithm"]["Verse"])
+        refresh_theme(theme_name="Verse")
 
 if G_type == "maimai":
     st.write("从旧版本导入数据")
@@ -147,19 +162,12 @@ st.write("外观选项")
 with st.container(border=True):
     if 'theme' not in st.session_state:
         st.session_state.theme = "Default"
-    @st.dialog("刷新主题")
-    def refresh_theme():
-        st.info("主题已更改，要刷新并应用主题吗？")
-        if st.button("刷新并应用", key=f"confirm_refresh_theme"):
-            st.toast("新主题已应用！")
-            st.rerun()
-        
-    options = ["Default", "Festival", "Buddies", "Prism", "Circle"]
+
+    options = ['Default'] + list(THEME_COLORS[G_type].keys())
     theme = st.segmented_control("更改页面主题",
                                  options, 
                                  default=st.session_state.theme,
                                  selection_mode="single")
     if st.button("确定"):
-        st.session_state.theme = theme
-        change_theme(THEME_COLORS.get(theme, None))
-        refresh_theme()
+        change_theme(THEME_COLORS[G_type].get(theme, None))
+        refresh_theme(theme_name=theme)
