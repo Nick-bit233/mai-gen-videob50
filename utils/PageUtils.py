@@ -77,11 +77,13 @@ def write_global_config(config):
         print(f"Error writing global config: {e}")
 
 # r/w video_style_config.json
-def load_style_config(config_file=DEFAULT_STYLE_CONFIG_FILE_PATH):
+def load_style_config(game_type, config_file=DEFAULT_STYLE_CONFIG_FILE_PATH):
     if os.path.exists(config_file):
         with open(config_file, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return None
+            style_config = json.load(f)
+            return style_config.get(game_type, {})
+    else:
+        return None
 
 
 def update_music_metadata():

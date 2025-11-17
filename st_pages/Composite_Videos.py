@@ -10,7 +10,7 @@ from db_utils.DatabaseDataHandler import get_database_handler
 
 G_config = read_global_config()
 G_type = st.session_state.get('game_type', 'maimai')
-style_config = load_style_config()
+style_config = load_style_config(game_type=G_type)
 db_handler = get_database_handler()
 
 # =============================================================================

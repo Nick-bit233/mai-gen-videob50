@@ -18,10 +18,12 @@ G_type = st.session_state.get('game_type', 'maimai')
 
 def st_generate_b50_images(placeholder, user_id, archive_id, save_paths):
     # get data format for image generation scripts
-    game_type, records = db_handler.load_archive_for_image_generation(archive_id)
+    # TODO：maimai可能需要在此处下载曲绘资源，需要处理可能的等待时间
+    with st.spinner("正在获取资源数据，请稍等 ……"):
+        game_type, records = db_handler.load_archive_for_image_generation(archive_id)
 
     # read style_config
-    style_config = load_style_config()
+    style_config = load_style_config(game_type=G_type)
 
     with placeholder.container(border=True):
         pb = st.progress(0, text="正在生成B50成绩背景图片...")

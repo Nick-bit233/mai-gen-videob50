@@ -5,7 +5,7 @@ from datetime import datetime
 from utils.PageUtils import load_style_config, open_file_explorer, get_video_duration, read_global_config, get_game_type_text
 from utils.PathUtils import get_user_base_dir, get_user_media_dir
 from utils.DataUtils import get_valid_time_range
-from utils.VideoUtils import render_one_video_clip
+from utils.VideoUtils import render_one_video_clip, get_video_preview_frame
 from db_utils.DatabaseDataHandler import get_database_handler
 
 DEFAULT_VIDEO_MAX_DURATION = 240
@@ -13,7 +13,7 @@ DEFAULT_VIDEO_MAX_DURATION = 240
 G_config = read_global_config()
 G_type = st.session_state.get('game_type', 'maimai')
 db_handler = get_database_handler()
-style_config = load_style_config()
+style_config = load_style_config(game_type=G_type)
 
 global video_download_path
 video_download_path = f"./videos/downloads"
@@ -22,6 +22,21 @@ video_download_path = f"./videos/downloads"
 def get_output_video_name_with_timestamp(clip_id):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"{clip_id}_{timestamp}.mp4"
+
+
+def try_update_default_configs(video_configs, archive_id=None):
+    for config in video_configs:
+        start = config.get('start', None)
+        end = config.get('end', None)
+        text = config.get('text', None)
+        if not text:
+            config['text'] = ""
+        s, e = get_valid_time_range(start, end, G_config['CLIP_PLAY_TIME'], G_config['CLIP_START_INTERVAL'])
+        config['start'] = s
+        config['end'] = e
+
+    db_handler.save_video_config(video_configs=video_configs, archive_id=archive_id)
+    return video_configs
 
 # streamlit component functions
 def update_preview(preview_placeholder, config, current_index):
@@ -41,7 +56,7 @@ def update_preview(preview_placeholder, config, current_index):
         # 获取当前视频的配置信息
         item = config[current_index]
         chart_id = item['chart_id']
-        achievement_image_path = item['achievement_image']
+        achievement_image_path = item['main_image']
         video_path = item['video']
 
         # 检查是否存在图片和视频：
@@ -120,8 +135,8 @@ def update_preview(preview_placeholder, config, current_index):
 
         # 获取视频的时长，片段起终点信息
         video_duration = item['duration']
-        start = item['start']
-        end = item['end']
+        start_time = item['start']
+        end_time = item['end']
         if not video_duration or video_duration <= 0:
             # 尝试直接从文件中获取时长
             if video_path and os.path.exists(video_path):
@@ -132,10 +147,7 @@ def update_preview(preview_placeholder, config, current_index):
             else:
                 video_duration = DEFAULT_VIDEO_MAX_DURATION
 
-        # 获取有效的时间范围
-        start_time, end_time = get_valid_time_range(start, end, 
-                                                    G_config['CLIP_PLAY_TIME'],
-                                                    G_config['CLIP_START_INTERVAL'])
+        # 计算分/秒显示的起止时间
         show_start_minutes = int(start_time // 60)
         show_start_seconds = int(start_time % 60)
         show_end_minutes = int(end_time // 60)
@@ -249,7 +261,8 @@ else:
 
 # 读取存档的 video_config 查询（包含存储在chart表中的配置）
 try:
-    video_configs = db_handler.load_video_configs(username, archive_name)
+    video_configs = db_handler.load_video_configs(archive_id=archive_id)
+    video_configs = try_update_default_configs(video_configs, archive_id=archive_id)  # 如果是新存档，将会生成默认配置
 except Exception as e:
     st.error(f"读取存档配置失败: {e}")
     with st.expander("错误详情"):
@@ -279,7 +292,7 @@ if video_configs:
         # print(f"跳转到视频片段: {target_index}")
         if target_index != st.session_state.current_index:
             # 保存当前配置到数据库
-            db_handler.save_video_config(username, video_configs, archive_name)
+            db_handler.save_video_config(video_configs=video_configs, archive_id=archive_id)
             st.toast("配置已保存！")
             # 更新session_state
             st.session_state.current_index = target_index
@@ -314,13 +327,11 @@ if video_configs:
     
     # 保存配置按钮
     if st.button("保存配置"):
-        db_handler.save_video_config(username, video_configs, archive_name)
+        db_handler.save_video_config(video_configs=video_configs, archive_id=archive_id)
         st.success("配置已保存！")
 
-    with st.expander("获得当前片段的预览图像"):
-        st.error("暂未实现。")
-
-    with st.expander("导出当前编辑片段的预览视频"):
+    with st.expander("片段预览与单独导出", expanded=True):
+        col1, col2 = st.columns(2)
         st.info("如需修改视频生成参数，请在【5.合成视频】页面中设置")
         if not os.path.exists(video_output_path):
             os.makedirs(video_output_path, exist_ok=True)
@@ -328,25 +339,37 @@ if video_configs:
         v_bitrate_kbps = f"{G_config['VIDEO_BITRATE']}k"
         target_config = video_configs[st.session_state.current_index]
         target_video_filename = get_output_video_name_with_timestamp(target_config['clip_title_name'])
-        if st.button("导出视频"):
-            db_handler.save_video_config(username, video_configs, archive_name)
-            with st.spinner(f"正在导出视频片段{target_video_filename} ……"):
-                res = render_one_video_clip(
-                    game_type=target_config['game_type'],
-                    config=target_config,
-                    style_config=style_config,
-                    video_file_name=target_video_filename,
-                    video_output_path=video_output_path,
-                    video_res=v_res,
-                    video_bitrate=v_bitrate_kbps
-                )
-            if res['status'] == 'success':
-                st.success(res['info'])
-            else:
-                st.error(res['info'])
-        absolute_path = os.path.abspath(video_output_path)
-        if st.button("打开导出视频所在文件夹"):
-            open_file_explorer(absolute_path)
+        with col1:
+            if st.button("生成当前片段的预览帧"):
+                with st.spinner(f"正在生成帧预览 ……"):
+                    preview_frame = get_video_preview_frame(
+                        game_type=target_config['game_type'],
+                        clip_config=target_config,
+                        style_config=style_config,
+                        resolution=v_res,
+                        part="content"
+                    )
+                st.image(preview_frame, caption="视频预览帧")
+        with col2:
+            if st.button("导出当前片段视频"):
+                db_handler.save_video_config(video_configs=video_configs, archive_id=archive_id)
+                with st.spinner(f"正在导出视频片段{target_video_filename} ……"):
+                    res = render_one_video_clip(
+                        game_type=target_config['game_type'],
+                        config=target_config,
+                        style_config=style_config,
+                        video_file_name=target_video_filename,
+                        video_output_path=video_output_path,
+                        video_res=v_res,
+                        video_bitrate=v_bitrate_kbps
+                    )
+                if res['status'] == 'success':
+                    st.success(res['info'])
+                else:
+                    st.error(res['info'])
+            absolute_path = os.path.abspath(video_output_path)
+            if st.button("打开导出视频所在文件夹"):
+                open_file_explorer(absolute_path)
 
 with st.expander("额外设置"):
     st.write("DEBUG：如果需要检查原始配置，点击下方按钮读取数据库原始信息。")

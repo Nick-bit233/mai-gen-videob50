@@ -434,8 +434,13 @@ def create_video_segment(
     else:
         bg_clip = bg_image_clip
 
+    # 是否自动对齐
+    if 'auto_center_align' in clip_config:
+        auto_align = clip_config['auto_center_align']
+    else:
+        auto_align = True
     # 拆分clip处理逻辑到单独的函数
-    video_clip, video_pos = edit_game_video_clip(game_type, clip_config, resolution)
+    video_clip, video_pos = edit_game_video_clip(game_type, clip_config, resolution, auto_center_align=auto_align)
     text_clip, text_pos = edit_game_text_clip(game_type, clip_config, resolution, style_config)
 
     # 叠放剪辑，以生成完整片段
@@ -453,7 +458,7 @@ def create_video_segment(
     return composite_clip.with_duration(clip_config['duration'])
 
 
-def get_video_preview_frame(game_type, clip_config, style_config, resolution, part="intro"):
+def get_video_preview_frame(game_type, clip_config, style_config, resolution, part="intro") -> Image.Image:
     """ 获取视频片段的预览帧，返回PIL.Image对象 """
     if part == "intro":
         preview_clip = create_info_segment(clip_config, style_config, resolution)

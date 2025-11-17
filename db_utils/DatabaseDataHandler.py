@@ -464,20 +464,25 @@ class DatabaseDataHandler:
             }
         )
 
-    def save_video_config(self, username: str, video_config: Dict, archive_name: str = None):
+    def save_video_config(self, 
+                          video_configs: List[Dict],
+                          archive_id: int = None, 
+                          username: str = None, 
+                          archive_name: str = None) -> List[Dict]:
         """Save video configuration(main) to the database."""
-        archive_id = self.load_save_archive(username, archive_name)
-        if not archive_id:
-            raise ValueError("No active archive found to save configuration.")
+        if archive_id is None:
+            archive_id = self.load_save_archive(username, archive_name)
+            if not archive_id:
+                raise ValueError("No active archive found to load configuration.")
         
         # Save main (chart/record-specific) configurations
-        for entry in video_config:
+        for entry in video_configs:
             chart_id = entry.get('chart_id', None)
             
             if chart_id:
                 config_data = {
                     'background_image_path': entry.get('bg_image'),
-                    'achievement_image_path': entry.get('achievement_image'),
+                    'achievement_image_path': entry.get('main_image'),
                     'video_slice_start': entry.get('start'),
                     'video_slice_end': entry.get('end'),
                     'comment_text': entry.get('text')
@@ -485,12 +490,14 @@ class DatabaseDataHandler:
                 self.db.set_configuration(archive_id, chart_id, config_data)
             else:
                 raise ValueError("Invalid video configuration entry: missing chart_id")
+            
 
-    def load_video_configs(self, username: str, archive_name: str = None, with_extras=False) -> Dict:
+    def load_video_configs(self, archive_id: int = None, username: str = None, archive_name: str = None) -> List[Dict]:
         """Load video configuration(main) from the database."""
-        archive_id = self.load_save_archive(username, archive_name)
-        if not archive_id:
-            raise ValueError("No active archive found to load configuration.")
+        if archive_id is None:
+            archive_id = self.load_save_archive(username, archive_name)
+            if not archive_id:
+                raise ValueError("No active archive found to load configuration.")
 
         # Load main records configurations
         full_records = self.db.get_records_with_extented_data(archive_id)
@@ -508,12 +515,12 @@ class DatabaseDataHandler:
                 'game_type': record.get('game_type'),
                 'chart_id': record.get('chart_id', None),
                 'bg_image': record.get('background_image_path'),
-                'achievement_image': record.get('achievement_image_path'),
+                'main_image': record.get('achievement_image_path'),
                 'start': record.get('video_slice_start'),
                 'end': record.get('video_slice_end'),
                 'text': record.get('comment_text'),
                 'video': record.get('video_path'),  # From charts table: c.video_path
-                'duration': duration,
+                'duration': duration,  # this duration refers to original video duration
                 'video_url': video_url,
                 'video_id': video_id,
                 'clip_title_name': record.get('clip_title_name'),
@@ -526,7 +533,10 @@ class DatabaseDataHandler:
 
         return ret_configs
 
-    def load_full_config_for_composite_video(self, archive_id: int=None, username: str = None, archive_name: str = None) -> Dict:
+    def load_full_config_for_composite_video(self, 
+                                             archive_id: int = None, 
+                                             username: str = None, 
+                                             archive_name: str = None) -> Tuple[List[Dict], List[Dict], List[Dict]]:
         # Load archive by id if provided, else by username and archive_name
         if archive_id is None:
             archive_id = self.load_save_archive(username, archive_name)
@@ -551,7 +561,7 @@ class DatabaseDataHandler:
                 'end': end,
                 'text': record.get('comment_text'),
                 'video': record.get('video_path'),
-                'duration': duration,
+                'duration': duration,  # this duration refers to clipped video duration
                 'clip_title_name': record.get('clip_title_name'),
             }
             main_configs.append(entry)
@@ -675,15 +685,3 @@ def update_user_data(username: str, b50_data: Dict, archive_name: str = None) ->
         )
 
     return handler.update_archive_records(username, records, archive_name)
-
-
-def load_video_config(username: str, archive_name: str = None) -> Dict:
-    """Load video configuration (backward compatibility)"""
-    handler = get_database_handler()
-    return handler.load_video_configs(username, archive_name)
-
-
-def save_video_config(username: str, video_config: Dict, archive_name: str = None):
-    """Save video configuration (backward compatibility)"""
-    handler = get_database_handler()
-    return handler.save_video_config(username, video_config, archive_name)
