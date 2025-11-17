@@ -39,11 +39,11 @@ DEFAULT_CONTENT_TEXT_STYLE_M = {
     "horizontal_align": "left",
 }
 DEFAULT_CONTENT_TEXT_STYLE_C = {
-    "font_size": 28,
+    "font_size": 24,
     "font_color": "#FF8000",
-    "inline_max_chara": 18,
+    "inline_max_chara": 12,
     "enable_stroke": True,
-    "stroke_color": "#000000",
+    "stroke_color": "#FFFFFF",
     "stroke_width": 2,
     "interline": 6.5,
     "horizontal_align": "left",
@@ -96,7 +96,27 @@ DEFAULT_STYLES = {
             },
             "options": {
                 "override_content_default_bg": False,
-                "content_use_video_bg": True
+                "content_use_video_bg": False
+            },
+            "intro_text_style": DEFAULT_INTRO_TEXT_STYLE,
+            "content_text_style": DEFAULT_CONTENT_TEXT_STYLE_M
+        },
+        {
+            "type": "maimai",
+            "style_name": "Circle",
+            "asset_paths": {
+                "score_image_assets_path": os.path.join(default_static_dir, "images"),
+                "score_image_base": os.path.join(default_static_dir, "images/content_base_maimai.png"),
+                "intro_video_bg": os.path.join(default_static_dir, "bg_clips/opening_bg_maimai_circle.mp4"),
+                "intro_text_bg": os.path.join(default_static_dir, "images/intro_base_maimai_circle.png"),
+                "content_bg": os.path.join(default_static_dir, "images/content_default_bg_maimai_circle.png"),
+                "intro_bgm": os.path.join(default_static_dir, "audios/intro_maimai_circle.mp3"),
+                "ui_font": os.path.join(default_static_dir, "fonts/FOT_NewRodin_Pro_EB.otf"),
+                "comment_font": os.path.join(default_static_dir, "fonts/SOURCEHANSANSSC-BOLD.OTF"),
+            },
+            "options": {
+                "override_content_default_bg": False,
+                "content_use_video_bg": False
             },
             "intro_text_style": DEFAULT_INTRO_TEXT_STYLE,
             "content_text_style": DEFAULT_CONTENT_TEXT_STYLE_M
@@ -119,6 +139,28 @@ DEFAULT_STYLES = {
             },
             "options": {
                 "override_content_default_bg": False,
+                "content_use_video_bg": True
+            },
+            "intro_text_style": DEFAULT_INTRO_TEXT_STYLE,
+            "content_text_style": DEFAULT_CONTENT_TEXT_STYLE_C
+        },
+        {
+            "type": "chunithm",
+            "style_name": "X-Verse",
+            "asset_paths": {
+                "score_image_assets_path": os.path.join(default_static_dir, "images/Chunithm"),
+                "score_image_base": os.path.join(default_static_dir, "images/Chunithm/content_base_chunithm_verse.png"),
+                "intro_video_bg": os.path.join(default_static_dir, "bg_clips/opening_bg_chunithm_xverse.mp4"),
+                "intro_text_bg": os.path.join(default_static_dir, "images/Chunithm/intro_base_chunithm_verse.png"),
+                "content_bg": os.path.join(default_static_dir, "images/Chunithm/content_default_bg_chunithm_verse.png"),
+                "intro_bgm": os.path.join(default_static_dir, "audios/intro_chunithm_verse.mp3"),
+                "ui_font": os.path.join(default_static_dir, "fonts/SweiBellLegCJKsc-Black.ttf"),
+                "comment_font": os.path.join(default_static_dir, "fonts/SOURCEHANSANSSC-BOLD.OTF"),
+                "content_bg_video": os.path.join(default_static_dir, "bg_clips/opening_bg_chunithm_verse.mp4"),
+            },
+            "options": {
+                "override_content_default_bg": False,
+                "content_use_video_bg": True
             },
             "intro_text_style": DEFAULT_INTRO_TEXT_STYLE,
             "content_text_style": DEFAULT_CONTENT_TEXT_STYLE_C

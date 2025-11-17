@@ -53,8 +53,8 @@ class MaiImageGenerater:
 
         return Background
 
-    def TypeLoader(self, Type: str = "SD"):
-        _type = Type
+    def TypeLoader(self, Type: int = 0):
+        _type = Type  # 0 for SD, 1 for DX
         with Image.open(f"{self.image_root_path}/Types/{_type}.png") as _Type:
             _Type = _Type.resize((180, 50), Image.BICUBIC)
             return _Type.copy()
@@ -433,7 +433,7 @@ class ChuniImageGenerater:
                 return Image.new('RGBA', (80, 80), (0, 0, 0, 0))
         
     def TextDraw(self, image, text: str = "", pos: tuple = (0, 0), max_width: int = 2000,
-                 font_path=None, font_size=32, font_color=(255, 255, 255), h_align: str = "center"):
+                 font_path=None, font_size=32, font_color=(255, 255, 255), h_align: str = "center") -> Image.Image:
         """
         绘制文本，若超出最大宽度则缩小字体直至适配
 
@@ -616,17 +616,22 @@ class ChuniImageGenerater:
     
 
 # 入口：生成单个成绩图片    
-def generate_single_image(game_type, style_config, record_detail, output_path, title_text):
+def generate_single_image(game_type, style_config, record_detail, output_path, title_text) -> Image.Image:
     # 查找对应游戏类型的style_config
     try:
         selected_style_config = None
-        assert isinstance(style_config, list), "从v1.0开始，style_config应为列表格式"
-        for i, sub_config in enumerate(style_config):
-            if "type" in sub_config and sub_config["type"] == game_type:
-                selected_style_config = sub_config
-                break
-        if selected_style_config is None:
-            raise ValueError(f"No {game_type} style_config found in the provided list.")
+        if isinstance(style_config, dict):
+            selected_style_config = style_config
+        elif isinstance(style_config, list):
+            for i, sub_config in enumerate(style_config):
+                if "type" in sub_config and sub_config["type"] == game_type:
+                    selected_style_config = sub_config
+                    break
+            if selected_style_config is None:
+                raise ValueError(f"No {game_type} style_config found in the provided list.")
+        else:
+            raise ValueError("style_config must be a dict or a list of dicts.")
+        
     except Exception as e:
         raise ValueError(f"Error processing style_configs: {e}")
     
@@ -650,18 +655,23 @@ def generate_single_image(game_type, style_config, record_detail, output_path, t
             
             # 保存图片
             background.save(output_path)
+
+        # 返回已保存的图片对象
+        with Image.open(output_path) as final_img:
+            return final_img.copy()
+        
     elif game_type == "chunithm":
         function = ChuniImageGenerater(style_config=selected_style_config)
         single_image = function.GenerateOneAchievement(record_detail)
 
         # 添加标题文字
-        title_text = '#' + title_text
         single_image = function.TextDraw(single_image, title_text, (248, 1016), max_width=280,
                                         font_path=function.ui_font_path,
                                         font_size=32, font_color=(255, 255, 255), h_align="center")
         
         # 保存图片
         single_image.save(output_path)
+        return single_image
     else:
         raise ValueError(f"Unsupported game type: {game_type}")
 

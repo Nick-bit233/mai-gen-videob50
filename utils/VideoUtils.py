@@ -454,18 +454,16 @@ def create_video_segment(
 
 
 def get_video_preview_frame(game_type, clip_config, style_config, resolution, part="intro"):
-    # TODO：修改为可以预览任何类型的指定config
-    if game_type == "maimai":
-        if part == "intro":
-            preview_clip = create_info_segment(clip_config, style_config, resolution)
-        elif part == "content":
-            preview_clip = create_video_segment(game_type, clip_config, style_config, resolution)
-        
-        frame = preview_clip.get_frame(t=1)
-        pil_img = Image.fromarray(frame.astype("uint8"))
-        return pil_img
-    else:
-        raise ValueError(f"Unsupported video type: {game_type}. Currently only 'maimai' is supported.")
+    """ 获取视频片段的预览帧，返回PIL.Image对象 """
+    if part == "intro":
+        preview_clip = create_info_segment(clip_config, style_config, resolution)
+    elif part == "content":
+        preview_clip = create_video_segment(game_type, clip_config, style_config, resolution)
+    
+    frame = preview_clip.get_frame(t=1)
+    pil_img = Image.fromarray(frame.astype("uint8"))
+    return pil_img
+
 
 
 def add_clip_with_transition(clips, new_clip, set_start=False, trans_time=1):
