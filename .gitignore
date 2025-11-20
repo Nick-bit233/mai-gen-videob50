@@ -12,6 +12,9 @@ b50_datas/
 b50_images/
 videos/  
 
+# Test data and scripts
+tests/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -187,6 +190,11 @@ cython_debug/
 test_html.txt
 test_dxrating.txt
 develop_token.txt
+
 # streamlit temp resources
 static/thumbnails
 static/user
+
+# database files
+*.db
+*.sqlite
