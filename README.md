@@ -47,8 +47,11 @@ Auto search and generate your best 50 videos of MaimaiDX or best 30 videos of Ch
 | FES | BUD | PRI |
 
 生成视频效果展示：[【舞萌2024/工具发布】还在手搓b50视频？我写了一个自动生成器！](https://www.bilibili.com/video/BV1bJi2YVEiE)
+中二节奏生成效果：[【中二节奏2026】小伙时隔半个月成功抵达虹分，这是他分表发生的变化]（https://www.bilibili.com/video/BV1m9yVBfExq）
 
 使用教程视频：[【舞萌2024】新版B50视频生成器来啦！支持一键启动/站内下载/全面升级用户界面~](https://www.bilibili.com/video/BV1G2kBY5Edq)
+
+
 
 - 生成视频帧效果
 
