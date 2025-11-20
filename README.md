@@ -1,27 +1,28 @@
 <img src="md_res/icon.png" width="256" alt="Icon">
 
-# mai-gen-videob50
+# mai-chu分表视频生成器
 
-自动从流媒体上搜索并构建你的舞萌DX B50视频
+自动从流媒体上搜索并构建你的舞萌DX B50视频或中二节奏 B30视频
 
-Auto search and generate your best 50 videoes of MaimaiDX
+Auto search and generate your best 50 videos of MaimaiDX or best 30 videos of Chunithm
 
 ## 更新速览
 
-`v0.6.5`版本现已更新：
+`v0.8`版本现已更新：
+- ✨ **重大更新**：现已支持中二节奏（CHUNITHM）B30视频生成！
+- 🎮 统一界面：左侧导航栏分为 B30（中二侧）和 B50（maimai侧）两个主要模块
+- 🔍 搜索优化：支持 YouTube Data API v3，提供更稳定的视频搜索体验
+- 🎯 智能匹配：多策略搜索系统，自动匹配最相关的谱面视频
+- 🛠️ 界面优化：优化前端界面，提升用户体验
+
+`v0.6.5`版本更新：
 - 修复：从舞萌2025版本，成绩图片中的等级+号显示，由每个等级的定数.7及以上调整为.6及以上
 - 修复：自动识别下载的视频源以对齐模板的位置，以避免视频没有嵌入到正确位置的问题。
-- **注意**：`v0.6.5`版本开始，需要新的运行环境依赖。从老版本更新时，请同时下载`runtime_v06_5.zip`，解压和替换其中的所有文件
 
-`v0.6`版本现已更新：
+`v0.6`版本更新：
 - 支持通过上传本地文件来自定义片头片尾、图片背景和字体风格，预设Buddies和Prism两套风格
 - 视频默认片头片尾风格切换为Prism，以迎合舞萌2025版本
 - 现已支持自定义搜索时预览和指定bilibili的分p合集视频
-- 目前仍然沿用v0.5版本的运行环境，从旧版本升级无需更新runtime
-
-打个小广告：如果你觉得本项目好用的话，欢迎发电支持开发者！[爱发电](https://afdian.com/a/mai-gen-videob50)
-
-<img src="md_res/afdian.png" width="200" alt="afdian">
 
 ## 快速开始
 
@@ -47,7 +48,12 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 生成视频效果展示：[【舞萌2024/工具发布】还在手搓b50视频？我写了一个自动生成器！](https://www.bilibili.com/video/BV1bJi2YVEiE)
 
+
+中二节奏生成效果：[【中二节奏2026】小伙时隔半个月成功抵达虹分，这是他分表发生的变化](https://www.bilibili.com/video/BV1m9yVBfExq)
+
 使用教程视频：[【舞萌2024】新版B50视频生成器来啦！支持一键启动/站内下载/全面升级用户界面~](https://www.bilibili.com/video/BV1G2kBY5Edq)
+
+
 
 - 生成视频帧效果
 
@@ -58,7 +64,7 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 本工具的原理是：
 
-- 从查分器获取你的B50数据，并保存在本地。
+- 从查分器获取你的B50/B30数据，并保存在本地。
 
 - 从流媒体上搜索并下载谱面确认视频，并保存在本地。
 
@@ -66,8 +72,14 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 - 自动根据已缓存的素材合成视频。
 
-查分器源支持情况：
+### 支持的游戏类型
 
+- **B50（maimai侧）**：舞萌DX Best 50 视频生成
+- **B30（中二侧）**：中二节奏 Best 30 视频生成
+
+### 查分器源支持情况
+
+#### maimai（B50）数据源：
 - [x] [水鱼查分器](https://www.diving-fish.com/maimaidx/prober/)：请注意在个人选项中关闭掩码，并允许公开获取你的B50数据。
 
 - [x] [国际服Maimai DX NET](https://maimaidx-eng.com/maimai-mobile/home/ratingTargetMusic/)
@@ -78,27 +90,36 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
     （国际服/日服官网以及DXrating网站导入数据需要通过下载网页或导出源码，点此查看[国际服/日服数据获取插件使用教程](docs/DX_NET_Guide.md)）
 
-- [ ] [落雪查分器](https://maimai.lxns.net/)（暂未支持）
+#### chunithm（B30）数据源：
+- [x] [落雪查分器](https://maimai.lxns.net/)：支持中二节奏B30数据获取
 
-流媒体源支持情况：
+### 流媒体源支持情况：
 
-- [x] [youtube](https://www.youtube.com/)
+- [x] [youtube](https://www.youtube.com/)：支持 YouTube Data API v3 和 pytubefix 两种搜索方式
 
 - [x] [bilibili](https://www.bilibili.com/)
 
-计划特性开发情况：
+### 已实现特性：
 
 - [x] 可交互的全流程界面（streamlit）
 
 - [x] 支持一键更换页面主题配色
 
-- [x] 更好的B50数据存档系统，可以保存多个历史副本
+- [x] 更好的B50/B30数据存档系统，可以保存多个历史副本
 
-- [x] 支持自行筛选的B50数据、自定义视频生成的列表（支持从水鱼自动获取AP B50）
+- [x] 支持自行筛选的B50/B30数据、自定义视频生成的列表（支持从水鱼自动获取AP B50）
 
 - [x] 支持自定义视频背景图片、字体和字号等个性化功能
 
-- [ ] （远期）支持 中二B30/音击B45 视频生成
+- [x] 支持中二节奏B30视频生成
+
+- [x] 多策略视频搜索系统，智能匹配最相关的谱面视频
+
+- [x] 自动处理歌曲名称中的特殊字符，提高搜索准确率
+
+### 计划特性：
+
+- [ ] 支持音击B45视频生成
 
 ---
 
@@ -107,8 +128,8 @@ Auto search and generate your best 50 videoes of MaimaiDX
 1. 安装python环境和依赖，推荐使用 `conda`。注意，python版本需要3.10以上。
 
     ```bash
-    conda create -n mai-gen-videob50 python=3.10
-    conda activate mai-gen-videob50
+    conda create -n mai-chu-gen-video python=3.10
+    conda activate mai-chu-gen-video
     ```
 
 2. 从 requirements.txt 安装依赖
@@ -128,19 +149,29 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
         使用`sudo apt-get install ffmpeg`安装ffmpeg。
 
-    
 4. 使用下面的命令启动streamlit网页应用
 
-    ```
+    ```bash
     streamlit run st_app.py
     ```
     在网页运行程序时，请保持终端窗口打开，其中可能会输出有用的调试信息。
-    
+
+5. 在浏览器中打开应用后，你可以看到左侧导航栏分为：
+   - **首页**：应用主页，包含系统状态和主题设置
+   - **B30**：中二节奏相关功能（获取/管理B30数据、生成图片、搜索视频、编辑视频、合成视频等）
+   - **B50**：舞萌DX相关功能（获取/管理B50数据、生成图片、搜索视频、编辑视频、合成视频等）
+
 #### 其他注意事项
 
-- 如果你使用youtube源且使用代理下载，你可能会遇到风控情况，此时请额外按照youtube的 po token生成相关依赖，具体请参考：[使用自定义OAuth或PO Token](docs/UseTokenGuide.md)
+- **YouTube搜索配置**：
+  - 推荐使用 YouTube Data API v3 进行搜索（更稳定可靠）
+  - 在"搜索谱面确认视频信息"页面，勾选"使用 YouTube Data API v3 搜索"并填入你的 API Key
+  - 如果没有 API Key，也可以使用传统的 pytubefix 方式，但可能遇到风控问题
+  - 如果使用 pytubefix 且遇到风控，请参考：[使用自定义OAuth或PO Token](docs/UseTokenGuide.md)
 
-- 如果你使用国际服/日服，或使用DXrating网站作为B50数据源，在使用前请参考：[导入国际服/日服B50数据](docs/DX_NET_Guide.md)完成前置数据获取步骤。
+- **数据源配置**：
+  - 如果你使用国际服/日服，或使用DXrating网站作为B50数据源，在使用前请参考：[导入国际服/日服B50数据](docs/DX_NET_Guide.md)完成前置数据获取步骤。
+  - 对于中二节奏B30，推荐使用落雪查分器获取数据。
 
 ---
 
@@ -238,17 +269,17 @@ Auto search and generate your best 50 videoes of MaimaiDX
     <img src="md_res/qa_2.png" width="500" alt="qa2">
 
 
-- Q：我先填写了部分评论，但是后来B50数据更新了，怎么更新评论？
+- Q：我先填写了部分评论，但是后来B50/B30数据更新了，怎么更新评论？
 
-    视频配置信息不会随B50数据的更新而自动更新，建议b50推分后建立一个新的存档。如果确实需要复制部分旧存档的评论，请参考如下步骤：
+    视频配置信息不会随B50/B30数据的更新而自动更新，建议推分后建立一个新的存档。如果确实需要复制部分旧存档的评论，请参考如下步骤：
 
-    - 首先新建存档更新b50，在第1-3步将你的B50数据和视频搜索数据都更新到最新。
+    - 首先新建存档更新数据，在第1-3步将你的B50/B30数据和视频搜索数据都更新到最新。
 
     - 保持当前编辑的页面不动，复制浏览器中的地址，打开一个新的页面，以加载历史存档。
     
     - 进入页面4-1并对比两个页面的信息以复制粘贴评论内容，手动还原评论和时长配置
 
-- Q：我不小心更新了B50数据，但是我还想要使用旧的B50数据生成视频
+- Q：我不小心更新了B50/B30数据，但是我还想要使用旧的数据生成视频
 
     - 如果您使用的是`v0.4.0`以上的版本，每次更新数据（强制覆盖除外）将会自动新建存档，只需在首页加载历史存档继续编辑即可。
     
@@ -324,6 +355,10 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
     > 请参考文档[使用自定义OAuth或PO Token](UseTokenGuide.md)。
 
+- `USE_YOUTUBE_API` ：是否使用 YouTube Data API v3 进行搜索，默认为`false`。推荐设置为`true`以获得更稳定的搜索体验。
+
+- `YOUTUBE_API_KEY` ：YouTube Data API v3 的 API Key。如果`USE_YOUTUBE_API`为`true`，需要填写此字段。
+
 - `SEARCH_MAX_RESULTS` ：设置搜索视频时，最多搜索到的视频数量。
 
 - `SEARCH_WAIT_TIME` ：设置搜索和下载视频时，每次调用API后等待的时间，格式为`[min, max]`，单位为秒。
@@ -346,21 +381,23 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 > 注意：本部分内容在v0.6版本以后已经过时，有待进行更新完善，旧版内容仅供参考！
 
-- 在`./b50_datas`文件夹下是所有的用户b50存档，以及与其配对的视频搜索和生成配置文件
+- 在`./b50_datas`和`./chunithm_datas`文件夹下分别存储maimai和chunithm的用户存档，以及与其配对的视频搜索和生成配置文件
 
-    - 用户存档以时间戳命名，作为子文件夹，例如`./b50_datas/{user}/20250101_080011`是用户在2025.1.1 08:00:11创建的存档
+    - 用户存档以时间戳命名，作为子文件夹，例如：
+      - `./b50_datas/{user}/20250101_080011` 是用户在2025.1.1 08:00:11创建的maimai存档
+      - `./chunithm_datas/{user}/20250101_080011` 是用户在2025.1.1 08:00:11创建的chunithm存档
 
     - 每个存档文件夹中包含：
 
-        - `b50_raw.json` ：用户的存档数据，目前最新的数据格式版本为0.5，其字段如下：
+        - `b50_raw.json` 或 `chunithm_b30_raw.json`：用户的存档数据，目前最新的数据格式版本为0.5，其字段如下：
 
         ```json
         "version": "0.5",
-        "type": "maimai", # 存档的游戏类型（未来支持中二预留）
+        "type": "maimai", # 存档的游戏类型（"maimai" 或 "chunithm"）
         "sub_type": "best", # 存档的排序方式（best 倒序，customer 正序）
         "username": "xxxxxx", # 用户名
-        "rating": 10000, # 存档对应的rating
-        "length_of_content": 50, # 存档的记录长度
+        "rating": 10000, # 存档对应的rating（maimai为rating_mai，chunithm为rating_chu）
+        "length_of_content": 50, # 存档的记录长度（B50为50，B30为30）
         "records": # 具体成绩数据
         [
             {
@@ -376,20 +413,20 @@ Auto search and generate your best 50 videoes of MaimaiDX
         ```
         - 对于当前版本的较新曲目，在存档和文件名中，曲目id将使用一串哈希编码的字符串代替。
 
-        - `b50_config_{DOWNLOADER}.json` ：用户的b50数据与每个谱面的目标流媒体视频数据的映射。
-            - 其中无后缀的文件是空映射，为了使得用户更新b50数据时，不会覆盖已有的配置文件。
+        - `b50_config_{DOWNLOADER}.json` 或 `chunithm_b30_config_{DOWNLOADER}.json`：用户数据与每个谱面的目标流媒体视频数据的映射。
+            - 其中无后缀的文件是空映射，为了使得用户更新数据时，不会覆盖已有的配置文件。
             - 后缀为`_downloader`的文件为下载器自动生成，存储不同平台搜索到的视频信息和备选视频信息。
 
-        - `video_config.json` ：自动生成的视频渲染的配置文件，包括生成器索引的图片和视频位置，以及用户填写的评论和片段时长配置。
+        - `video_config.json`：自动生成的视频渲染的配置文件，包括生成器索引的图片和视频位置，以及用户填写的评论和片段时长配置。
             - 注意本文件不含有视频链接等互联网信息，仅记录本地映射。因此删除本文将不影响搜索和下载，但是会影响已填写的评论和片段时长。
 
         - `images`文件夹，存储所有生成的成绩图片，以`{PastBest/NewBest}_{id}.png`的格式命名。
 
         - `videos`文件夹，存储输出的视频
     
-    - 如果用户以复制源码方式导入数据，输入的html或json源码不会保存在存档内，而是作为缓存保存在`./b50_datas/{user}`文件夹下，新的原始数据会覆盖这些文件，但存档内的数据保持不变（除非用户手动修改或覆盖）
+    - 如果用户以复制源码方式导入数据，输入的html或json源码不会保存在存档内，而是作为缓存保存在对应的数据文件夹下（`./b50_datas/{user}` 或 `./chunithm_datas/{user}`），新的原始数据会覆盖这些文件，但存档内的数据保持不变（除非用户手动修改或覆盖）
 
-- 在`./videos/downloads`文件夹下可以找到所有已下载的谱面确认视频，命名格式为`{song_id}-{level_index}-{type}.mp4`。其中，`song_id`为曲目的ID，`level_index`为难度，`type`为谱面类型，例如`834-4-SD.mp4`。
+- 在`./videos/downloads`文件夹下可以找到所有已下载的谱面确认视频，命名格式为`{song_id}-{level_index}-{type}.mp4`。其中，`song_id`为曲目的ID，`level_index`为难度，`type`为谱面类型，例如`834-4-SD.mp4`（maimai）或`2442-3-0.mp4`（chunithm）。
 
 `video_config.json`的详细格式解释：
 
@@ -450,6 +487,12 @@ Auto search and generate your best 50 videoes of MaimaiDX
 
 - [舞萌 DX 查分器](https://github.com/Diving-Fish/maimaidx-prober) 提供数据库及查询接口
 
+- [落雪查分器](https://maimai.lxns.net/) 提供中二节奏数据接口
+
 - [Tomsens Nanser](https://space.bilibili.com/255845314) 提供图片生成素材模板以及代码实现
 
-- [bilibili-api](https://github.com/Nemo2011/bilibili-api) 
+- [bilibili-api](https://github.com/Nemo2011/bilibili-api)
+
+---
+
+**版本信息**：v0.8 
