@@ -352,7 +352,8 @@ if not username:
 st.write(f"当前用户名: **{username}**")
 archives = db_handler.get_user_save_list(username, game_type=G_type)
 
-with st.expander("更换B50存档"):
+data_name = "B30" if G_type == "chunithm" else "B50"
+with st.expander(f"更换{data_name}存档"):
     if not archives:
         st.warning("未找到任何存档。请先新建或加载存档。")
         st.stop()
@@ -439,7 +440,7 @@ update_editor(link_editor_placeholder,
 with selector_container: 
     # 显示当前视频片段的选择框
     clip_selector = st.selectbox(
-        label="快速跳转到B50记录", 
+        label=f"快速跳转到{data_name}记录", 
         options=record_ids, 
         key="record_selector"  # 添加唯一的key
     )

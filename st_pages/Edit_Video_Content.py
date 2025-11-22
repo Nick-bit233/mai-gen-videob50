@@ -98,7 +98,28 @@ def update_preview(preview_placeholder, config, current_index):
                         if not video_path.lower().endswith(('.mp4', '.mov', '.avi', '.webm')):
                             st.warning(f"⚠️ 不支持的视频格式: {video_path}")
                         else:
-                            st.video(video_path)
+                            # 使用 with 语句打开文件，确保文件句柄正确关闭
+                            # 并捕获 Streamlit 媒体文件存储错误
+                            try:
+                                with open(video_path, 'rb') as f:
+                                    # 验证文件可读
+                                    pass
+                                st.video(video_path)
+                            except (OSError, IOError) as e:
+                                st.error(f"❌ 无法读取视频文件: {e}")
+                                st.caption(f"文件路径: {video_path}")
+                            except Exception as e:
+                                # 捕获 Streamlit MediaFileStorageError 和其他异常
+                                error_msg = str(e)
+                                if "MediaFileStorageError" in error_msg or "No media file with id" in error_msg:
+                                    st.warning("⚠️ 视频文件引用已失效，请刷新页面或重新加载存档")
+                                    st.caption(f"文件路径: {video_path}")
+                                    st.info("💡 提示：如果问题持续存在，请尝试重新下载视频或检查文件是否被移动/删除")
+                                else:
+                                    st.error(f"❌ 无法加载视频: {e}")
+                                    st.caption(f"文件路径: {video_path}")
+                                    with st.expander("错误详情"):
+                                        st.code(traceback.format_exc())
                     except Exception as e:
                         st.error(f"❌ 无法加载视频: {e}")
                         st.caption(f"文件路径: {video_path}")
@@ -234,7 +255,8 @@ if not username:
 st.write(f"当前用户名: **{username}**")
 archives = db_handler.get_user_save_list(username, game_type=G_type)
 
-with st.expander("更换B50存档"):
+data_name = "B30" if G_type == "chunithm" else "B50"
+with st.expander(f"更换{data_name}存档"):
     if not archives:
         st.warning("未找到任何存档。请先新建或加载存档。")
         st.stop()

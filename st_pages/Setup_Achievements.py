@@ -634,9 +634,9 @@ if st.session_state.get('config_saved', False):
                             except:
                                 st.warning("无法清除缓存，请手动刷新页面")
                 
-                st.markdown("""
+                st.markdown(f"""
                 **说明：**
-                - 歌曲列表用于在"编辑/创建自定义B50存档"页面中搜索和添加歌曲
+                - 歌曲列表用于在"编辑/创建自定义{data_name}存档"页面中搜索和添加歌曲
                 - 建议定期更新以获取最新的曲目信息
                 - 更新可能需要一些时间，请耐心等待
                 """)
@@ -659,7 +659,7 @@ if st.session_state.get('config_saved', False):
                     else:
                         st.warning("输入框内容为空。")
             else:
-                st.warning("暂未支持从国际服/日服数据导入中二节奏数据，如有需要请在左侧导航栏使用自定义B50功能手动配置。")
+                st.warning(f"暂未支持从国际服/日服数据导入中二节奏数据，如有需要请在左侧导航栏使用自定义{data_name}功能手动配置。")
 
     # --- Navigation ---
     st.divider()

@@ -227,10 +227,21 @@ def show_current_style_preview(to_preview_style=None):
                 
                 if os.path.exists(intro_video_bg_path):
                     try:
+                        # 验证文件可读
+                        with open(intro_video_bg_path, 'rb') as f:
+                            pass
                         st.video(intro_video_bg_path, format="video/mp4")
-                    except Exception as e:
-                        st.error(f"无法加载片头视频背景: {e}")
+                    except (OSError, IOError) as e:
+                        st.error(f"无法读取片头视频背景文件: {e}")
                         st.caption(f"文件路径: {intro_video_bg_path}")
+                    except Exception as e:
+                        error_msg = str(e)
+                        if "MediaFileStorageError" in error_msg or "No media file with id" in error_msg:
+                            st.warning("⚠️ 视频文件引用已失效，请刷新页面")
+                            st.caption(f"文件路径: {intro_video_bg_path}")
+                        else:
+                            st.error(f"无法加载片头视频背景: {e}")
+                            st.caption(f"文件路径: {intro_video_bg_path}")
                 else:
                     st.error(f"找不到片头视频背景：{intro_video_bg_path}")
             else:
@@ -246,10 +257,21 @@ def show_current_style_preview(to_preview_style=None):
                     
                     if os.path.exists(content_video_bg_path):
                         try:
+                            # 验证文件可读
+                            with open(content_video_bg_path, 'rb') as f:
+                                pass
                             st.video(content_video_bg_path, format="video/mp4")
-                        except Exception as e:
-                            st.error(f"无法加载正片视频背景: {e}")
+                        except (OSError, IOError) as e:
+                            st.error(f"无法读取正片视频背景文件: {e}")
                             st.caption(f"文件路径: {content_video_bg_path}")
+                        except Exception as e:
+                            error_msg = str(e)
+                            if "MediaFileStorageError" in error_msg or "No media file with id" in error_msg:
+                                st.warning("⚠️ 视频文件引用已失效，请刷新页面")
+                                st.caption(f"文件路径: {content_video_bg_path}")
+                            else:
+                                st.error(f"无法加载正片视频背景: {e}")
+                                st.caption(f"文件路径: {content_video_bg_path}")
                     else:
                         st.error(f"找不到正片视频背景：{content_video_bg_path}")
                 else:
