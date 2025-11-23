@@ -10,7 +10,7 @@ db_handler = get_database_handler()
 
 # Streamlit Fragment Function
 @st.fragment
-def edit_context_widget(ex_config_type):
+def edit_context_widget(ex_config_type, username, archive_name):
     # 创建一个container来容纳所有组件
     container = st.container(border=True)
 
@@ -120,7 +120,8 @@ if not username:
 st.write(f"当前用户名: **{username}**")
 archives = db_handler.get_user_save_list(username, game_type=G_type)
 
-with st.expander("更换B50存档"):
+data_name = "B30" if G_type == "chunithm" else "B50"
+with st.expander(f"更换{data_name}存档"):
     if not archives:
         st.warning("未找到任何存档。请先新建或加载存档。")
         st.stop()
@@ -161,10 +162,10 @@ st.info("请注意：左右两侧填写完毕后，需要分别点击保存按�
 col1, col2 = st.columns(2)
 with col1:
     st.subheader("片头配置")
-    edit_context_widget(ex_config_type="intro")
+    edit_context_widget(ex_config_type="intro", username=username, archive_name=archive_name)
 with col2:
     st.subheader("片尾配置")
-    edit_context_widget(ex_config_type="ending")
+    edit_context_widget(ex_config_type="ending", username=username, archive_name=archive_name)
 
 st.write("配置完毕后，请点击下面按钮进入视频生成步骤")
 if st.button("进行下一步"):

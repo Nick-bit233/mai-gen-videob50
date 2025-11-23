@@ -178,7 +178,15 @@ def normalize_audio_volume(clip, target_dbfs=-20):
 def create_info_segment(clip_config, style_config, resolution):
     """ 合成一个信息介绍的Moviepy Clip，用于开场或结尾 """
 
-    print(f"正在合成视频片段: {clip_config['clip_title_name']}")
+    clip_name = clip_config.get('clip_title_name', '开场/结尾片段')
+    print(f"正在合成视频片段: {clip_name}")
+    
+    # 检查必需的字段并提供默认值
+    if 'duration' not in clip_config:
+        raise ValueError(f"片段 {clip_name} 缺少 'duration' 字段")
+    if 'text' not in clip_config:
+        print(f"Warning: 片段 {clip_name} 缺少 'text' 字段，使用默认文本")
+        clip_config['text'] = "欢迎观看"
 
     font_path = style_config['asset_paths']['comment_font']
     intro_video_bg_path = style_config['asset_paths']['intro_video_bg']
@@ -199,6 +207,8 @@ def create_info_segment(clip_config, style_config, resolution):
     bg_image = bg_image.with_effects([vfx.Resize(width=resolution[0])])
 
     bg_video = VideoFileClip(intro_video_bg_path)
+    # 移除音频以避免循环时的索引错误
+    bg_video = bg_video.without_audio()
     bg_video = bg_video.with_effects([vfx.Loop(duration=clip_config['duration']), 
                                       vfx.MultiplyColor(0.75),
                                       vfx.Resize(width=resolution[0])])
@@ -217,22 +227,23 @@ def create_info_segment(clip_config, style_config, resolution):
                         stroke_width = 0 if not enable_stroke else stroke_width,
                         duration=clip_config['duration'])
     
-    addtional_text = "【本视频由mai-genVb50视频生成器生成】"
-    addtional_txt_clip = TextClip(font=font_path, text=addtional_text,
-                        method = "label",
-                        font_size=18,
-                        vertical_align="bottom",
-                        color="white",
-                        duration=clip_config['duration']
-    )
+    # 水印已移除
+    # addtional_text = "【本视频由mai-genVb50视频生成器生成】"
+    # addtional_txt_clip = TextClip(font=font_path, text=addtional_text,
+    #                     method = "label",
+    #                     font_size=18,
+    #                     vertical_align="bottom",
+    #                     color="white",
+    #                     duration=clip_config['duration']
+    # )
     
     text_pos = (int(0.16 * resolution[0]), int(0.18 * resolution[1]))
-    addtional_text_pos = (int(0.2 * resolution[0]), int(0.88 * resolution[1]))
+    # addtional_text_pos = (int(0.2 * resolution[0]), int(0.88 * resolution[1]))
     composite_clip = CompositeVideoClip([
             bg_video.with_position((0, 0)),
             bg_image.with_position((0, 0)),
             txt_clip.with_position((text_pos[0], text_pos[1])),
-            addtional_txt_clip.with_position((addtional_text_pos[0], addtional_text_pos[1]))
+            # addtional_txt_clip.with_position((addtional_text_pos[0], addtional_text_pos[1]))  # 水印已移除
         ],
         size=resolution,
         use_bgclip=True
@@ -247,7 +258,7 @@ def create_info_segment(clip_config, style_config, resolution):
 
 
 def edit_game_video_clip(game_type, clip_config, resolution, auto_center_align=False) -> Union[VideoFileClip, tuple]:
-    if 'video' in clip_config and os.path.exists(clip_config['video']):
+    if 'video' in clip_config and clip_config['video'] is not None and os.path.exists(clip_config['video']):
         video_clip = VideoFileClip(clip_config['video'])
         # 添加调试信息
         print(f"Start time: {clip_config['start']}, Clip duration: {video_clip.duration}, End time: {clip_config['end']}")
@@ -259,12 +270,27 @@ def edit_game_video_clip(game_type, clip_config, resolution, auto_center_align=F
         video_height = video_clip.h
         video_width = video_clip.w
 
-        # 检查 start_time 和 end_time 是否超出 clip 的持续时间
-        if clip_config['start'] < 0 or clip_config['start'] >= video_clip.duration:
-            raise ValueError(f"片段开始时间 {clip_config['start']} 超出视频{clip_config['video']}的长度. 请检查该片段的时间配置.")
+        # 检查并自动调整 start_time 和 end_time，确保不超出视频长度
+        video_duration = video_clip.duration
         
-        if clip_config['end'] <= clip_config['start'] or clip_config['end'] > video_clip.duration:
-            raise ValueError(f"片段结束时间 {clip_config['end']} 超出视频{clip_config['video']}的长度. 请检查该片段的时间配置.")
+        # 调整开始时间
+        if clip_config['start'] < 0:
+            print(f"警告: 片段开始时间 {clip_config['start']} 为负数，自动调整为 0")
+            clip_config['start'] = 0
+        elif clip_config['start'] >= video_duration:
+            print(f"警告: 片段开始时间 {clip_config['start']} 超出视频长度 {video_duration:.2f}，自动调整为视频开始")
+            clip_config['start'] = 0
+        
+        # 调整结束时间
+        if clip_config['end'] <= clip_config['start']:
+            print(f"警告: 片段结束时间 {clip_config['end']} 小于等于开始时间 {clip_config['start']}，自动调整为开始时间 + 1秒")
+            clip_config['end'] = min(clip_config['start'] + 1, video_duration)
+        elif clip_config['end'] > video_duration:
+            print(f"警告: 片段结束时间 {clip_config['end']} 超出视频长度 {video_duration:.2f}，自动调整为视频实际长度")
+            clip_config['end'] = video_duration
+        
+        # 确保结束时间不超过视频长度（双重检查）
+        clip_config['end'] = min(clip_config['end'], video_duration)
         
         # 裁剪目标视频片段
         video_clip = video_clip.subclipped(start_time=clip_config['start'],
@@ -278,36 +304,71 @@ def edit_game_video_clip(game_type, clip_config, resolution, auto_center_align=F
                 # 检测传入谱面确认视频的视觉中心，此操作的目的是为了识别原始视频存在中心偏移的情况
                 visual_center = find_circle_center(analysis_frame, debug=False, name=clip_config['clip_title_name'])
     
-            if video_height != video_width:  # 仅当视频不是正方形时才进行裁剪
+            # 改进的裁剪逻辑：避免过度裁剪
+            # 如果视频不是正方形，优先保留更多内容
+            if abs(video_height - video_width) > 2:  # 允许2像素的误差，避免浮点数精度问题
                 # 确定裁剪中心（优先使用视觉中心，未识别到时使用几何中心）
                 center_x = visual_center[0] if visual_center else video_width / 2
                 
-                # 计算方形宽度范围
-                x1 = center_x - (video_height / 2)
-                x2 = center_x + (video_height / 2)
-                
-                # 处理边界
-                if x1 < 0:
-                    x1 = 0
-                    x2 = video_height
-                if x2 > video_width:
-                    x2 = video_width
-                    x1 = video_width - video_height
-
-                # 裁剪成正方形
-                video_clip = video_clip.cropped(x1=x1, y1=0, x2=x2, y2=video_height)
+                # 根据宽高比决定裁剪策略
+                if video_width > video_height:
+                    # 视频更宽：裁剪左右两侧，保留中间部分
+                    # 计算方形宽度范围（以高度为基准）
+                    x1 = center_x - (video_height / 2)
+                    x2 = center_x + (video_height / 2)
+                    
+                    # 处理边界：如果裁剪框超出边界，调整到边界
+                    if x1 < 0:
+                        x1 = 0
+                        x2 = video_height
+                    elif x2 > video_width:
+                        x2 = video_width
+                        x1 = video_width - video_height
+                    
+                    # 裁剪成正方形（保留完整高度）
+                    video_clip = video_clip.cropped(x1=x1, y1=0, x2=x2, y2=video_height)
+                else:
+                    # 视频更高：裁剪上下两侧，保留中间部分
+                    # 计算方形高度范围（以宽度为基准）
+                    center_y = video_height / 2
+                    y1 = center_y - (video_width / 2)
+                    y2 = center_y + (video_width / 2)
+                    
+                    # 处理边界
+                    if y1 < 0:
+                        y1 = 0
+                        y2 = video_width
+                    elif y2 > video_height:
+                        y2 = video_height
+                        y1 = video_height - video_width
+                    
+                    # 裁剪成正方形（保留完整宽度）
+                    video_clip = video_clip.cropped(x1=0, y1=y1, x2=video_width, y2=y2)
         elif game_type == "chunithm":
-            # 检查视频宽高比，若非近似16:9则直接拉伸到16:9（非等比例缩放）
+            # 检查视频宽高比，若非近似16:9则使用填充或裁剪，避免拉伸变形
             target_ar = 16.0 / 9.0
             # 使用当前裁剪/缩放后的尺寸判断
             current_ar = video_width / video_height if video_height > 0 else target_ar
             tolerance = 0.03  # 允许约3%的误差视为近似16:9
             if abs(current_ar - target_ar) / target_ar > tolerance:
-                print(f"Video Generator Info: chunithm 视频宽高比 {current_ar:.3f} 与 16:9 差异超出容差，执行拉伸至16:9")
-                # 以高度为基准，计算目标宽度并拉伸（会造成非等比变形，但满足16:9）
-                new_w = int(round(video_height * target_ar))
-                new_h = int(round(video_height))
-                video_clip = video_clip.with_effects([vfx.Resize(newsize=(new_w, new_h))])
+                print(f"Video Generator Info: chunithm 视频宽高比 {current_ar:.3f} 与 16:9 差异超出容差，执行适配处理")
+                
+                # 改进策略：使用填充或裁剪，而不是拉伸变形
+                if current_ar > target_ar:
+                    # 视频更宽：裁剪左右两侧，保留中间部分
+                    target_w = int(round(video_height * target_ar))
+                    crop_x1 = int(round((video_width - target_w) / 2))
+                    crop_x2 = crop_x1 + target_w
+                    video_clip = video_clip.cropped(x1=crop_x1, y1=0, x2=crop_x2, y2=video_height)
+                    print(f"  裁剪左右两侧，从宽度 {video_width} 裁剪到 {target_w}")
+                else:
+                    # 视频更高：裁剪上下两侧，保留中间部分
+                    target_h = int(round(video_width / target_ar))
+                    crop_y1 = int(round((video_height - target_h) / 2))
+                    crop_y2 = crop_y1 + target_h
+                    video_clip = video_clip.cropped(x1=0, y1=crop_y1, x2=video_width, y2=crop_y2)
+                    print(f"  裁剪上下两侧，从高度 {video_height} 裁剪到 {target_h}")
+                
                 video_width = video_clip.w
                 video_height = video_clip.h
 
@@ -398,12 +459,14 @@ def create_video_segment(
 
     # black_video仅作为纯黑色背景，避免透明素材的遮挡问题
     black_clip = VideoFileClip("./static/assets/bg_clips/black_bg.mp4")
+    # 移除音频以避免循环时的索引错误
+    black_clip = black_clip.without_audio()
     black_clip = black_clip.with_effects([vfx.Loop(duration=clip_config['duration']), 
                                       vfx.Resize(width=resolution[0])])
     
     # 检查图片资源是否存在
     # 'main_image' == achievement_image
-    if 'main_image' in clip_config and os.path.exists(clip_config['main_image']):
+    if 'main_image' in clip_config and clip_config['main_image'] is not None and os.path.exists(clip_config['main_image']):
         main_image_clip = ImageClip(clip_config['main_image']).with_duration(clip_config['duration'])
         main_image_clip = main_image_clip.with_effects([vfx.Resize(width=resolution[0])])
     else:
@@ -412,7 +475,7 @@ def create_video_segment(
 
     if override_content_bg:
         bg_image_path = default_bg_path
-    elif 'bg_image' in clip_config and os.path.exists(clip_config['bg_image']):
+    elif 'bg_image' in clip_config and clip_config['bg_image'] is not None and os.path.exists(clip_config['bg_image']):
         bg_image_path = clip_config['bg_image']
     else:
         print(f"Video Generator Warning: {clip_config['clip_title_name']} 没有对应的背景图, 请检查背景图资源是否成功获取，将使用默认背景替代")
@@ -425,6 +488,8 @@ def create_video_segment(
         bg_video_path = style_config['asset_paths'].get('content_bg_video', None)
         if bg_video_path and os.path.exists(bg_video_path):
             bg_clip = VideoFileClip(bg_video_path)
+            # 移除音频以避免循环时的索引错误
+            bg_clip = bg_clip.without_audio()
             bg_clip = bg_clip.with_effects([vfx.Loop(duration=clip_config['duration']), 
                                               vfx.Resize(width=resolution[0]),
                                               vfx.MultiplyColor(0.8)])  # apply 80% brightness on bg video
@@ -514,7 +579,9 @@ def create_full_video(game_type: str, style_config: dict, resolution: tuple,
 
     # 处理开场片段
     if intro_configs:
-        for clip_config in intro_configs:
+        print(f"处理开场片段，共 {len(intro_configs)} 个")
+        for idx, clip_config in enumerate(intro_configs):
+            print(f"开场片段 {idx + 1}: 配置键 = {list(clip_config.keys())}")
             clip = create_info_segment(clip_config, style_config, resolution)
             clip = normalize_audio_volume(clip)
             add_clip_with_transition(clips, clip, 
@@ -562,8 +629,17 @@ def create_full_video(game_type: str, style_config: dict, resolution: tuple,
     if full_last_clip and len(ending_clips) > 0:
         clips.append(get_combined_ending_clip(ending_clips, combined_start_time, trans_time))
 
+    print(f"视频片段总数: {len(clips)}")
+    for idx, clip in enumerate(clips):
+        start_time = getattr(clip, 'start', 0)
+        print(f"  片段 {idx + 1}: 时长 {clip.duration:.2f}秒, 开始时间 {start_time:.2f}秒")
+
     if auto_add_transition:
-        return CompositeVideoClip(clips)
+        # 使用 CompositeVideoClip 处理带转场效果的片段
+        # 注意：所有片段必须正确设置 start 时间
+        final_clip = CompositeVideoClip(clips)
+        print(f"最终视频时长: {final_clip.duration:.2f}秒")
+        return final_clip
     else:
         return concatenate_videoclips(clips)  # 该方法不会添加转场效果，即使设置了trans_time
 
@@ -780,8 +856,32 @@ def render_complete_full_video(
             trans_time=video_trans_time,
             full_last_clip=full_last_clip
         )
-        final_video.write_videofile(os.path.join(video_output_path, f"{username}_FULL_VIDEO.mp4"), 
-                                    fps=30, threads=4, preset='ultrafast', bitrate=video_bitrate)
+        # 使用 CPU 渲染，质量设为 balanced (medium preset)
+        output_file = os.path.join(video_output_path, f"{username}_FULL_VIDEO.mp4")
+        
+        print("=" * 60)
+        print("使用 CPU 渲染模式 (balanced 质量)")
+        print("=" * 60)
+        print(f"输出文件: {output_file}")
+        print(f"视频比特率: {video_bitrate}")
+        print("提示：如需更快速度，可以考虑：")
+        print("  1. 降低视频分辨率（1280x720 比 1920x1080 快4倍）")
+        print("  2. 减少片段数量")
+        print("  3. 关闭转场效果")
+        print("=" * 60)
+        
+        final_video.write_videofile(
+            output_file, 
+            fps=30,
+            threads=12,  # CPU模式使用多线程
+            codec='libx264',
+            preset='medium',  # balanced 质量：medium preset
+            bitrate=video_bitrate,
+            audio_codec='aac',
+            audio_bitrate='192k',
+            logger='bar'
+        )
+        print("✓ CPU 渲染完成")
         final_video.close()
         return {"status": "success", "info": f"合成完整视频成功"}
     except Exception as e:

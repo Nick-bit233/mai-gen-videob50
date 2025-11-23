@@ -200,6 +200,26 @@ class DatabaseManager:
                 WHERE id = ?
             ''', (json.dumps(metadata), user_id))
             conn.commit()
+    
+    def delete_user(self, username: str) -> bool:
+        """
+        Delete a user and all associated data (archives, records, configurations, assets).
+        This will cascade delete all related data due to foreign key constraints.
+        
+        Returns:
+            True if user was found and deleted, False otherwise
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            # Check if user exists
+            user = self.get_user(username)
+            if not user:
+                return False
+            
+            # Delete user (cascade will handle archives, records, etc.)
+            cursor.execute('DELETE FROM users WHERE username = ?', (username,))
+            conn.commit()
+            return True
 
     # Chart management methods
     def get_or_create_chart(self, chart_data: Dict) -> int:

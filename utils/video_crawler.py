@@ -1,7 +1,7 @@
 from pytubefix import YouTube, Search
 from bilibili_api import login, user, search, video, Credential, sync, HEADERS
 from utils.PageUtils import download_temp_image_to_static
-from typing import Tuple
+from typing import Tuple, Optional
 from abc import ABC, abstractmethod
 import os
 import yaml
@@ -13,6 +13,8 @@ import traceback
 import subprocess
 import platform
 import re
+import requests
+import time
 
 # 根据操作系统选择FFMPEG的输出重定向方式
 # TODO：添加日志输出
@@ -183,13 +185,23 @@ class Downloader(ABC):
     @abstractmethod
     def download_video(self, video_id, output_name, output_path, high_res=False, p_index=0):
         pass
+    
+    @abstractmethod
+    def get_video_info(self, video_id):
+        """通过视频ID直接获取视频信息"""
+        pass
+    
+    @abstractmethod
+    def get_video_pages(self, video_id):
+        """获取视频的分P信息（如果有）"""
+        pass
 
 class PurePytubefixDownloader(Downloader):
     """
-    只使用pytubefix进行搜索和下载的youtube视频下载器
+    使用pytubefix或YouTube Data API v3进行搜索和下载的youtube视频下载器
     """
     def __init__(self, proxy=None, use_oauth=False, use_potoken=False, auto_get_potoken=False, 
-                 search_max_results=3):
+                 search_max_results=3, use_api=False, api_key=None):
         self.proxy = proxy
         # use_oauth 和 use_potoken 互斥，优先使用use_potoken
         self.use_potoken = use_potoken
@@ -203,8 +215,183 @@ class PurePytubefixDownloader(Downloader):
             self.po_token_verifier = custom_po_token_verifier
 
         self.search_max_results = search_max_results
+        self.use_api = use_api  # 是否使用 YouTube Data API v3 进行搜索
+        self.api_key = api_key  # YouTube Data API v3 的 API Key
+        
+        # 如果没有提供 API Key，尝试从配置文件读取
+        if self.use_api and not self.api_key:
+            try:
+                with open("global_config.yaml", "r", encoding="utf-8") as f:
+                    config = yaml.load(f, Loader=yaml.FullLoader)
+                    self.api_key = config.get('YOUTUBE_API_KEY', '')
+            except Exception as e:
+                print(f"读取配置文件失败: {e}")
+                self.api_key = ''
     
     def search_video(self, keyword):
+        # 如果配置了使用 API，优先使用 YouTube Data API v3
+        if self.use_api and self.api_key:
+            return self._search_video_with_api(keyword)
+        else:
+            return self._search_video_with_pytubefix(keyword)
+    
+    def _search_video_with_api(self, keyword):
+        """
+        使用 YouTube Data API v3 进行搜索
+        参考: https://developers.google.com/youtube/v3/docs/search/list
+        """
+        keyword = keyword.strip()
+        
+        # YouTube Data API v3 搜索端点
+        api_url = "https://www.googleapis.com/youtube/v3/search"
+        
+        params = {
+            'part': 'snippet',
+            'q': keyword,
+            'type': 'video',
+            'maxResults': self.search_max_results,
+            'key': self.api_key,
+            'order': 'relevance'  # 按相关性排序
+        }
+        
+        # 配置代理
+        proxies = None
+        if self.proxy:
+            proxies = {
+                'http': self.proxy,
+                'https': self.proxy
+            }
+        
+        max_retries = 3
+        retry_delay = 2
+        
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(api_url, params=params, proxies=proxies, timeout=10)
+                response.raise_for_status()
+                
+                data = response.json()
+                
+                if 'items' not in data or len(data['items']) == 0:
+                    print(f"API搜索未找到结果: {keyword}")
+                    return []
+                
+                videos = []
+                video_ids = [item['id']['videoId'] for item in data['items']]
+                
+                # 获取视频详细信息（包括时长）
+                videos_info = self._get_videos_duration(video_ids)
+                
+                for item in data['items']:
+                    video_id = item['id']['videoId']
+                    snippet = item['snippet']
+                    
+                    # 获取视频时长
+                    duration = videos_info.get(video_id, 0)
+                    
+                    video_url = f"https://www.youtube.com/watch?v={video_id}"
+                    videos.append({
+                        'id': video_url,
+                        'pure_id': video_id,
+                        'title': remove_html_tags_and_invalid_chars(snippet['title']),
+                        'url': video_url,
+                        'duration': duration
+                    })
+                
+                return videos
+                
+            except requests.exceptions.HTTPError as e:
+                error_msg = str(e)
+                if response.status_code == 403:
+                    raise Exception(f"YouTube API 搜索失败 (403错误): API Key 可能无效或配额已用完。请检查 API Key 配置。")
+                elif response.status_code == 400:
+                    if attempt < max_retries - 1:
+                        print(f"API搜索失败 (尝试 {attempt + 1}/{max_retries}): {error_msg}")
+                        print(f"等待 {retry_delay} 秒后重试...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2
+                        continue
+                    else:
+                        raise Exception(f"YouTube API 搜索失败 (400错误): {error_msg}。系统将自动尝试其他搜索策略。")
+                else:
+                    raise Exception(f"YouTube API 搜索失败: {error_msg}")
+            except Exception as e:
+                error_msg = str(e)
+                if attempt < max_retries - 1:
+                    print(f"API搜索失败 (尝试 {attempt + 1}/{max_retries}): {error_msg}")
+                    print(f"等待 {retry_delay} 秒后重试...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                else:
+                    raise Exception(f"YouTube API 搜索失败: {error_msg}")
+        
+        return []
+    
+    def _get_videos_duration(self, video_ids):
+        """
+        通过 YouTube Data API v3 获取视频时长
+        参考: https://developers.google.com/youtube/v3/docs/videos/list
+        """
+        if not video_ids:
+            return {}
+        
+        api_url = "https://www.googleapis.com/youtube/v3/videos"
+        params = {
+            'part': 'contentDetails',
+            'id': ','.join(video_ids),
+            'key': self.api_key
+        }
+        
+        proxies = None
+        if self.proxy:
+            proxies = {
+                'http': self.proxy,
+                'https': self.proxy
+            }
+        
+        try:
+            response = requests.get(api_url, params=params, proxies=proxies, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            durations = {}
+            for item in data.get('items', []):
+                video_id = item['id']
+                duration_str = item['contentDetails']['duration']
+                # 将 ISO 8601 格式的时长转换为秒数
+                duration = self._parse_duration(duration_str)
+                durations[video_id] = duration
+            
+            return durations
+        except Exception as e:
+            print(f"获取视频时长失败: {e}")
+            return {video_id: 0 for video_id in video_ids}
+    
+    def _parse_duration(self, duration_str):
+        """
+        将 ISO 8601 格式的时长（如 PT1H2M10S）转换为秒数
+        """
+        import re
+        pattern = r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?'
+        match = re.match(pattern, duration_str)
+        if not match:
+            return 0
+        
+        hours = int(match.group(1) or 0)
+        minutes = int(match.group(2) or 0)
+        seconds = int(match.group(3) or 0)
+        
+        return hours * 3600 + minutes * 60 + seconds
+    
+    def _search_video_with_pytubefix(self, keyword):
+        """
+        使用 pytubefix 进行搜索（原有方法）
+        """
+        # 清理搜索关键词
+        keyword = keyword.strip()
+        # 注意：不要对关键词进行URL编码，pytubefix的Search类会自己处理
+        
         if self.proxy:
             proxies = {
                 'http': self.proxy,
@@ -213,23 +400,150 @@ class PurePytubefixDownloader(Downloader):
         else:
             proxies = None
 
-        results = Search(keyword, 
-                         proxies=proxies, 
-                         use_oauth=self.use_oauth, 
-                         use_po_token=self.use_potoken,
-                         po_token_verifier=self.po_token_verifier)
-        videos = []
-        for result in results.videos:
-            videos.append({
-                'id': result.watch_url,  # 使用Pytubefix时，video_id是url字符串
-                'pure_id': result.video_id,
-                'title': remove_html_tags_and_invalid_chars(result.title),
-                'url': result.watch_url,
-                'duration': result.length
-            })
-        if self.search_max_results < len(videos):
-            videos = videos[:self.search_max_results]
-        return videos
+        max_retries = 3
+        retry_delay = 2  # 秒
+        
+        for attempt in range(max_retries):
+            try:
+                # 尝试使用不同的配置进行搜索
+                if self.use_potoken:
+                    # 使用 PO Token
+                    results = Search(keyword, 
+                                   proxies=proxies, 
+                                   use_oauth=False, 
+                                   use_po_token=True,
+                                   po_token_verifier=self.po_token_verifier)
+                elif self.use_oauth:
+                    # 使用 OAuth
+                    results = Search(keyword, 
+                                   proxies=proxies, 
+                                   use_oauth=True, 
+                                   use_po_token=False)
+                else:
+                    # 不使用认证（可能更容易触发400错误，但先尝试）
+                    results = Search(keyword, 
+                                   proxies=proxies, 
+                                   use_oauth=False, 
+                                   use_po_token=False)
+                
+                videos = []
+                for result in results.videos:
+                    videos.append({
+                        'id': result.watch_url,  # 使用Pytubefix时，video_id是url字符串
+                        'pure_id': result.video_id,
+                        'title': remove_html_tags_and_invalid_chars(result.title),
+                        'url': result.watch_url,
+                        'duration': result.length
+                    })
+                if self.search_max_results < len(videos):
+                    videos = videos[:self.search_max_results]
+                return videos
+                
+            except Exception as e:
+                error_msg = str(e)
+                # 对于400错误和其他错误，都进行重试
+                if attempt < max_retries - 1:
+                    print(f"搜索失败 (尝试 {attempt + 1}/{max_retries}): {error_msg}")
+                    print(f"等待 {retry_delay} 秒后重试...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # 指数退避
+                    continue
+                else:
+                    # 所有重试均失败，抛出异常让上层多策略系统尝试下一个关键词
+                    if "400" in error_msg or "Bad Request" in error_msg:
+                        raise Exception(f"YouTube搜索失败 (400错误): {error_msg}。系统将自动尝试其他搜索策略。")
+                    else:
+                        raise
+    
+    def get_video_info(self, video_id):
+        """
+        通过视频ID直接获取YouTube视频信息
+        video_id: YouTube视频ID (例如: dQw4w9WgXcQ) 或完整URL
+        """
+        import time
+        
+        if self.proxy:
+            proxies = {
+                'http': self.proxy,
+                'https': self.proxy
+            }
+        else:
+            proxies = None
+
+        max_retries = 3
+        retry_delay = 2  # 秒
+        
+        for attempt in range(max_retries):
+            try:
+                # 如果输入的是完整URL，直接使用；否则构建URL
+                if video_id.startswith('http'):
+                    url = video_id
+                else:
+                    url = f"https://www.youtube.com/watch?v={video_id}"
+                
+                # 尝试使用不同的配置获取视频信息
+                if self.use_potoken:
+                    yt = YouTube(url, 
+                               proxies=proxies, 
+                               use_oauth=False, 
+                               use_po_token=True,
+                               po_token_verifier=self.po_token_verifier)
+                elif self.use_oauth:
+                    yt = YouTube(url, 
+                               proxies=proxies, 
+                               use_oauth=True, 
+                               use_po_token=False)
+                else:
+                    yt = YouTube(url, 
+                               proxies=proxies, 
+                               use_oauth=False, 
+                               use_po_token=False)
+                
+                # 返回符合存档格式的video_info信息
+                video_info = {
+                    'id': yt.watch_url,
+                    'pure_id': yt.video_id,
+                    'title': remove_html_tags_and_invalid_chars(yt.title),
+                    'url': yt.watch_url,
+                    'duration': yt.length,
+                    'page_count': 1,  # YouTube视频没有分P
+                    'p_index': 0  # 默认为0
+                }
+                return video_info
+                
+            except Exception as e:
+                error_msg = str(e)
+                if "400" in error_msg or "Bad Request" in error_msg or "HTTP Error" in error_msg:
+                    if attempt < max_retries - 1:
+                        print(f"获取视频信息失败 (尝试 {attempt + 1}/{max_retries}): {error_msg}")
+                        print(f"等待 {retry_delay} 秒后重试...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # 指数退避
+                        continue
+                    else:
+                        raise Exception(f"YouTube获取视频信息失败: {error_msg}。建议：1) 检查视频ID是否正确，2) 更新pytubefix库 (pip install --upgrade pytubefix)，3) 配置PO Token或OAuth认证，4) 检查网络连接。")
+                else:
+                    # 其他类型的错误直接抛出
+                    raise
+        
+        # 如果所有重试都失败了
+        raise Exception("获取YouTube视频信息失败，已超过最大重试次数。")
+    
+    def get_video_pages(self, video_id):
+        """
+        获取YouTube视频的分P信息
+        YouTube视频没有分P的概念，返回一个只包含单个页面的列表
+        """
+        # YouTube 没有分P，返回简单的单页信息
+        return [
+            {
+                "page": 1,
+                "part": "完整视频",
+                "duration": 0,  # 如果需要真实时长，需要重新调用API
+                "first_frame": None,  # YouTube不提供首帧预览
+                "static_frame": False
+            }
+        ]
     
     def download_video(self, video_id, output_name, output_path, high_res=False, p_index=0):
         try:

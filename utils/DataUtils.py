@@ -2,6 +2,7 @@ from importlib import metadata
 from turtle import st
 from typing import List
 import json
+import os
 import requests
 import base64
 import hashlib
@@ -13,6 +14,7 @@ from typing import Dict, Union, Optional
 # TODO: 服务器bucket用于转存dxrating和otoge-db的metadata
 BUCKET_ENDPOINT = "https://nickbit-maigen-images.oss-cn-shanghai.aliyuncs.com"
 FC_PROXY_ENDPOINT = "https://fish-usta-proxy-efexqrwlmf.cn-shanghai.fcapp.run"
+LXNS_CDN_ENDPOINT = "https://assets.lxns.net"  # 落雪查分器CDN
 
 # --------------------------------------
 # Data format grounding Helper methods
@@ -148,12 +150,14 @@ def get_valid_time_range(s: Optional[int], e: Optional[int],
             start = end - 1
     return start, end
 
-def format_record_tag(game_type: str, clip_title_name: str, song_id: str, chart_type: int, level_index: int):
+def format_record_tag(game_type: str, clip_title_name: str, song_id: str, chart_type: int, level_index: int, song_name: str = None):
     level_label = level_index_to_label(game_type, level_index)
     if game_type == "maimai":
         return f"{clip_title_name}: {song_id} ({chart_type_value2str(chart_type, game_type)}) [{level_label}]"
     else:
-        return f"{clip_title_name}: {song_id} [{level_label}]"
+        # 对于 Chunithm，优先使用 song_name，如果没有则使用 song_id
+        display_name = song_name if song_name else song_id
+        return f"{clip_title_name}: {display_name} [{level_label}]"
 
 def get_record_tags_from_data_dict(records_data: List[Dict]) -> List[str]:
     """Get tags from record/chart group query data. These tags are used by st_page compoents for navigation to certain record"""
@@ -164,7 +168,8 @@ def get_record_tags_from_data_dict(records_data: List[Dict]) -> List[str]:
         song_id = r.get("song_id", "")
         chart_type = r.get("chart_type", -1)
         level_index = r.get("level_index", -1)
-        ret_tags.append(format_record_tag(game_type, clip_title_name, song_id, chart_type, level_index))
+        song_name = r.get("song_name", None)  # 获取曲名
+        ret_tags.append(format_record_tag(game_type, clip_title_name, song_id, chart_type, level_index, song_name))
     return ret_tags
 
 def chunithm_fc_status_to_label(fc_status: int) -> str:
@@ -214,6 +219,43 @@ def download_image_data(image_path):
         return img
     else:
         print(f"Failed to download image from {url}. Status code: {response.status_code}")
+        raise FileNotFoundError
+
+def download_chunithm_jacket_from_lxns(song_id):
+    """
+    从落雪查分器CDN下载中二节奏曲绘
+    
+    Args:
+        song_id: 歌曲ID（整数或字符串）
+    
+    Returns:
+        PIL.Image.Image: 曲绘图片，如果下载失败则抛出FileNotFoundError
+    """
+    # 确保song_id是整数
+    if isinstance(song_id, str):
+        if song_id.isdigit():
+            song_id = int(song_id)
+        elif song_id.startswith("chunithm_"):
+            try:
+                song_id = int(song_id.replace("chunithm_", ""))
+            except:
+                raise ValueError(f"Invalid song_id: {song_id}")
+        else:
+            raise ValueError(f"Invalid song_id: {song_id}")
+    
+    # 构建URL: https://assets.lxns.net/chunithm/jacket/{song_id}.png
+    url = f"{LXNS_CDN_ENDPOINT}/chunithm/jacket/{song_id}.png"
+    
+    try:
+        response = requests.get(url, stream=True, timeout=10)
+        if response.status_code == 200:
+            img = Image.open(response.raw)
+            return img
+        else:
+            print(f"Failed to download chunithm jacket from {url}. Status code: {response.status_code}")
+            raise FileNotFoundError
+    except requests.exceptions.RequestException as e:
+        print(f"Error downloading chunithm jacket from {url}: {e}")
         raise FileNotFoundError
 
 @DeprecationWarning
@@ -348,10 +390,32 @@ def load_songs_metadata(game_type: str) -> dict:
         assert isinstance(songs_data, list), "songs_data should be a list"
         return songs_data
     elif game_type == "chunithm":
-        with open("./music_metadata/chunithm/chuni_data_otoge_ex.json", 'r', encoding='utf-8') as f:
-            songs_data = json.load(f)
-        assert isinstance(songs_data, list), "songs_data should be a list"
-        return songs_data
+        # 优先使用落雪查分器的metadata
+        lxns_file = "./music_metadata/chunithm/lxns_songs.json"
+        otoge_file = "./music_metadata/chunithm/chuni_data_otoge_ex.json"
+        
+        # 尝试加载lxns_songs.json
+        if os.path.exists(lxns_file):
+            try:
+                with open(lxns_file, 'r', encoding='utf-8') as f:
+                    metadata = json.load(f)
+                songs_data = metadata.get('songs', [])
+                if isinstance(songs_data, list) and len(songs_data) > 0:
+                    assert isinstance(songs_data, list), "songs_data should be a list"
+                    return songs_data
+            except Exception as e:
+                print(f"警告: 加载lxns_songs.json失败: {e}，尝试使用备用文件")
+        
+        # 备用：使用otoge文件
+        if os.path.exists(otoge_file):
+            with open(otoge_file, 'r', encoding='utf-8') as f:
+                songs_data = json.load(f)
+            assert isinstance(songs_data, list), "songs_data should be a list"
+            return songs_data
+        
+        # 如果两个文件都不存在，返回空列表
+        print(f"警告: 未找到chunithm metadata文件，请运行 utils/lxns_metadata_loader.py 更新metadata")
+        return []
     else:
         raise ValueError("Unsupported game type for metadata loading.")
 
@@ -402,7 +466,36 @@ def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tupl
                         results.append((result_string, chart_data))
         return results
     elif game_type == "chunithm":
-        raise NotImplementedError("Chunithm search not implemented yet.")
+        # 搜索chunithm歌曲（使用lxns格式的metadata）
+        for song in songs_data:
+            song_id = str(song.get('id', ''))
+            title = song.get('title', '')
+            artist = song.get('artist', '')
+            
+            # 匹配关键词（歌曲ID、标题、艺术家）
+            if query.lower() in song_id.lower() \
+            or query.lower() in title.lower() \
+            or query.lower() in artist.lower():
+                
+                sheets = song.get('sheets', [])
+                for s in sheets:
+                    # 选择难度和查询一致的谱面
+                    s_level_index = level_label_to_index(game_type, s.get('difficulty', 'EXPERT'))
+                    if s_level_index == level_index:
+                        result_string = f"{title}"
+                        chart_data = {
+                            'game_type': 'chunithm',
+                            'song_id': song.get('id'),
+                            'chart_type': 0,  # Chunithm默认是normal (0)
+                            'level_index': level_index,
+                            'difficulty': str(s.get('internalLevelValue', 0.0)),
+                            'song_name': title,
+                            'artist': artist,
+                            'max_dx_score': 0,  # Chunithm不使用dx_score
+                            'video_path': None
+                        }
+                        results.append((result_string, chart_data))
+        return results
     else:
         raise ValueError("Unsupported game type for search.")
 
@@ -420,6 +513,110 @@ def query_songs_metadata(game_type: str, title: str, artist: Union[str, None]=No
             return song
     # 未匹配到指定 artist 时返回第一个找到的
     return matches[0]
+
+def query_chunithm_ds_by_id(song_id: int, level_index: int) -> Union[float, None]:
+    """
+    根据歌曲ID和level_index从元数据中查找定数（internalLevelValue）
+    
+    Args:
+        song_id: 歌曲ID（来自落雪API的id字段）
+        level_index: 难度索引（0=BASIC, 1=ADVANCED, 2=EXPERT, 3=MASTER, 4=ULTIMA）
+    
+    Returns:
+        定数值（internalLevelValue），如果找不到则返回None
+    """
+    try:
+        songs_data = load_songs_metadata("chunithm")
+        # 难度标签映射（用于匹配）
+        DIFFICULTY_MAP = {
+            0: "BASIC",
+            1: "ADVANCED",
+            2: "EXPERT",
+            3: "MASTER",
+            4: "ULTIMA"
+        }
+        target_difficulty = DIFFICULTY_MAP.get(level_index, "EXPERT")
+        
+        # 查找匹配的歌曲
+        for song in songs_data:
+            if song.get('id') == song_id:
+                sheets = song.get('sheets', [])
+                
+                # 方法1：直接使用level_index作为索引（如果sheets数组顺序正确）
+                if level_index < len(sheets):
+                    sheet = sheets[level_index]
+                    sheet_difficulty = sheet.get('difficulty')
+                    # 验证difficulty是否匹配
+                    if sheet_difficulty == target_difficulty:
+                        internal_level = sheet.get('internalLevelValue')
+                        if internal_level is not None:
+                            return float(internal_level)
+                
+                # 方法2：如果索引不匹配，遍历查找
+                for i, sheet in enumerate(sheets):
+                    sheet_difficulty = sheet.get('difficulty')
+                    if sheet_difficulty == target_difficulty:
+                        internal_level = sheet.get('internalLevelValue')
+                        if internal_level is not None:
+                            return float(internal_level)
+        return None
+    except Exception as e:
+        print(f"查询定数时出错: {e}")
+        return None
+
+
+def query_chunithm_xv_ds_by_id(song_id: Union[int, str], level_index: int) -> Union[float, None]:
+    """
+    根据歌曲ID和level_index从XV元数据（chuni_data_otoge_ex.json）中查找新定数（lev_XX_i）
+    
+    Args:
+        song_id: 歌曲ID（可以是整数或字符串）
+        level_index: 难度索引（0=BASIC, 1=ADVANCED, 2=EXPERT, 3=MASTER, 4=ULTIMA）
+    
+    Returns:
+        XV版本的新定数值（lev_XX_i），如果找不到则返回None
+    """
+    try:
+        # 确保song_id是字符串格式（因为otoge文件中的id是字符串）
+        if isinstance(song_id, int):
+            song_id = str(song_id)
+        elif isinstance(song_id, str):
+            # 如果格式是 chunithm_2442，提取数字部分
+            if song_id.startswith("chunithm_"):
+                song_id = song_id.replace("chunithm_", "")
+        
+        # 难度到字段名的映射
+        LEVEL_FIELD_MAP = {
+            0: "lev_bas_i",  # BASIC
+            1: "lev_adv_i",  # ADVANCED
+            2: "lev_exp_i",  # EXPERT
+            3: "lev_mas_i",  # MASTER
+            4: "lev_ult_i"   # ULTIMA
+        }
+        
+        field_name = LEVEL_FIELD_MAP.get(level_index, "lev_exp_i")
+        
+        # 加载otoge元数据文件
+        otoge_file = "./music_metadata/chunithm/chuni_data_otoge_ex.json"
+        if not os.path.exists(otoge_file):
+            return None
+        
+        with open(otoge_file, 'r', encoding='utf-8') as f:
+            songs_data = json.load(f)
+        
+        # 查找匹配的歌曲
+        for song in songs_data:
+            if str(song.get('id', '')) == str(song_id):
+                xv_ds_str = song.get(field_name, '')
+                if xv_ds_str and xv_ds_str.strip() and xv_ds_str != '-':
+                    try:
+                        return float(xv_ds_str)
+                    except (ValueError, TypeError):
+                        return None
+        return None
+    except Exception as e:
+        print(f"查询XV新定数时出错: {e}")
+        return None
 
 def fish_to_new_record_format(fish_record: dict, game_type: str = "maimai") -> dict:
     """

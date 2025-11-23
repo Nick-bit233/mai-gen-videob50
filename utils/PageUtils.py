@@ -32,6 +32,46 @@ def get_game_type_text(game_type: str) -> str:
     else:
         return "UNKNOWN"
 
+def auto_set_game_type_from_query():
+    """
+    根据 URL 查询参数自动设置 game_type。
+    如果 URL 中包含 game_type=chunithm 或 game_type=maimai，则设置 session_state.game_type。
+    如果查询参数中包含 b30 或 B30，则设置为 chunithm。
+    如果查询参数中包含 b50 或 B50，则设置为 maimai。
+    """
+    try:
+        # 尝试从查询参数获取
+        query_params = st.query_params
+        if 'game_type' in query_params:
+            game_type = query_params['game_type']
+            if game_type in ['maimai', 'chunithm']:
+                st.session_state.game_type = game_type
+                return
+        
+        # 检查 URL 中是否包含 b30 或 b50
+        # 注意：Streamlit 可能不支持直接获取完整 URL，所以这个方法可能不可用
+        # 作为备选方案，我们可以在页面标题中检查
+        # 但由于无法直接获取页面标题，我们使用其他方法
+    except:
+        pass
+
+def format_chunithm_rank(rank_str: str) -> str:
+    """
+    格式化中二节奏的RANK显示
+    例如: ssp -> SS+, sssp -> SSS+
+    """
+    if not rank_str:
+        return ""
+    
+    # 转换为大写
+    rank_upper = rank_str.upper()
+    
+    # 如果以P结尾，替换为+
+    if rank_upper.endswith('P'):
+        return rank_upper[:-1] + '+'
+    
+    return rank_upper
+
 def remove_invalid_chars(text: str) -> str:
     """Removes characters that are invalid for Windows file paths."""
     return re.sub(r'[\\/:*?"<>|]', '', text)
@@ -224,3 +264,130 @@ def download_temp_image_to_static(image_url, local_dir="./static/thumbnails"):
     except Exception as e:
         print(f"发生未知错误: {e}")
         return None
+
+def clear_all_user_data(username: str) -> dict:
+    """
+    清空指定用户的所有个人数据，包括：
+    - 数据库中的用户数据（用户、存档、记录、配置等）
+    - 本地存档文件夹（b50_datas 和 chunithm_datas）
+    - 配置文件中的敏感信息（API Key、Token等）
+    - 用户配置目录
+    
+    Args:
+        username: 要清空数据的用户名
+        
+    Returns:
+        dict: 包含清空结果的字典，格式为 {
+            'success': bool,
+            'deleted_files': list,
+            'deleted_db_records': dict,
+            'errors': list
+        }
+    """
+    result = {
+        'success': True,
+        'deleted_files': [],
+        'deleted_db_records': {
+            'archives': 0,
+            'records': 0,
+            'configurations': 0,
+            'assets': 0
+        },
+        'errors': []
+    }
+    
+    try:
+        # 1. 删除数据库中的用户数据
+        db_manager = get_db_manager()
+        user = db_manager.get_user(username)
+        
+        if user:
+            user_id = user['id']
+            
+            # 获取用户的所有存档
+            archives = db_manager.get_user_archives(user_id)
+            result['deleted_db_records']['archives'] = len(archives)
+            
+            # 统计记录和配置数量
+            for archive in archives:
+                archive_id = archive['id']
+                records = db_manager.get_records(archive_id)
+                result['deleted_db_records']['records'] += len(records)
+                
+                # 统计配置数量
+                with db_manager.get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('SELECT COUNT(*) as count FROM configurations WHERE archive_id = ?', (archive_id,))
+                    config_count = cursor.fetchone()['count']
+                    result['deleted_db_records']['configurations'] += config_count
+                    
+                    # 统计资源数量
+                    cursor.execute('SELECT COUNT(*) as count FROM assets WHERE archive_id = ?', (archive_id,))
+                    asset_count = cursor.fetchone()['count']
+                    result['deleted_db_records']['assets'] += asset_count
+            
+            # 删除用户（级联删除所有相关数据）
+            if not db_manager.delete_user(username):
+                result['errors'].append(f"数据库中没有找到用户: {username}")
+        else:
+            result['errors'].append(f"数据库中没有找到用户: {username}")
+        
+        # 2. 删除本地存档文件夹
+        data_dirs = [
+            os.path.join("b50_datas", username),
+            os.path.join("chunithm_datas", username)
+        ]
+        
+        for data_dir in data_dirs:
+            if os.path.exists(data_dir):
+                try:
+                    shutil.rmtree(data_dir)
+                    result['deleted_files'].append(data_dir)
+                except Exception as e:
+                    result['errors'].append(f"删除文件夹 {data_dir} 时出错: {e}")
+                    result['success'] = False
+        
+        # 3. 清空配置文件中的敏感信息
+        config_file = "global_config.yaml"
+        if os.path.exists(config_file):
+            try:
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    config = yaml.safe_load(f) or {}
+                
+                # 清空敏感信息
+                sensitive_keys = ['YOUTUBE_API_KEY', 'CUSTOMER_PO_TOKEN']
+                modified = False
+                
+                for key in sensitive_keys:
+                    if key in config:
+                        if key == 'CUSTOMER_PO_TOKEN' and isinstance(config[key], dict):
+                            config[key] = {'po_token': '', 'visitor_data': ''}
+                        else:
+                            config[key] = ''
+                        modified = True
+                
+                if modified:
+                    with open(config_file, 'w', encoding='utf-8') as f:
+                        yaml.dump(config, f, allow_unicode=True, default_flow_style=False)
+                    result['deleted_files'].append(f"已清空 {config_file} 中的敏感信息")
+            except Exception as e:
+                result['errors'].append(f"清空配置文件时出错: {e}")
+                result['success'] = False
+        
+        # 4. 清空用户配置目录（可选，因为可能影响其他用户）
+        user_config_dir = Path.home() / ".mai-gen-videob50"
+        if user_config_dir.exists():
+            try:
+                # 只删除与元数据更新相关的文件，保留其他配置
+                metadata_file = user_config_dir / "metadata_update.json"
+                if metadata_file.exists():
+                    metadata_file.unlink()
+                    result['deleted_files'].append(str(metadata_file))
+            except Exception as e:
+                result['errors'].append(f"清空用户配置目录时出错: {e}")
+        
+    except Exception as e:
+        result['success'] = False
+        result['errors'].append(f"清空数据时发生未知错误: {e}")
+    
+    return result

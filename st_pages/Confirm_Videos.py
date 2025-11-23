@@ -109,9 +109,11 @@ def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instanc
             title = escape_markdown_text(video_info['title'])
             st.markdown(f"- 视频标题：{title}")
             st.markdown(f"- 链接：[🔗{id}]({video_info['url']}), 总时长: {video_info['duration']}秒")
-            page_info = dl_instance.get_video_pages(id)
-            if page_info and 'p_index' in video_info:
-                page_count = video_info['page_count']
+            
+            # 只有在视频有分P时才显示分P信息（page_count > 1）
+            page_count = video_info.get('page_count', 1)
+            if page_count > 1 and 'p_index' in video_info:
+                page_info = dl_instance.get_video_pages(id)
                 p_index = video_info['p_index']
                 st.text(f"此视频具有{page_count}个分p，目前确认的分p序号为【{p_index + 1}】，子标题：【{page_info[p_index]['part']}】")
 
@@ -148,13 +150,16 @@ def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instanc
         has_p_index = "p_index" in video_info if video_info else False
 
         match_info_placeholder = st.empty()
-        change_video_page_button = st.button("修改分P视频", key=f"change_video_page_{c_id}", disabled=not has_p_index)
+        # 只有在有多个分P时才显示"修改分P视频"按钮
+        page_count = video_info.get('page_count', 1) if video_info else 1
+        has_multiple_pages = page_count > 1 and has_p_index
+        change_video_page_button = st.button("修改分P视频", key=f"change_video_page_{c_id}", disabled=not has_multiple_pages)
         match_list_placeholder = st.empty()
         extra_search_placeholder = st.empty()
 
         if video_info:
             update_match_info(match_info_placeholder, video_info=video_info)
-            if has_p_index:
+            if has_multiple_pages:
                 p_index = video_info['p_index']   
                 if change_video_page_button:
                     change_video_page(song, p_index)
@@ -196,11 +201,73 @@ def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instanc
         # 如果搜索结果均不符合，手动输入地址：
         with extra_search_placeholder.container(border=True): 
             search_url = get_web_search_url(chart_data=song, dl_type=st.session_state.downloader_type)
+            
+            st.markdown('<p style="color: #08337B;"><b>以上都不对？手动输入谱面确认视频信息<b></p>', unsafe_allow_html=True)
+            
+            # 添加辅助函数：从URL中提取视频ID
+            def extract_video_id(input_text: str, dl_type: str) -> str:
+                """从URL或直接输入中提取视频ID"""
+                if not input_text:
+                    return ""
+                
+                input_text = input_text.strip()
+                
+                # 如果是YouTube
+                if dl_type == "youtube":
+                    # 检查是否是完整URL
+                    if "youtube.com/watch?v=" in input_text:
+                        # 提取v=后面的ID
+                        video_id = input_text.split("watch?v=")[1].split("&")[0].split("?")[0]
+                        return video_id
+                    elif "youtu.be/" in input_text:
+                        # 短链接格式
+                        video_id = input_text.split("youtu.be/")[1].split("?")[0].split("&")[0]
+                        return video_id
+                    elif input_text.startswith("http"):
+                        # 其他YouTube URL格式
+                        if "v=" in input_text:
+                            video_id = input_text.split("v=")[1].split("&")[0].split("?")[0]
+                            return video_id
+                    # 如果已经是ID格式（11位字符），直接返回
+                    if len(input_text) == 11 and input_text.replace('-', '').replace('_', '').isalnum():
+                        return input_text
+                    # 否则假设是ID
+                    return input_text
+                
+                # 如果是Bilibili
+                elif dl_type == "bilibili":
+                    # 检查是否是完整URL
+                    if "bilibili.com/video/" in input_text:
+                        # 提取BV号
+                        if "BV" in input_text:
+                            bv_start = input_text.find("BV")
+                            bv_end = bv_start + 12  # BV号是12位
+                            if bv_end <= len(input_text):
+                                return input_text[bv_start:bv_end]
+                        # 或者从URL路径中提取
+                        parts = input_text.split("/video/")
+                        if len(parts) > 1:
+                            bv_part = parts[1].split("?")[0].split("/")[0]
+                            if bv_part.startswith("BV"):
+                                return bv_part
+                    # 如果已经是BV号格式
+                    if input_text.startswith("BV") and len(input_text) == 12:
+                        return input_text
+                    # 否则假设是BV号
+                    return input_text
+                
+                # 默认返回原输入
+                return input_text
+            
             col1, col2 = st.columns(2)
             with col1:
-                st.markdown('<p style="color: #08337B;"><b>以上都不对？手动输入谱面确认视频的id<b></p>', unsafe_allow_html=True)
-                replace_id = st.text_input("谱面确认视频的 youtube ID 或 BV号", 
-                                            key=f"replace_id_{c_id}")
+                replace_input = st.text_input(
+                    "视频链接或ID", 
+                    placeholder="支持输入完整链接或视频ID\n例如: https://youtube.com/watch?v=XXXXX 或 XXXXX",
+                    help="可以输入完整的视频链接（YouTube或Bilibili），系统会自动提取视频ID；也可以直接输入视频ID或BV号",
+                    key=f"replace_input_{c_id}"
+                )
+                st.caption(f"💡 提示：也可以直接输入视频ID（YouTube: 11位字符，B站: BV号）")
             with col2:
                 st.markdown(f"[➡点击跳转到搜索页]({search_url})", unsafe_allow_html=True)
                 replace_p_index = st.number_input("分P序号（可选）", 
@@ -209,29 +276,47 @@ def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instanc
 
             # 搜索手动输入的id
             to_replace_video_info = None
-            extra_search_button = st.button("搜索并替换", 
+            extra_search_button = st.button("获取视频信息并替换", 
                                             key=f"search_replace_id_{c_id}",
-                                            disabled=dl_instance is None or replace_id == "")
+                                            disabled=dl_instance is None or not replace_input)
             if extra_search_button:
-                if downloader_type == "youtube":
-                    videos = dl_instance.search_video(replace_id)
-                    if len(videos) == 0:
-                        st.error("未找到有效的视频，请重试")
+                try:
+                    # 从输入中提取视频ID
+                    extracted_id = extract_video_id(replace_input, downloader_type)
+                    
+                    if not extracted_id:
+                        st.error("无法从输入中提取视频ID，请检查输入格式")
                     else:
-                        to_replace_video_info = videos[0]
-                elif downloader_type == "bilibili":
-                    # 如果是b站api，不再搜索而是从api中直接获取
-                    try:
-                        to_replace_video_info = dl_instance.get_video_info(replace_id)
-                    except Exception as e:
-                        st.error(f"获取视频失败，错误信息: {e.msg}")
+                        # 显示提取的ID
+                        if extracted_id != replace_input:
+                            st.info(f"已从链接中提取视频ID: **{extracted_id}**")
+                        
+                        # 对于YouTube和Bilibili，都使用get_video_info直接通过ID获取视频信息
+                        to_replace_video_info = dl_instance.get_video_info(extracted_id)
+                except Exception as e:
+                    error_msg = str(e)
+                    st.error(f"获取视频信息失败: {error_msg}")
+                    if "400" in error_msg or "Bad Request" in error_msg:
+                        st.warning("""
+                        **可能的解决方案：**
+                        1. **检查视频ID是否正确**：确保输入的是有效的YouTube视频ID（11位字符）或B站BV号
+                        2. **更新库**：尝试更新相关库 `pip install --upgrade pytubefix bilibili-api-python`
+                        3. **配置认证**：在搜索配置页面启用 OAuth 或 PO Token 认证
+                        4. **使用代理**：如果网络受限，尝试配置代理服务器
+                        5. **检查视频可用性**：确保视频未被删除或设为私密
+                        """)
+                    with st.expander("详细错误信息"):
+                        st.code(traceback.format_exc())
 
                 # print(to_replace_video_info)
                 if to_replace_video_info:
                     if replace_p_index > 0:
                         to_replace_video_info['p_index'] = replace_p_index
                     st.success(f"已使用视频{to_replace_video_info['id']}替换匹配信息，详情：")
-                    st.markdown(f"【{to_replace_video_info['title']}】({to_replace_video_info['duration']}秒, p{to_replace_video_info['p_index']}) \
+                    
+                    # 构建详情文本，如果有分P信息则显示
+                    p_info = f", p{to_replace_video_info.get('p_index', 0)}" if to_replace_video_info.get('page_count', 1) > 1 else ""
+                    st.markdown(f"【{to_replace_video_info['title']}】({to_replace_video_info['duration']}秒{p_info}) \
                                 [🔗{to_replace_video_info['id']}]({to_replace_video_info['url']})")
                     song['video_info_match'] = to_replace_video_info
                     db_handler.update_chart_video_metadata(c_id, song['video_info_match'])
@@ -267,7 +352,8 @@ if not username:
 st.write(f"当前用户名: **{username}**")
 archives = db_handler.get_user_save_list(username, game_type=G_type)
 
-with st.expander("更换B50存档"):
+data_name = "B30" if G_type == "chunithm" else "B50"
+with st.expander(f"更换{data_name}存档"):
     if not archives:
         st.warning("未找到任何存档。请先新建或加载存档。")
         st.stop()
@@ -354,7 +440,7 @@ update_editor(link_editor_placeholder,
 with selector_container: 
     # 显示当前视频片段的选择框
     clip_selector = st.selectbox(
-        label="快速跳转到B50记录", 
+        label=f"快速跳转到{data_name}记录", 
         options=record_ids, 
         key="record_selector"  # 添加唯一的key
     )

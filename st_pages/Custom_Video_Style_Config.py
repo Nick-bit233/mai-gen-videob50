@@ -220,18 +220,62 @@ def show_current_style_preview(to_preview_style=None):
 
             st.write("- 背景视频预览（片头）")
             intro_video_bg_path = current_asset_config["intro_video_bg"]
-            if os.path.exists(intro_video_bg_path):
-                st.video(intro_video_bg_path, format="video/mp4")
+            if intro_video_bg_path:
+                # 确保使用绝对路径
+                if not os.path.isabs(intro_video_bg_path):
+                    intro_video_bg_path = os.path.abspath(intro_video_bg_path)
+                
+                if os.path.exists(intro_video_bg_path):
+                    try:
+                        # 验证文件可读
+                        with open(intro_video_bg_path, 'rb') as f:
+                            pass
+                        st.video(intro_video_bg_path, format="video/mp4")
+                    except (OSError, IOError) as e:
+                        st.error(f"无法读取片头视频背景文件: {e}")
+                        st.caption(f"文件路径: {intro_video_bg_path}")
+                    except Exception as e:
+                        error_msg = str(e)
+                        if "MediaFileStorageError" in error_msg or "No media file with id" in error_msg:
+                            st.warning("⚠️ 视频文件引用已失效，请刷新页面")
+                            st.caption(f"文件路径: {intro_video_bg_path}")
+                        else:
+                            st.error(f"无法加载片头视频背景: {e}")
+                            st.caption(f"文件路径: {intro_video_bg_path}")
+                else:
+                    st.error(f"找不到片头视频背景：{intro_video_bg_path}")
             else:
-                st.error(f"找不到片头视频背景：{intro_video_bg_path}")
+                st.warning("未配置片头视频背景路径")
 
             if to_preview_style["options"].get("content_use_video_bg", False) and "content_bg_video" in current_asset_config:
                 st.write("- 背景视频预览（正片）")
                 content_video_bg_path = current_asset_config["content_bg_video"]
-                if os.path.exists(content_video_bg_path):
-                    st.video(content_video_bg_path, format="video/mp4")
+                if content_video_bg_path:
+                    # 确保使用绝对路径
+                    if not os.path.isabs(content_video_bg_path):
+                        content_video_bg_path = os.path.abspath(content_video_bg_path)
+                    
+                    if os.path.exists(content_video_bg_path):
+                        try:
+                            # 验证文件可读
+                            with open(content_video_bg_path, 'rb') as f:
+                                pass
+                            st.video(content_video_bg_path, format="video/mp4")
+                        except (OSError, IOError) as e:
+                            st.error(f"无法读取正片视频背景文件: {e}")
+                            st.caption(f"文件路径: {content_video_bg_path}")
+                        except Exception as e:
+                            error_msg = str(e)
+                            if "MediaFileStorageError" in error_msg or "No media file with id" in error_msg:
+                                st.warning("⚠️ 视频文件引用已失效，请刷新页面")
+                                st.caption(f"文件路径: {content_video_bg_path}")
+                            else:
+                                st.error(f"无法加载正片视频背景: {e}")
+                                st.caption(f"文件路径: {content_video_bg_path}")
+                    else:
+                        st.error(f"找不到正片视频背景：{content_video_bg_path}")
                 else:
-                    st.error(f"找不到正片视频背景：{content_video_bg_path}")
+                    st.warning("未配置正片视频背景路径")
             else:
                 st.markdown("> 正片未启用动态视频背景。")
 

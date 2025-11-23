@@ -33,7 +33,8 @@ if not username:
 st.write(f"当前用户名: **{username}**")
 archives = db_handler.get_user_save_list(username, game_type=G_type)
 
-with st.expander("更换B50存档"):
+data_name = "B30" if G_type == "chunithm" else "B50"
+with st.expander(f"更换{data_name}存档"):
     if not archives:
         st.warning("未找到任何存档。请先新建或加载存档。")
         st.stop()
@@ -102,7 +103,7 @@ with st.container(border=True):
 v_mode_index = options.index(mode_str)
 v_bitrate_kbps = f"{v_bitrate}k"
 
-user_media_paths = get_user_media_dir(username)
+user_media_paths = get_user_media_dir(username, game_type=G_type)
 video_output_path = user_media_paths['output_video_dir']
 
 if not os.path.exists(video_output_path):
@@ -165,7 +166,7 @@ if st.button("开始生成视频"):
                         video_output_path=video_output_path,
                         video_res=video_res,
                         video_bitrate=v_bitrate_kbps,
-                        auto_add_transition=trans_enable,
+                        video_trans_enable=trans_enable,
                         video_trans_time=trans_time,
                         full_last_clip=False
                     )
