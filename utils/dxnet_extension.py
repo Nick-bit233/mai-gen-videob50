@@ -57,6 +57,41 @@ def get_factor(achievement):
 def compute_rating(ds, score):
     return int(ds * min(score, 100.5) * get_factor(score))
 
+# Compute Chunithm rating for a single song
+def compute_chunithm_rating(ds, score):
+    try:
+        s = int(float(score))
+    except Exception:
+        raise ValueError("Failed to parse chunithm score.")
+
+    tiers = [
+        (1_009_000, None,        ('fixed', 2.15)),
+        (1_007_500, 1_009_000,   ('step',  2.00, 100, 0.01, 2.15)),
+        (1_005_000, 1_007_500,   ('step',  1.50, 50,  0.01, 2.00)),
+        (1_000_000, 1_005_000,   ('step',  1.00, 100, 0.01, 1.50)),
+        (990_000,   1_000_000,   ('step',  0.60, 250, 0.01, 1.00)),
+        (975_000,   990_000,     ('step',  0.00, 250, 0.01, 0.60)),
+        (950_000,   975_000,     ('fixed', -1.5)),
+        (925_000,   950_000,     ('fixed', -3.0)),
+        (900_000,   925_000,     ('fixed', -5.0)),
+        (800_000,   900_000,     ('func',  lambda ds, s: (ds - 5.0) / 2.0)),
+    ]
+
+    for mn, mx, rule in tiers:
+        if s >= mn and (mx is None or s < mx):
+            typ = rule[0]
+            if typ == 'fixed':
+                return round(ds + rule[1], 2)
+            if typ == 'func':
+                return round(rule[1](ds, s), 2)
+            # 'step'
+            base, step_pts, step_val, cap = rule[1], rule[2], rule[3], rule[4]
+            steps = max(0, (s - mn) // step_pts)
+            extra = min(steps * step_val, cap - base)
+            return round(ds + base + extra, 2)
+
+    return 0.0
+
 def parse_level(ds):
     return f"{int(ds)}+" if int((ds * 10) % 10) >= 6 else str(int(ds))
 
