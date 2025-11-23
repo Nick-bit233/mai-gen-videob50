@@ -1,29 +1,31 @@
 <img src="md_res/icon.png" width="256" alt="Icon">
 
-# mai-chu分表视频生成器
+# mai-gen-videob50(+chu) 分表视频生成器
 
-自动从流媒体上搜索并构建你的舞萌DX B50视频或中二节奏 B30视频
+自动从流媒体上搜索并构建你的舞萌DX / 中二节奏 Best分表视频
 
-Auto search and generate your best 50 videos of MaimaiDX or best 30 videos of Chunithm
+Auto search and generate your best videos of MaimaiDX / Chunithm
 
 ## 更新速览
 
-`v0.8`版本现已更新：
-- ✨ **重大更新**：现已支持中二节奏（CHUNITHM）B30视频生成！
-- 🎮 统一界面：统一的视频生成流程，根据游戏类型自动切换显示 B30（中二侧）或 B50（maimai侧）
-- 🔍 搜索优化：支持 YouTube Data API v3，提供更稳定的视频搜索体验
-- 🎯 智能匹配：多策略搜索系统，自动匹配最相关的谱面视频
-- 🛠️ 界面优化：优化前端界面，提升用户体验
-- 🐛 错误修复：改进视频预览错误处理，自动处理媒体文件存储错误，提供更友好的错误提示
+`v1.0 (alpha test)` 预览版本现已更新：
+- ✨ **重大更新**：现已支持中二节奏（CHUNITHM）B30视频生成！您可以从水鱼查分器和落雪查分器获取中二节奏数据
+    - 中二节奏的自定义分表和国际服数据查询还在施工中，目前可能无法正常工作
+- 🛠️ 数据库重构：使用本地Sqlite3数据库替换原基于文件的数据存储系统，在调取资源时更加灵活，并兼容分表数据的未来更新
+- 🎮 界面更新：统一的视频生成流程，根据游戏类型自动切换显示 B30（中二侧）或 B50（maimai侧）
+- 🔍 搜索优化：支持 YouTube Data API v3，并优化更加快捷的手动搜索流程
+- 🐛 界面优化：优化前端界面，改进分表填写和媒体处理逻辑，提升用户体验
+
+我们经过短暂测试后将提供release包，目前请使用源代码安装。无需更新runtime，可以直接替换v0.6.5版本的所有源代码
+
+> 本预览版本的中二落雪查分器支持，以及YouTube Data API v3和部分界面重构支持，由[caiccu](https://github.com/CAICCU)提供
+
+---
 
 `v0.6.5`版本更新：
 - 修复：从舞萌2025版本，成绩图片中的等级+号显示，由每个等级的定数.7及以上调整为.6及以上
 - 修复：自动识别下载的视频源以对齐模板的位置，以避免视频没有嵌入到正确位置的问题。
 
-`v0.6`版本更新：
-- 支持通过上传本地文件来自定义片头片尾、图片背景和字体风格，预设Buddies和Prism两套风格
-- 视频默认片头片尾风格切换为Prism，以迎合舞萌2025版本
-- 现已支持自定义搜索时预览和指定bilibili的分p合集视频
 
 ## 快速开始
 
@@ -394,111 +396,6 @@ Auto search and generate your best 50 videos of MaimaiDX or best 30 videos of Ch
 
 - `CLIP_START_INTERVAL` ：设置生成完整视频时，每段谱面确认默认开始播放的时间随机范围，格式为`[min, max]`，单位为秒。
 
-### 本地存档文件结构的解释
-
-> 注意：本部分内容在v0.6版本以后已经过时，有待进行更新完善，旧版内容仅供参考！
-
-- 在`./b50_datas`和`./chunithm_datas`文件夹下分别存储maimai和chunithm的用户存档，以及与其配对的视频搜索和生成配置文件
-
-    - 用户存档以时间戳命名，作为子文件夹，例如：
-      - `./b50_datas/{user}/20250101_080011` 是用户在2025.1.1 08:00:11创建的maimai存档
-      - `./chunithm_datas/{user}/20250101_080011` 是用户在2025.1.1 08:00:11创建的chunithm存档
-
-    - 每个存档文件夹中包含：
-
-        - `b50_raw.json` 或 `chunithm_b30_raw.json`：用户的存档数据，目前最新的数据格式版本为0.5，其字段如下：
-
-        ```json
-        "version": "0.5",
-        "type": "maimai", # 存档的游戏类型（"maimai" 或 "chunithm"）
-        "sub_type": "best", # 存档的排序方式（best 倒序，customer 正序）
-        "username": "xxxxxx", # 用户名
-        "rating": 10000, # 存档对应的rating（maimai为rating_mai，chunithm为rating_chu）
-        "length_of_content": 50, # 存档的记录长度（B50为50，B30为30）
-        "records": # 具体成绩数据
-        [
-            {
-                "song_id": 11447,
-                "title": "エゴロック",
-                "type": "DX",
-                "clip_name": "PastBest_1", # 显示在视频标题的文字（下划线代指空格）
-                "clip_id": "clip_1", # 索引记录的id
-                ... # 其他成绩数据
-            },
-            ...
-        ]
-        ```
-        - 对于当前版本的较新曲目，在存档和文件名中，曲目id将使用一串哈希编码的字符串代替。
-
-        - `b50_config_{DOWNLOADER}.json` 或 `chunithm_b30_config_{DOWNLOADER}.json`：用户数据与每个谱面的目标流媒体视频数据的映射。
-            - 其中无后缀的文件是空映射，为了使得用户更新数据时，不会覆盖已有的配置文件。
-            - 后缀为`_downloader`的文件为下载器自动生成，存储不同平台搜索到的视频信息和备选视频信息。
-
-        - `video_config.json`：自动生成的视频渲染的配置文件，包括生成器索引的图片和视频位置，以及用户填写的评论和片段时长配置。
-            - 注意本文件不含有视频链接等互联网信息，仅记录本地映射。因此删除本文将不影响搜索和下载，但是会影响已填写的评论和片段时长。
-
-        - `images`文件夹，存储所有生成的成绩图片，以`{PastBest/NewBest}_{id}.png`的格式命名。
-
-        - `videos`文件夹，存储输出的视频
-    
-    - 如果用户以复制源码方式导入数据，输入的html或json源码不会保存在存档内，而是作为缓存保存在对应的数据文件夹下（`./b50_datas/{user}` 或 `./chunithm_datas/{user}`），新的原始数据会覆盖这些文件，但存档内的数据保持不变（除非用户手动修改或覆盖）
-
-- 在`./videos/downloads`文件夹下可以找到所有已下载的谱面确认视频，命名格式为`{song_id}-{level_index}-{type}.mp4`。其中，`song_id`为曲目的ID，`level_index`为难度，`type`为谱面类型，例如`834-4-SD.mp4`（maimai）或`2442-3-0.mp4`（chunithm）。
-
-`video_config.json`的详细格式解释：
-
- - "intro"和"ending"部分你填写的text会作为开头和结尾的文字展示。"main"部分填写的text为每条b50下的文字展示。
-
- - 输入的文字会根据模板长度自动换行
-
- - "intro"和"ending"部分均可以添加多页，例如：
-
-```json
-"intro": [
-    {
-        "id": "intro_1",
-        "duration": 10,
-        "text": "【前言部分第一页】"
-    },
-    {
-        "id": "intro_2",
-        "duration": 10,
-        "text": "【前言部分第二页】"
-    }
-],
-"ending": [
-    {
-        "id": "ending_1",
-        "duration": 10,
-        "text": "【后记部分第一页】"
-    },
-    {
-        "id": "ending_2",
-        "duration": 10,
-        "text": "【后记部分第二页】"
-    }
-],
-```
-- "main"的部分暂不支持多页文字。"main"部分的示例如下：
-
-```json
-"main": [
-    {
-        "id": "NewBest_1",
-        "achievement_title": "系ぎて-re:Master-DX",
-        "song_id": 11663,
-        "level_index": 4,
-        "type": "DX",
-        "main_image": "b50_images\\test\\PastBest_1.png",
-        "video": "videos\\test\\11663-4-DX.mp4",
-        "duration": 9,
-        "start": 49,
-        "end": 58,
-        "text": "【请填写b50评价】\n【你只需要填写这条字符串】"
-    },
-]
-```
-
 
 ## 鸣谢
 
@@ -512,4 +409,3 @@ Auto search and generate your best 50 videos of MaimaiDX or best 30 videos of Ch
 
 ---
 
-**版本信息**：v0.8 

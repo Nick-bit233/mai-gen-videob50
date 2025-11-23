@@ -67,9 +67,12 @@ col_header1, col_header2 = st.columns([1, 3])
 with col_header1:
     st.image("md_res/icon.png", width=200)
 with col_header2:
-    st.title("mai-chu分表视频生成器")
+    st.title("mai-gen-videob50 视频生成器")
     G_type = st.session_state.get('game_type', 'maimai')
-    st.caption(f"版本 v0.8 by [caiccu](https://github.com/CAICCU) | 当前模式: **{get_game_type_text(G_type)}**")
+    st.caption(f"当前版本 v1.0 (alpha test) |\
+               Created by: [Nickbit](https://github.com/Nick-bit233), [caiccu](https://github.com/CAICCU) |\
+               当前模式: **{get_game_type_text(G_type)}** ")
+    st.warning("⚠️ 您正在使用本工具的Alpha测试版本，可能存在未知问题。")
 
 # 游戏类型切换
 with st.container(border=True):
@@ -108,8 +111,7 @@ with st.container(border=True):
     5. **编辑视频内容** - 编辑评论和视频片段
     6. **合成视频** - 生成最终视频
     
-    详细使用说明请参考：
-    - [当前版本 GitHub](https://github.com/CAICCU/mai-chu-video) | [原版本 GitHub](https://github.com/Nick-bit233/mai-gen-videob50)
+    详细使用说明请参考：[GitHub](https://github.com/Nick-bit233/mai-gen-videob50)
     """)
 
 # 重要提示
