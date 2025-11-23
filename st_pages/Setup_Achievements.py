@@ -190,8 +190,7 @@ def view_b50_data(username: str, archive_name: str):
             }
         )
 
-    if st.button("返回"):
-        st.rerun()
+st.header("从第三方查分器获取分表")
 
 @st.dialog("删除存档确认")
 def confirm_delete_archive(username: str, archive_name: str):

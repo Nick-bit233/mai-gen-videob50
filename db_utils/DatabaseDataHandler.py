@@ -314,7 +314,6 @@ class DatabaseDataHandler:
 
     def load_archive_records(self, username: str, archive_name: str) -> List[Dict]:
         """Load all records for a given archive."""
-        import json
         archive_id = self.load_save_archive(username, archive_name)
         if not archive_id:
             return []

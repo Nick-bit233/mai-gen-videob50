@@ -680,6 +680,17 @@ def update_sortable_items(sort_grid):
                     save_current_archive()
                     st.rerun()
 
+        if sorted_tags:
+            st.session_state.sortable_records = sorted_tags
+            sorted_records = []
+            for tag in sorted_tags:
+                # 提取索引
+                match = re.search(r'\(#(\d+)\)', tag)
+                if not match:
+                    raise ValueError(f"Unable to match index from string {tag}")
+                index = int(match.group(1)) - 1
+                # 根据索引获取记录
+                sorted_records.append(st.session_state.records[index])
 
 def clear_all_records_achievement():    
     # TODO: 修改格式和处理中二
