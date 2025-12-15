@@ -360,10 +360,10 @@ class DatabaseDataHandler:
             for record in records:
                 title = record['song_name']
                 artist = record['artist']
-                # 获取歌曲元数据
+                # 获取歌曲元数据  TODO:直接从融合数据url下载，优化下载等待速度和提前缓存机制
                 metadata = query_songs_metadata(game_type, title, artist)
                 image_code = metadata.get('imageName', None)
-                # 下载封面图片(pillow Image对象) # TODO：优化下载等待速度和提前缓存机制
+                # 下载封面图片(pillow Image对象) 
                 jacket_image = get_jacket_image_from_url(image_code)
                 reformat_data = {
                     'chart_id': record['chart_id'],

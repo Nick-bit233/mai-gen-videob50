@@ -11,10 +11,19 @@ import random
 from PIL import Image
 from typing import Dict, Union, Optional
 
-# TODO: 服务器bucket用于转存dxrating和otoge-db的metadata
+# 服务器bucket用于转存融合过的的metadata
 BUCKET_ENDPOINT = "https://nickbit-maigen-images.oss-cn-shanghai.aliyuncs.com"
+# 服务器函数计算用于代理获取需要开发者key的查分器api数据
 FC_PROXY_ENDPOINT = "https://fish-usta-proxy-efexqrwlmf.cn-shanghai.fcapp.run"
-LXNS_CDN_ENDPOINT = "https://assets.lxns.net"  # 落雪查分器CDN
+
+# 第三方原始数据源api用于获取曲绘等CDN资源
+LXNS_API_ENDPOINT = "https://assets.lxns.net"  # 落雪查分器api
+
+def get_otoge_db_api_endpoint(game_type) -> str:
+    return f"https://otoge-db.net/{game_type}/jacket"  # otoge-db api
+
+def get_dxrating_api_endpoint(game_type: str) -> str:
+    return "https://shama.dxrating.net/images/cover/v2"  # dxrating api
 
 # --------------------------------------
 # Data format grounding Helper methods
@@ -184,79 +193,46 @@ def chunithm_fc_status_to_label(fc_status: int) -> str:
         case _:
             return "none"
 
-# TODO：重构数据格式以及工具函数，支持dxrating数据格式和未来的中二数据格式，以下方法均已弃用
-# 曲绘数据将尝试从dxrating接口获取
-CHART_TYPE_MAP_MAIMAI =  {   
-    "SD": 0,
-    "DX": 1,
-    "宴": 10,
-    "协": 11,
-}
-REVERSE_TYPE_MAP_MAIMAI = {
-    0: "SD",
-    1: "DX",
-    10: "宴",
-    11: "协",
-}
-
-
-@DeprecationWarning
-def download_metadata(data_type="maimaidx"):
-    url = f"{BUCKET_ENDPOINT}/metadata_json/{data_type}/songs.json"
+# 重构：现在从服务器融合数据源下载metadata
+def download_metadata(game_type="maimai") -> tuple[str, dict]:
+    if game_type == "maimai":
+        filename = "mai_fusion_data.json"
+    elif game_type == "chunithm":
+        filename = "chuni_fusion_data.json"
+    else:
+        raise ValueError("Unsupported game type for metadata download.")
+    url = f"{BUCKET_ENDPOINT}/metadata_json/{filename}"
     response = requests.get(url)
     if response.status_code == 200:
-        return response.json()
+        return filename, response.json()
     else:
         print(f"Failed to download metadata from {url}. Status code: {response.status_code}")
         raise FileNotFoundError
-
-@DeprecationWarning
-def download_image_data(image_path):
-    url = f"{BUCKET_ENDPOINT}/{image_path}"
-    response = requests.get(url, stream=True)
-    if response.status_code == 200:
-        img = Image.open(response.raw)
-        return img
+    
+def load_metadata(game_type: str) -> dict:
+    metadata_dir = './music_metadata/'
+    if game_type == "maimai":
+        json_path = os.path.join(metadata_dir, f"mai_fusion_data.json")
+    elif game_type == "chunithm":
+        json_path = os.path.join(metadata_dir, f"chuni_fusion_data.json")
     else:
-        print(f"Failed to download image from {url}. Status code: {response.status_code}")
-        raise FileNotFoundError
+        raise ValueError(f"Unsupported game type: {game_type}")
+    if os.path.exists(json_path):
+        with open(json_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    else:
+        raise FileNotFoundError(f"Metadata file not found: {json_path}")
 
-def download_chunithm_jacket_from_lxns(song_id):
-    """
-    从落雪查分器CDN下载中二节奏曲绘
-    
-    Args:
-        song_id: 歌曲ID（整数或字符串）
-    
-    Returns:
-        PIL.Image.Image: 曲绘图片，如果下载失败则抛出FileNotFoundError
-    """
-    # 确保song_id是整数
-    if isinstance(song_id, str):
-        if song_id.isdigit():
-            song_id = int(song_id)
-        elif song_id.startswith("chunithm_"):
-            try:
-                song_id = int(song_id.replace("chunithm_", ""))
-            except:
-                raise ValueError(f"Invalid song_id: {song_id}")
-        else:
-            raise ValueError(f"Invalid song_id: {song_id}")
-    
-    # 构建URL: https://assets.lxns.net/chunithm/jacket/{song_id}.png
-    url = f"{LXNS_CDN_ENDPOINT}/chunithm/jacket/{song_id}.png"
-    
-    try:
-        response = requests.get(url, stream=True, timeout=10)
-        if response.status_code == 200:
-            img = Image.open(response.raw)
-            return img
-        else:
-            print(f"Failed to download chunithm jacket from {url}. Status code: {response.status_code}")
-            raise FileNotFoundError
-    except requests.exceptions.RequestException as e:
-        print(f"Error downloading chunithm jacket from {url}: {e}")
-        raise FileNotFoundError
+# @DeprecationWarning
+# def download_image_data(image_path):
+#     url = f"{BUCKET_ENDPOINT}/{image_path}"
+#     response = requests.get(url, stream=True)
+#     if response.status_code == 200:
+#         img = Image.open(response.raw)
+#         return img
+#     else:
+#         print(f"Failed to download image from {url}. Status code: {response.status_code}")
+#         raise FileNotFoundError
 
 @DeprecationWarning
 def encode_song_id(name, song_type):
@@ -381,44 +357,8 @@ def find_song_by_id(encoded_id, songs_data):
         return None
 
 
-def load_songs_metadata(game_type: str) -> dict:
-    # metadata已经更换为dxrating数据源（TODO：更换为dxrating + otoge-db融合数据源）
-    if game_type == "maimai":
-        with open("./music_metadata/maimaidx/dxdata.json", 'r', encoding='utf-8') as f:
-            songs_data = json.load(f)
-        songs_data = songs_data.get('songs', [])
-        assert isinstance(songs_data, list), "songs_data should be a list"
-        return songs_data
-    elif game_type == "chunithm":
-        # 优先使用落雪查分器的metadata
-        lxns_file = "./music_metadata/chunithm/lxns_songs.json"
-        otoge_file = "./music_metadata/chunithm/chuni_data_otoge_ex.json"
-        
-        # 尝试加载lxns_songs.json
-        if os.path.exists(lxns_file):
-            try:
-                with open(lxns_file, 'r', encoding='utf-8') as f:
-                    metadata = json.load(f)
-                songs_data = metadata.get('songs', [])
-                if isinstance(songs_data, list) and len(songs_data) > 0:
-                    assert isinstance(songs_data, list), "songs_data should be a list"
-                    return songs_data
-            except Exception as e:
-                print(f"警告: 加载lxns_songs.json失败: {e}，尝试使用备用文件")
-        
-        # 备用：使用otoge文件
-        if os.path.exists(otoge_file):
-            with open(otoge_file, 'r', encoding='utf-8') as f:
-                songs_data = json.load(f)
-            assert isinstance(songs_data, list), "songs_data should be a list"
-            return songs_data
-        
-        # 如果两个文件都不存在，返回空列表
-        print(f"警告: 未找到chunithm metadata文件，请运行 utils/lxns_metadata_loader.py 更新metadata")
-        return []
-    else:
-        raise ValueError("Unsupported game type for metadata loading.")
-
+# ==========
+# TODO: 下列方法需要重构，直接从融合数据源中查找指定字段
 
 def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tuple[str, dict]]:
     """
@@ -501,7 +441,7 @@ def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tupl
 
 def query_songs_metadata(game_type: str, title: str, artist: Union[str, None]=None) -> Union[dict, None]:
     """查询歌曲元数据（按 title 字段匹配；若存在重名则优先匹配 artist）"""
-    songs_data = load_songs_metadata(game_type)  # 读取dxrating data（以maimai为例）
+    songs_data = load_metadata(game_type)  # 读取dxrating data（以maimai为例）
     matches = [song for song in songs_data if song.get('title') == title]
     if not matches:
         return None
@@ -526,7 +466,7 @@ def query_chunithm_ds_by_id(song_id: int, level_index: int) -> Union[float, None
         定数值（internalLevelValue），如果找不到则返回None
     """
     try:
-        songs_data = load_songs_metadata("chunithm")
+        songs_data = load_metadata("chunithm")
         # 难度标签映射（用于匹配）
         DIFFICULTY_MAP = {
             0: "BASIC",
@@ -713,9 +653,15 @@ def fish_to_new_record_format(fish_record: dict, game_type: str = "maimai") -> d
 
     return record
 
-def get_jacket_image_from_url(image_code: str, source: str = "dxrating") -> Image.Image:
+# ============
+
+# Image download helpers
+
+def get_jacket_image_from_url(image_code: str, source: str = "otoge", game_type: str = "maimai") -> Image.Image:
     if source == "dxrating":
-        url = f"https://shama.dxrating.net/images/cover/v2/{image_code}.jpg"
+        url = get_dxrating_api_endpoint(game_type) + f"/{image_code}.jpg"
+    elif source == "otoge":
+        url = get_otoge_db_api_endpoint(game_type) + f"/{image_code}.jpg"
     else:
         raise ValueError("Unsupported image source.")
 
@@ -726,17 +672,3 @@ def get_jacket_image_from_url(image_code: str, source: str = "dxrating") -> Imag
     else:
         print(f"Failed to download image from {url}. Status code: {response.status_code}")
         raise FileNotFoundError
-
-# def download_metadata_chunithm():
-#     url = f"https://www.diving-fish.com/api/chunithmprober/music_data"
-#     response = requests.get(url)
-#     if response.status_code == 200:
-#         ret = response.json()
-#         with open(r"C:\ProjectsAndTricks\mai-gen-videob50\music_metadata\chunithm\chunithm_data_fish.json", 'w', encoding='utf-8') as f:
-#             json.dump(ret, f, ensure_ascii=False, indent=4)
-#     else:
-#         print(f"Failed to download metadata from {url}. Status code: {response.status_code}")
-#         raise FileNotFoundError
-
-# if __name__ == "__main__":
-#     download_metadata_chunithm()
