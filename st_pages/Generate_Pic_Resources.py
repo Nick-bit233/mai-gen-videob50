@@ -84,12 +84,12 @@ def st_generate_b50_images(placeholder, user_id, archive_id, save_paths):
 data_name = "B30" if G_type == "chunithm" else "B50"
 page_title = f"Step 1: 生成{data_name}成绩背景图片"
 
-st.set_page_config(
-    page_title=page_title,
-    page_icon="🖼️",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+# st.set_page_config(
+#     page_title=page_title,
+#     page_icon="🖼️",
+#     layout="wide",
+#     initial_sidebar_state="collapsed"
+# )
 
 # 页面头部
 st.header(f"🖼️ 生成{data_name}成绩背景图片")
