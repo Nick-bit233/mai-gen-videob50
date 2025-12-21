@@ -11,10 +11,19 @@ import random
 from PIL import Image
 from typing import Dict, Union, Optional
 
-# TODO: 服务器bucket用于转存dxrating和otoge-db的metadata
+# 服务器bucket用于转存融合过的的metadata
 BUCKET_ENDPOINT = "https://nickbit-maigen-images.oss-cn-shanghai.aliyuncs.com"
+# 服务器函数计算用于代理获取需要开发者key的查分器api数据
 FC_PROXY_ENDPOINT = "https://fish-usta-proxy-efexqrwlmf.cn-shanghai.fcapp.run"
-LXNS_CDN_ENDPOINT = "https://assets.lxns.net"  # 落雪查分器CDN
+
+# 第三方原始数据源api用于获取曲绘等CDN资源
+LXNS_API_ENDPOINT = "https://assets.lxns.net"  # 落雪查分器api
+
+def get_otoge_db_api_endpoint(game_type) -> str:
+    return f"https://otoge-db.net/{game_type}/jacket"  # otoge-db api
+
+def get_dxrating_api_endpoint(game_type: str) -> str:
+    return "https://shama.dxrating.net/images/cover/v2"  # dxrating api
 
 # --------------------------------------
 # Data format grounding Helper methods
@@ -53,6 +62,8 @@ def chart_type_str2value(str_type: str, fish_record_style: bool = False) -> int:
     else:
         match str_type:
             case "std": # maimai
+                return 0
+            case "standard":
                 return 0
             case "dx":
                 return 1
@@ -184,79 +195,46 @@ def chunithm_fc_status_to_label(fc_status: int) -> str:
         case _:
             return "none"
 
-# TODO：重构数据格式以及工具函数，支持dxrating数据格式和未来的中二数据格式，以下方法均已弃用
-# 曲绘数据将尝试从dxrating接口获取
-CHART_TYPE_MAP_MAIMAI =  {   
-    "SD": 0,
-    "DX": 1,
-    "宴": 10,
-    "协": 11,
-}
-REVERSE_TYPE_MAP_MAIMAI = {
-    0: "SD",
-    1: "DX",
-    10: "宴",
-    11: "协",
-}
-
-
-@DeprecationWarning
-def download_metadata(data_type="maimaidx"):
-    url = f"{BUCKET_ENDPOINT}/metadata_json/{data_type}/songs.json"
+# 重构：现在从服务器融合数据源下载metadata
+def download_metadata(game_type="maimai") -> tuple[str, dict]:
+    if game_type == "maimai":
+        filename = "mai_fusion_data.json"
+    elif game_type == "chunithm":
+        filename = "chuni_fusion_data.json"
+    else:
+        raise ValueError("Unsupported game type for metadata download.")
+    url = f"{BUCKET_ENDPOINT}/metadata_json/{filename}"
     response = requests.get(url)
     if response.status_code == 200:
-        return response.json()
+        return filename, response.json()
     else:
         print(f"Failed to download metadata from {url}. Status code: {response.status_code}")
         raise FileNotFoundError
-
-@DeprecationWarning
-def download_image_data(image_path):
-    url = f"{BUCKET_ENDPOINT}/{image_path}"
-    response = requests.get(url, stream=True)
-    if response.status_code == 200:
-        img = Image.open(response.raw)
-        return img
+    
+def load_metadata(game_type: str) -> dict:
+    metadata_dir = './music_metadata/'
+    if game_type == "maimai":
+        json_path = os.path.join(metadata_dir, f"mai_fusion_data.json")
+    elif game_type == "chunithm":
+        json_path = os.path.join(metadata_dir, f"chuni_fusion_data.json")
     else:
-        print(f"Failed to download image from {url}. Status code: {response.status_code}")
-        raise FileNotFoundError
+        raise ValueError(f"Unsupported game type: {game_type}")
+    if os.path.exists(json_path):
+        with open(json_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    else:
+        raise FileNotFoundError(f"Metadata file not found: {json_path}")
 
-def download_chunithm_jacket_from_lxns(song_id):
-    """
-    从落雪查分器CDN下载中二节奏曲绘
-    
-    Args:
-        song_id: 歌曲ID（整数或字符串）
-    
-    Returns:
-        PIL.Image.Image: 曲绘图片，如果下载失败则抛出FileNotFoundError
-    """
-    # 确保song_id是整数
-    if isinstance(song_id, str):
-        if song_id.isdigit():
-            song_id = int(song_id)
-        elif song_id.startswith("chunithm_"):
-            try:
-                song_id = int(song_id.replace("chunithm_", ""))
-            except:
-                raise ValueError(f"Invalid song_id: {song_id}")
-        else:
-            raise ValueError(f"Invalid song_id: {song_id}")
-    
-    # 构建URL: https://assets.lxns.net/chunithm/jacket/{song_id}.png
-    url = f"{LXNS_CDN_ENDPOINT}/chunithm/jacket/{song_id}.png"
-    
-    try:
-        response = requests.get(url, stream=True, timeout=10)
-        if response.status_code == 200:
-            img = Image.open(response.raw)
-            return img
-        else:
-            print(f"Failed to download chunithm jacket from {url}. Status code: {response.status_code}")
-            raise FileNotFoundError
-    except requests.exceptions.RequestException as e:
-        print(f"Error downloading chunithm jacket from {url}: {e}")
-        raise FileNotFoundError
+# @DeprecationWarning
+# def download_image_data(image_path):
+#     url = f"{BUCKET_ENDPOINT}/{image_path}"
+#     response = requests.get(url, stream=True)
+#     if response.status_code == 200:
+#         img = Image.open(response.raw)
+#         return img
+#     else:
+#         print(f"Failed to download image from {url}. Status code: {response.status_code}")
+#         raise FileNotFoundError
 
 @DeprecationWarning
 def encode_song_id(name, song_type):
@@ -381,48 +359,33 @@ def find_song_by_id(encoded_id, songs_data):
         return None
 
 
-def load_songs_metadata(game_type: str) -> dict:
-    # metadata已经更换为dxrating数据源（TODO：更换为dxrating + otoge-db融合数据源）
-    if game_type == "maimai":
-        with open("./music_metadata/maimaidx/dxdata.json", 'r', encoding='utf-8') as f:
-            songs_data = json.load(f)
-        songs_data = songs_data.get('songs', [])
-        assert isinstance(songs_data, list), "songs_data should be a list"
-        return songs_data
-    elif game_type == "chunithm":
-        # 优先使用落雪查分器的metadata
-        lxns_file = "./music_metadata/chunithm/lxns_songs.json"
-        otoge_file = "./music_metadata/chunithm/chuni_data_otoge_ex.json"
-        
-        # 尝试加载lxns_songs.json
-        if os.path.exists(lxns_file):
-            try:
-                with open(lxns_file, 'r', encoding='utf-8') as f:
-                    metadata = json.load(f)
-                songs_data = metadata.get('songs', [])
-                if isinstance(songs_data, list) and len(songs_data) > 0:
-                    assert isinstance(songs_data, list), "songs_data should be a list"
-                    return songs_data
-            except Exception as e:
-                print(f"警告: 加载lxns_songs.json失败: {e}，尝试使用备用文件")
-        
-        # 备用：使用otoge文件
-        if os.path.exists(otoge_file):
-            with open(otoge_file, 'r', encoding='utf-8') as f:
-                songs_data = json.load(f)
-            assert isinstance(songs_data, list), "songs_data should be a list"
-            return songs_data
-        
-        # 如果两个文件都不存在，返回空列表
-        print(f"警告: 未找到chunithm metadata文件，请运行 utils/lxns_metadata_loader.py 更新metadata")
-        return []
-    else:
-        raise ValueError("Unsupported game type for metadata loading.")
+# ==========
+# TODO: 下列方法需要重构，直接从融合数据源中查找指定字段
 
+def get_level_value_from_chart_meta(chart_info: dict, latest_first=False) -> Union[float, None]:
+    """
+        从fusion metadata中获取指定谱面的定数，规则如下：
+        - 如果level_value_cn字段有效，优先返回该字段，否则返回level_value_latest字段
+        - 如果指定了latest_first=True，则优先返回level_value_latest字段，如果无效返回level_value_cn字段
+        - 校验：确保返回的定数为float类型，且大于0，否则返回None
+    """
+    lv_cn = chart_info.get('level_value_cn', 0.0)
+    lv_latest = chart_info.get('level_value_latest', 0.0)
+    if latest_first:
+        if isinstance(lv_latest, (float, int)) and lv_latest > 0:
+            return float(lv_latest)
+        elif isinstance(lv_cn, (float, int)) and lv_cn > 0:
+            return float(lv_cn)
+    else:
+        if isinstance(lv_cn, (float, int)) and lv_cn > 0:
+            return float(lv_cn)
+        elif isinstance(lv_latest, (float, int)) and lv_latest > 0:
+            return float(lv_latest)
+    return None
 
 def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tuple[str, dict]]:
     """
-    在歌曲数据中搜索匹配的歌曲。输出歌曲元数据格式与数据库Chart表一致。
+    在fusion metadata中搜索匹配的歌曲。输出歌曲元数据格式与数据库Chart表一致。
     
     Args:
         query (str): 要搜索的查询字符串
@@ -438,26 +401,26 @@ def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tupl
             # 合并所有别名为单个字符串
             all_acronyms = ",".join(song.get('searchAcronyms', []))
             # 匹配关键词
-            if query.lower() in song.get('songId', '').lower() \
+            if query.lower() in song.get('title', '').lower() \
             or query.lower() in song.get('artist', '').lower() \
             or query.lower() in all_acronyms:
                 
-                sheets = song.get('sheets', [])
+                sheets = song.get('charts_info', [])
                 for s in sheets:
                     # 选择难度和查询一致的谱面
-                    s_level_index = level_label_to_index(game_type, s['difficulty'])
+                    s_level_index = s.get('difficulty', -1)  # "difficulty": int index
                     if s_level_index == level_index:
-                        type = s.get('type', 'std')
+                        type = s.get('type', 'standard')  # "type": "dx" or "standard" or "utage"
                         result_string = f"{song.get('title', '')} [{type}]"
-                        total_notes = s.get('noteCounts', {}).get('total', 0)
+                        total_notes = s.get('note_counts', {}).get('total', 0)
                         if not total_notes:  # 防止数据源传入NULL
                             total_notes = 0
                         chart_data = {
                             'game_type': 'maimai',
-                            'song_id': song['songId'],
+                            'song_id': song.get('id', ''),
                             'chart_type': chart_type_str2value(type),
                             'level_index': level_index,
-                            'difficulty': str(s.get('internalLevelValue', 0.0)),
+                            'difficulty': str(get_level_value_from_chart_meta(s)),
                             'song_name': song.get('title', ''),
                             'artist': song.get('artist', None),
                             'max_dx_score': total_notes * 3,
@@ -466,29 +429,26 @@ def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tupl
                         results.append((result_string, chart_data))
         return results
     elif game_type == "chunithm":
-        # 搜索chunithm歌曲（使用lxns格式的metadata）
         for song in songs_data:
-            song_id = str(song.get('id', ''))
             title = song.get('title', '')
             artist = song.get('artist', '')
             
-            # 匹配关键词（歌曲ID、标题、艺术家）
-            if query.lower() in song_id.lower() \
-            or query.lower() in title.lower() \
+            # 匹配关键词（标题、艺术家）# TODO: 支持别名匹配
+            if query.lower() in title.lower() \
             or query.lower() in artist.lower():
                 
-                sheets = song.get('sheets', [])
+                sheets = song.get('charts_info', [])
                 for s in sheets:
                     # 选择难度和查询一致的谱面
-                    s_level_index = level_label_to_index(game_type, s.get('difficulty', 'EXPERT'))
+                    s_level_index = s.get('difficulty', -1)  # "difficulty": int index
                     if s_level_index == level_index:
                         result_string = f"{title}"
                         chart_data = {
                             'game_type': 'chunithm',
-                            'song_id': song.get('id'),
+                            'song_id': song.get('id', ''),
                             'chart_type': 0,  # Chunithm默认是normal (0)
                             'level_index': level_index,
-                            'difficulty': str(s.get('internalLevelValue', 0.0)),
+                            'difficulty': str(get_level_value_from_chart_meta(s)),
                             'song_name': title,
                             'artist': artist,
                             'max_dx_score': 0,  # Chunithm不使用dx_score
@@ -501,7 +461,8 @@ def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tupl
 
 def query_songs_metadata(game_type: str, title: str, artist: Union[str, None]=None) -> Union[dict, None]:
     """查询歌曲元数据（按 title 字段匹配；若存在重名则优先匹配 artist）"""
-    songs_data = load_songs_metadata(game_type)  # 读取dxrating data（以maimai为例）
+    songs_data = load_metadata(game_type)  # 读取fusion metadata
+    # TODO：使用hash id 匹配
     matches = [song for song in songs_data if song.get('title') == title]
     if not matches:
         return None
@@ -514,6 +475,7 @@ def query_songs_metadata(game_type: str, title: str, artist: Union[str, None]=No
     # 未匹配到指定 artist 时返回第一个找到的
     return matches[0]
 
+# TODO: 重构，合并不同版本的查询函数
 def query_chunithm_ds_by_id(song_id: int, level_index: int) -> Union[float, None]:
     """
     根据歌曲ID和level_index从元数据中查找定数（internalLevelValue）
@@ -526,7 +488,7 @@ def query_chunithm_ds_by_id(song_id: int, level_index: int) -> Union[float, None
         定数值（internalLevelValue），如果找不到则返回None
     """
     try:
-        songs_data = load_songs_metadata("chunithm")
+        songs_data = load_metadata("chunithm")
         # 难度标签映射（用于匹配）
         DIFFICULTY_MAP = {
             0: "BASIC",
@@ -563,7 +525,6 @@ def query_chunithm_ds_by_id(song_id: int, level_index: int) -> Union[float, None
     except Exception as e:
         print(f"查询定数时出错: {e}")
         return None
-
 
 def query_chunithm_xv_ds_by_id(song_id: Union[int, str], level_index: int) -> Union[float, None]:
     """
@@ -641,30 +602,31 @@ def fish_to_new_record_format(fish_record: dict, game_type: str = "maimai") -> d
     chart_type = chart_type_str2value(fish_record.get('type', ''), fish_record_style=True)
 
     # Must have a title as song_id to query songs metadata
+    # TODO：改用哈希key作为唯一的song id，统一数据库和元数据的格式
     resolved_song_id = fish_record['title']
     if not resolved_song_id:
         raise ValueError("Fish record must have a 'title' field to resolve song_id.")
 
-    # query artist and other metadata from songs metadata
+    # query artist and other metadata from fusion metadata
     song = query_songs_metadata(game_type, fish_record.get('title'), fish_record.get('artist', None))
     if not song:
         raise LookupError(f"Cannot find song metadata for song_id: {resolved_song_id} in game_type: {game_type}")
     
     resolved_artist = song.get('artist', None)
     # try get total notes for counting maimai dx max score, for chunithm it's always 0 (for now)
-    resolved_total_notes = song.get('noteCounts', {}).get('total', 0)
+    resolved_total_notes = song.get('note_counts', {}).get('total', 0)
     if not resolved_total_notes:  # to avoid null from data source
         resolved_total_notes = 0
 
     resolved_ds = fish_record.get('ds', 0.0)
     # check difficulty from metadata if missing (only for maimai now)
     if resolved_ds is None or resolved_ds == 0.0 and game_type == "maimai":
-        sheets = song.get('sheets', [])
+        sheets = song.get('charts_info', [])
         for s in sheets:
-            s_level_index = level_label_to_index(game_type, s['difficulty'])
+            s_level_index = s.get('difficulty', -1)  # "difficulty": int index
             s_type = chart_type_str2value(s.get('type', ''))
             if s_level_index == level_idx and s_type == chart_type:
-                resolved_ds = s.get('internalLevelValue', 0.0)
+                resolved_ds = get_level_value_from_chart_meta(s)
 
     chart_data = {
         'game_type': game_type,
@@ -713,9 +675,15 @@ def fish_to_new_record_format(fish_record: dict, game_type: str = "maimai") -> d
 
     return record
 
-def get_jacket_image_from_url(image_code: str, source: str = "dxrating") -> Image.Image:
+# ============
+
+# Image download helpers
+
+def get_jacket_image_from_url(image_code: str, source: str = "otoge", game_type: str = "maimai") -> Image.Image:
     if source == "dxrating":
-        url = f"https://shama.dxrating.net/images/cover/v2/{image_code}.jpg"
+        url = get_dxrating_api_endpoint(game_type) + f"/{image_code}.jpg"
+    elif source == "otoge":
+        url = get_otoge_db_api_endpoint(game_type) + f"/{image_code}.jpg"
     else:
         raise ValueError("Unsupported image source.")
 
@@ -726,17 +694,3 @@ def get_jacket_image_from_url(image_code: str, source: str = "dxrating") -> Imag
     else:
         print(f"Failed to download image from {url}. Status code: {response.status_code}")
         raise FileNotFoundError
-
-# def download_metadata_chunithm():
-#     url = f"https://www.diving-fish.com/api/chunithmprober/music_data"
-#     response = requests.get(url)
-#     if response.status_code == 200:
-#         ret = response.json()
-#         with open(r"C:\ProjectsAndTricks\mai-gen-videob50\music_metadata\chunithm\chunithm_data_fish.json", 'w', encoding='utf-8') as f:
-#             json.dump(ret, f, ensure_ascii=False, indent=4)
-#     else:
-#         print(f"Failed to download metadata from {url}. Status code: {response.status_code}")
-#         raise FileNotFoundError
-
-# if __name__ == "__main__":
-#     download_metadata_chunithm()

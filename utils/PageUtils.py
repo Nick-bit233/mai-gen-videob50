@@ -8,7 +8,7 @@ import yaml
 import subprocess
 import platform
 from moviepy import VideoFileClip
-from utils.DataUtils import download_metadata, encode_song_id, CHART_TYPE_MAP_MAIMAI
+from utils.DataUtils import download_metadata, load_metadata
 from db_utils.DatabaseManager import DatabaseManager
 import streamlit as st
 from typing import Tuple
@@ -127,32 +127,19 @@ def load_style_config(game_type, config_file=DEFAULT_STYLE_CONFIG_FILE_PATH):
 
 
 def update_music_metadata():
-    # TODO: 替换为新的更新源
-    for game_type in ['maimaidx']:
-        metadata_dir = './music_metadata/maimaidx'
+    for game_type in ['maimai', 'chunithm']:
+        metadata_dir = './music_metadata/'
         if not os.path.exists(metadata_dir):
             os.makedirs(metadata_dir, exist_ok=True)
-        # json_path = os.path.join(metadata_dir, f"songs.json")
-        # latest = download_metadata(game_type)
-        # # 覆盖现有metadata信息
-        # with open(json_path, 'w', encoding='utf-8') as f:
-        #     json.dump(latest, f, ensure_ascii=False, indent=4)
+        filename, latest_data = download_metadata(game_type)
+        json_path = os.path.join(metadata_dir, filename)
+        # 覆盖现有metadata信息
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(latest_data, f, ensure_ascii=False, indent=4)
 
 
-def load_music_metadata(game_type="maimaidx"):
-    metadata_dir = f'./music_metadata/{game_type}'
-    if game_type == "maimaidx":
-        json_path = os.path.join(metadata_dir, f"dxdata.json")
-    elif game_type == "chunithm":
-        # TODO: 支持chunithm数据
-        json_path = os.path.join(metadata_dir, f"chunithm_data.json")
-    else:
-        raise ValueError(f"Unsupported game type: {game_type}")
-    if os.path.exists(json_path):
-        with open(json_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    else:
-        raise FileNotFoundError(f"Metadata file not found: {json_path}")
+def load_music_metadata(game_type="maimai"):
+    return load_metadata(game_type)
 
 
 def get_db_manager() -> "DatabaseManager":

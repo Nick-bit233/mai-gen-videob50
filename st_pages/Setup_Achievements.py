@@ -96,7 +96,7 @@ def view_b50_data(username: str, archive_name: str):
                     st.json(records[0])
         return
 
-    st.info(f"本窗口为只读模式。如需修改，请前往\"编辑/创建自定义{data_name}存档\"页面。")
+    st.info(f"本窗口为只读模式。如需修改，请前往\"编辑/创建自定义分表存档\"页面。")
 
     # 处理level_label
     for record in show_records:
@@ -190,8 +190,6 @@ def view_b50_data(username: str, archive_name: str):
             }
         )
 
-st.header("从第三方查分器获取分表")
-
 @st.dialog("删除存档确认")
 def confirm_delete_archive(username: str, archive_name: str):
     """Asks for confirmation and deletes an archive from the database."""
@@ -213,6 +211,7 @@ def handle_new_data(username: str, source: str, raw_file_path: str, params: dict
     Fetches new data from a source, then creates a new archive in the database.
     This function is a placeholder for the actual data fetching logic.
     """
+    st.session_state.data_created_step1 = False
     try:
         # 重构：查分，并创建存档，原始数据缓存于raw_file_path
         if source == "intl":
@@ -233,10 +232,10 @@ def handle_new_data(username: str, source: str, raw_file_path: str, params: dict
             st.error(f"不支持的数据源: {source}")
             return
         
-        ## debug: 存储new_archive_data
-        # debug_path = f"./b50_datas/debug_new_archive_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        # with open(debug_path, "w", encoding="utf-8") as f:
-        #     json.dump(new_archive_data, f, ensure_ascii=False, indent=4)
+        # debug: 存储new_archive_data
+        debug_path = f"./b50_datas/debug_new_archive_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        with open(debug_path, "w", encoding="utf-8") as f:
+            json.dump(new_archive_data, f, ensure_ascii=False, indent=4)
 
         # 调试信息：检查initial_records
         initial_records = new_archive_data.get('initial_records', [])
@@ -267,12 +266,10 @@ def handle_new_data(username: str, source: str, raw_file_path: str, params: dict
         
         st.session_state.archive_name = archive_name
         print(f"成功创建新存档: {archive_name}， ID: {archive_id}，保存了 {len(saved_records)} 条记录")
-        st.success(f"成功创建新存档: {archive_name}（{len(saved_records)} 条记录）")
-        st.session_state.data_updated_step1 = True
+        st.session_state.data_created_step1 = True
         st.rerun()
 
     except Exception as e:
-        st.session_state.data_updated_step1 = False
         st.error(f"创建新存档时发生错误: {e}")
         st.expander("错误详情").write(traceback.format_exc())
 
@@ -282,11 +279,10 @@ def handle_new_data(username: str, source: str, raw_file_path: str, params: dict
 
 # Start with getting G_type from session state
 G_type = st.session_state.get('game_type', 'maimai')
-data_name = "B30" if G_type == "chunithm" else "B50"
 
 # 页面头部
-st.header(f"📊 获取和管理{data_name}数据")
-st.markdown(f"**当前模式**: {get_game_type_text(G_type)} 视频生成模式")
+st.header(f"📊 获取和管理分表数据")
+st.markdown(f"> 您正在使用 **{get_game_type_text(G_type)}** 视频生成模式。")
 
 # --- 1. Username Input ---
 st.markdown("### 👤 用户设置")
@@ -429,7 +425,7 @@ if st.session_state.get('config_saved', False):
             with col2:
                 if st.button("👀 查看数据", key=f"view_data_{selected_archive_name}", use_container_width=True):
                     # 使用dialog装饰器包装函数
-                    @st.dialog(f"{data_name}数据查看", width="large")
+                    @st.dialog(f"分表数据查看", width="large")
                     def show_data_dialog():
                         view_b50_data(username, selected_archive_name)
                     show_data_dialog()
@@ -439,12 +435,12 @@ if st.session_state.get('config_saved', False):
 
     # --- 3. Create New Archives ---
     with tab2:
-        st.info(f"💡 从外部数据源获取您的{data_name}成绩，并创建一个新的本地存档。")
+        st.info(f"💡 从外部数据源获取您的分表成绩，并创建一个新的本地存档。")
         st.caption(f"当前用户名: **{username}**")
         
         # Data from FISH (CN Server)
         with st.expander("🌊 从水鱼查分器获取（国服）", expanded=True):
-            st.markdown(f"**数据源**: 水鱼查分器 | **用户名**: {username}")
+            st.markdown(f"**数据源**: [水鱼查分器](https://www.diving-fish.com/maimaidx/prober) | **用户名**: {username}")
             
             if G_type == "maimai":
                 b50_raw_file = f"{user_base_dir}/maimai_b50_raw.json"
@@ -464,7 +460,6 @@ if st.session_state.get('config_saved', False):
             
             elif G_type == "chunithm":
                 b50_raw_file = f"{user_base_dir}/chunithm_b50_raw.json"
-                st.warning("⚠️ 注意：水鱼中二节奏国服数据源目前无法获取N20数据，将默认仅获取B30数据。")
                 if st.button("📥 获取 B30 数据", key="fish_chunithm_b30", use_container_width=True, type="primary"):
                     with st.spinner("正在从水鱼查分器获取B30数据..."):
                         handle_new_data(username, source="fish", 
@@ -635,7 +630,7 @@ if st.session_state.get('config_saved', False):
                 
                 st.markdown(f"""
                 **说明：**
-                - 歌曲列表用于在"编辑/创建自定义{data_name}存档"页面中搜索和添加歌曲
+                - 歌曲列表用于在"编辑/创建自定义分表存档"页面中搜索和添加歌曲
                 - 建议定期更新以获取最新的曲目信息
                 - 更新可能需要一些时间，请耐心等待
                 """)
@@ -658,14 +653,17 @@ if st.session_state.get('config_saved', False):
                     else:
                         st.warning("输入框内容为空。")
             else:
-                st.warning(f"暂未支持从国际服/日服数据导入中二节奏数据，如有需要请在左侧导航栏使用自定义{data_name}功能手动配置。")
+                st.warning(f"暂未支持从国际服/日服数据导入中二节奏数据，如有需要请在左侧导航栏使用自定义分表功能手动配置。")
 
     # --- Navigation ---
     st.divider()
     if st.session_state.get('data_updated_step1', False) and st.session_state.get('archive_name'):
+        if st.session_state.get('data_created_step1', False):
+            st.success(f"已成功创建新存档：**{st.session_state.get('archive_name')}**！")
+        elif st.session_state.get('data_updated_step1', False):
+            st.success(f"已加载存档：**{st.session_state.get('archive_name')}**！")
+
         with st.container(border=True):
-            st.success(f"✅ 当前已加载存档: **{st.session_state.archive_name}**")
-            st.markdown("---")
             col_nav1, col_nav2 = st.columns([3, 1])
             with col_nav1:
                 st.write("确认存档无误后，请点击右侧按钮进入下一步。")

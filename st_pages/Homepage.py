@@ -137,6 +137,15 @@ if not os.path.exists(DEFAULT_STYLE_CONFIG_FILE_PATH):
 
 # 系统状态检查
 st.markdown("### 🔧 系统状态")
+
+# 元数据状态 - 根据当前游戏类型检查对应的元数据文件
+metadata_ready = False
+if G_type == "maimai":
+    metadata_path = "./music_metadata/mai_fusion_data.json"
+elif G_type == "chunithm":
+    metadata_path = "music_metadata/chuni_fusion_data.json"
+metadata_ready = os.path.exists(metadata_path)
+
 col_status1, col_status2 = st.columns(2)
 with col_status1:
     # 数据库状态
@@ -147,17 +156,6 @@ with col_status1:
         st.error(f"❌ 数据库初始化失败: {e}")
 
 with col_status2:
-    # 元数据状态 - 根据当前游戏类型检查对应的元数据文件
-    metadata_ready = False
-    if G_type == "maimai":
-        metadata_path = "./music_metadata/maimaidx/dxdata.json"
-        metadata_ready = os.path.exists(metadata_path)
-    elif G_type == "chunithm":
-        # chunithm 优先检查 lxns_songs.json，如果不存在则检查 otoge 文件
-        lxns_file = "./music_metadata/chunithm/lxns_songs.json"
-        otoge_file = "./music_metadata/chunithm/chuni_data_otoge_ex.json"
-        metadata_ready = os.path.exists(lxns_file) or os.path.exists(otoge_file)
-    
     if metadata_ready:
         st.success("📚 乐曲元数据已就绪")
     else:
@@ -176,52 +174,15 @@ with col_start2:
 # 数据导入（仅舞萌）
 if G_type == "maimai":
     with st.expander("📥 从旧版本导入数据", expanded=False):
-        st.write("如果您有旧版本的存档数据，可以点击下面的按钮，选择旧版本文件夹导入您的历史数据。")
-        st.warning("⚠️ 请勿重复导入数据，以免造成冗余损坏。")
-        if st.button("导入数据", key="import_data_btn"):
-            try:
-                old_data_migration() # TODO: 未开发完成
-                st.success("✅ 数据导入成功！")
-            except Exception as e:
-                st.error(f"❌ 导入数据时出错: {e}")
-
-# 乐曲元数据更新
-st.markdown("### 📚 乐曲元数据管理")
-with st.container(border=True):
-    try:
-        # 根据当前游戏类型检查对应的元数据文件
-        metadata_exists = False
-        if G_type == "maimai":
-            metadata_path = "./music_metadata/maimaidx/dxdata.json"
-            metadata_exists = os.path.exists(metadata_path)
-        elif G_type == "chunithm":
-            # chunithm 优先检查 lxns_songs.json，如果不存在则检查 otoge 文件
-            lxns_file = "./music_metadata/chunithm/lxns_songs.json"
-            otoge_file = "./music_metadata/chunithm/chuni_data_otoge_ex.json"
-            metadata_exists = os.path.exists(lxns_file) or os.path.exists(otoge_file)
-        
-        needs_update = should_update_metadata(24) or not metadata_exists
-        
-        if needs_update:
-            with st.spinner("正在更新乐曲元数据..."):
-                update_music_metadata()
-            st.success("✅ 乐曲元数据已更新")
-        else:
-            st.info("ℹ️ 最近已更新过乐曲元数据（24小时内），如有需要可以手动更新")
-            col_meta1, col_meta2 = st.columns([3, 1])
-            with col_meta1:
-                st.caption("乐曲元数据用于识别和匹配歌曲信息，建议定期更新以获取最新曲目")
-            with col_meta2:
-                if st.button("🔄 手动更新", key="manual_update_metadata"):
-                    with st.spinner("正在更新..."):
-                        update_music_metadata()
-                    st.success("✅ 乐曲元数据已更新")
-                    st.rerun()
-    except Exception as e:
-        st.error(f"❌ 更新乐曲元数据时出错: {e}")
-        with st.expander("错误详情"):
-            import traceback
-            st.code(traceback.format_exc())
+        st.info("💡 正在施工中，敬请期待")
+        # st.write("如果您有旧版本的存档数据，可以点击下面的按钮，选择旧版本文件夹导入您的历史数据。")
+        # st.warning("⚠️ 请勿重复导入数据，以免造成冗余损坏。")
+        # if st.button("导入数据", key="import_data_btn"):
+        #     try:
+        #         old_data_migration() # TODO: 未开发完成
+        #         st.success("✅ 数据导入成功！")
+        #     except Exception as e:
+        #         st.error(f"❌ 导入数据时出错: {e}")
 
 # 外观设置
 st.markdown("### 🎨 外观设置")
@@ -245,8 +206,36 @@ with st.container(border=True):
             change_theme(THEME_COLORS[G_type].get(theme, None))
             refresh_theme(theme_name=theme)
 
+# 乐曲元数据更新
+st.divider()
+st.markdown("#### 📚 更新乐曲元数据")
+with st.container(border=True):
+    try:
+        # 根据当前游戏类型检查对应的元数据文件
+        needs_update = should_update_metadata(24) or not metadata_ready
+        if needs_update:
+            with st.spinner("正在更新乐曲元数据..."):
+                update_music_metadata()
+            st.success("✅ 乐曲元数据已更新")
+        else:
+            st.info("ℹ️ 最近已更新过乐曲元数据（24小时内），如有需要可以手动更新")
+            col_meta1, col_meta2 = st.columns([3, 1])
+            with col_meta1:
+                st.caption("乐曲元数据用于识别和匹配歌曲信息，建议定期更新以获取最新曲目")
+            with col_meta2:
+                if st.button("🔄 手动更新", key="manual_update_metadata"):
+                    with st.spinner("正在更新..."):
+                        update_music_metadata()
+                    st.success("✅ 乐曲元数据已更新")
+                    st.rerun()
+    except Exception as e:
+        st.error(f"❌ 更新乐曲元数据时出错: {e}")
+        with st.expander("错误详情"):
+            import traceback
+            st.code(traceback.format_exc())            
+
 # 数据管理（危险区域）
-st.markdown("### ⚠️ 数据管理")
+st.markdown("#### ⚠️ 本地数据管理")
 with st.container(border=True):
     st.warning("⚠️ **危险操作区域**：以下操作将永久删除数据，请谨慎操作！")
     

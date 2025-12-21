@@ -8,7 +8,7 @@ from copy import deepcopy
 from utils.PathUtils import *
 from utils.PageUtils import get_db_manager, process_username, get_game_type_text
 from db_utils.DatabaseDataHandler import get_database_handler
-from utils.DataUtils import search_songs, level_label_to_index, chart_type_value2str
+from utils.DataUtils import load_metadata, search_songs, level_label_to_index, chart_type_value2str
 from utils.dxnet_extension import compute_chunithm_rating, compute_rating
 
 # 检查streamlit扩展组件安装情况
@@ -33,64 +33,8 @@ level_label_lists = {
 
 # 加载歌曲数据（根据游戏类型）
 @st.cache_data
-def load_songs_data(game_type="maimai"):
-    """
-    根据游戏类型加载歌曲元数据
-    
-    Args:
-        game_type: 游戏类型，"maimai" 或 "chunithm"
-    
-    Returns:
-        歌曲数据列表
-    """
-    try:
-        if game_type == "chunithm":
-            # 优先使用落雪查分器的metadata
-            lxns_file = "./music_metadata/chunithm/lxns_songs.json"
-            otoge_file = "./music_metadata/chunithm/chuni_data_otoge_ex.json"
-            
-            # 尝试加载lxns_songs.json
-            if os.path.exists(lxns_file):
-                try:
-                    with open(lxns_file, 'r', encoding='utf-8') as f:
-                        metadata = json.load(f)
-                    songs_data = metadata.get('songs', [])
-                    if isinstance(songs_data, list) and len(songs_data) > 0:
-                        return songs_data
-                except Exception as e:
-                    st.warning(f"加载lxns_songs.json失败: {e}，尝试使用备用文件")
-            
-            # 备用：使用otoge文件
-            if os.path.exists(otoge_file):
-                with open(otoge_file, 'r', encoding='utf-8') as f:
-                    songs_data = json.load(f)
-                # 确保返回列表格式
-                if isinstance(songs_data, list):
-                    return songs_data
-                elif isinstance(songs_data, dict):
-                    return songs_data.get('songs', [])
-                else:
-                    return []
-            
-            # 如果两个文件都不存在，返回空列表
-            return []
-        else:
-            # 舞萌DX使用 dxdata.json（返回字典格式，包含 'songs' 键）
-            with open("./music_metadata/maimaidx/dxdata.json", 'r', encoding='utf-8') as f:
-                songs_data = json.load(f)
-                # 如果是字典，提取 'songs' 键的值
-                if isinstance(songs_data, dict):
-                    return songs_data.get('songs', [])
-                elif isinstance(songs_data, list):
-                    return songs_data
-                else:
-                    return []
-    except FileNotFoundError as e:
-        st.error(f"加载歌曲数据失败: 文件不存在 - {e}")
-        return []
-    except Exception as e:
-        st.error(f"加载歌曲数据失败: {e}")
-        return []
+def get_songs_data(game_type="maimai"):
+    return load_metadata(game_type=game_type)
 
 # 获取当前游戏类型（从session_state或默认值）
 def get_current_game_type():
@@ -114,12 +58,6 @@ def get_current_game_type():
     else:
         return 'maimai'  # 默认值
 
-# 获取歌曲数据的辅助函数（在需要时动态加载）
-def get_songs_data(game_type=None):
-    """根据游戏类型获取歌曲数据"""
-    if game_type is None:
-        game_type = get_current_game_type()
-    return load_songs_data(game_type=game_type)
 
 @st.cache_data
 def get_chart_info_from_db(chart_id):
@@ -353,10 +291,10 @@ def get_showing_records(records, game_type="maimai"):
             note_designer = None
             try:
                 metadata = query_songs_metadata(game_type, r['title'], r['artist'])
-                if metadata and 'sheets' in metadata:
-                    sheets = metadata.get('sheets', [])
+                if metadata and 'charts_info' in metadata:
+                    sheets = metadata.get('charts_info', [])
                     if level_index < len(sheets):
-                        note_designer = sheets[level_index].get('noteDesigner', '')
+                        note_designer = sheets[level_index].get('note_designer', '')
             except:
                 pass
             r['note_designer'] = note_designer or ''
