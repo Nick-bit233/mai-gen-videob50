@@ -63,6 +63,8 @@ def chart_type_str2value(str_type: str, fish_record_style: bool = False) -> int:
         match str_type:
             case "std": # maimai
                 return 0
+            case "standard":
+                return 0
             case "dx":
                 return 1
             case "utage":
@@ -360,9 +362,30 @@ def find_song_by_id(encoded_id, songs_data):
 # ==========
 # TODO: 下列方法需要重构，直接从融合数据源中查找指定字段
 
+def get_level_value_from_chart_meta(chart_info: dict, latest_first=False) -> Union[float, None]:
+    """
+        从fusion metadata中获取指定谱面的定数，规则如下：
+        - 如果level_value_cn字段有效，优先返回该字段，否则返回level_value_latest字段
+        - 如果指定了latest_first=True，则优先返回level_value_latest字段，如果无效返回level_value_cn字段
+        - 校验：确保返回的定数为float类型，且大于0，否则返回None
+    """
+    lv_cn = chart_info.get('level_value_cn', 0.0)
+    lv_latest = chart_info.get('level_value_latest', 0.0)
+    if latest_first:
+        if isinstance(lv_latest, (float, int)) and lv_latest > 0:
+            return float(lv_latest)
+        elif isinstance(lv_cn, (float, int)) and lv_cn > 0:
+            return float(lv_cn)
+    else:
+        if isinstance(lv_cn, (float, int)) and lv_cn > 0:
+            return float(lv_cn)
+        elif isinstance(lv_latest, (float, int)) and lv_latest > 0:
+            return float(lv_latest)
+    return None
+
 def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tuple[str, dict]]:
     """
-    在歌曲数据中搜索匹配的歌曲。输出歌曲元数据格式与数据库Chart表一致。
+    在fusion metadata中搜索匹配的歌曲。输出歌曲元数据格式与数据库Chart表一致。
     
     Args:
         query (str): 要搜索的查询字符串
@@ -378,26 +401,26 @@ def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tupl
             # 合并所有别名为单个字符串
             all_acronyms = ",".join(song.get('searchAcronyms', []))
             # 匹配关键词
-            if query.lower() in song.get('songId', '').lower() \
+            if query.lower() in song.get('title', '').lower() \
             or query.lower() in song.get('artist', '').lower() \
             or query.lower() in all_acronyms:
                 
-                sheets = song.get('sheets', [])
+                sheets = song.get('charts_info', [])
                 for s in sheets:
                     # 选择难度和查询一致的谱面
-                    s_level_index = level_label_to_index(game_type, s['difficulty'])
+                    s_level_index = s.get('difficulty', -1)  # "difficulty": int index
                     if s_level_index == level_index:
-                        type = s.get('type', 'std')
+                        type = s.get('type', 'standard')  # "type": "dx" or "standard" or "utage"
                         result_string = f"{song.get('title', '')} [{type}]"
-                        total_notes = s.get('noteCounts', {}).get('total', 0)
+                        total_notes = s.get('note_counts', {}).get('total', 0)
                         if not total_notes:  # 防止数据源传入NULL
                             total_notes = 0
                         chart_data = {
                             'game_type': 'maimai',
-                            'song_id': song['songId'],
+                            'song_id': song.get('id', ''),
                             'chart_type': chart_type_str2value(type),
                             'level_index': level_index,
-                            'difficulty': str(s.get('internalLevelValue', 0.0)),
+                            'difficulty': str(get_level_value_from_chart_meta(s)),
                             'song_name': song.get('title', ''),
                             'artist': song.get('artist', None),
                             'max_dx_score': total_notes * 3,
@@ -406,29 +429,26 @@ def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tupl
                         results.append((result_string, chart_data))
         return results
     elif game_type == "chunithm":
-        # 搜索chunithm歌曲（使用lxns格式的metadata）
         for song in songs_data:
-            song_id = str(song.get('id', ''))
             title = song.get('title', '')
             artist = song.get('artist', '')
             
-            # 匹配关键词（歌曲ID、标题、艺术家）
-            if query.lower() in song_id.lower() \
-            or query.lower() in title.lower() \
+            # 匹配关键词（标题、艺术家）# TODO: 支持别名匹配
+            if query.lower() in title.lower() \
             or query.lower() in artist.lower():
                 
-                sheets = song.get('sheets', [])
+                sheets = song.get('charts_info', [])
                 for s in sheets:
                     # 选择难度和查询一致的谱面
-                    s_level_index = level_label_to_index(game_type, s.get('difficulty', 'EXPERT'))
+                    s_level_index = s.get('difficulty', -1)  # "difficulty": int index
                     if s_level_index == level_index:
                         result_string = f"{title}"
                         chart_data = {
                             'game_type': 'chunithm',
-                            'song_id': song.get('id'),
+                            'song_id': song.get('id', ''),
                             'chart_type': 0,  # Chunithm默认是normal (0)
                             'level_index': level_index,
-                            'difficulty': str(s.get('internalLevelValue', 0.0)),
+                            'difficulty': str(get_level_value_from_chart_meta(s)),
                             'song_name': title,
                             'artist': artist,
                             'max_dx_score': 0,  # Chunithm不使用dx_score
@@ -441,7 +461,8 @@ def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tupl
 
 def query_songs_metadata(game_type: str, title: str, artist: Union[str, None]=None) -> Union[dict, None]:
     """查询歌曲元数据（按 title 字段匹配；若存在重名则优先匹配 artist）"""
-    songs_data = load_metadata(game_type)  # 读取dxrating data（以maimai为例）
+    songs_data = load_metadata(game_type)  # 读取fusion metadata
+    # TODO：使用hash id 匹配
     matches = [song for song in songs_data if song.get('title') == title]
     if not matches:
         return None
@@ -454,6 +475,7 @@ def query_songs_metadata(game_type: str, title: str, artist: Union[str, None]=No
     # 未匹配到指定 artist 时返回第一个找到的
     return matches[0]
 
+# TODO: 重构，合并不同版本的查询函数
 def query_chunithm_ds_by_id(song_id: int, level_index: int) -> Union[float, None]:
     """
     根据歌曲ID和level_index从元数据中查找定数（internalLevelValue）
@@ -503,7 +525,6 @@ def query_chunithm_ds_by_id(song_id: int, level_index: int) -> Union[float, None
     except Exception as e:
         print(f"查询定数时出错: {e}")
         return None
-
 
 def query_chunithm_xv_ds_by_id(song_id: Union[int, str], level_index: int) -> Union[float, None]:
     """
@@ -581,30 +602,31 @@ def fish_to_new_record_format(fish_record: dict, game_type: str = "maimai") -> d
     chart_type = chart_type_str2value(fish_record.get('type', ''), fish_record_style=True)
 
     # Must have a title as song_id to query songs metadata
+    # TODO：改用哈希key作为唯一的song id，统一数据库和元数据的格式
     resolved_song_id = fish_record['title']
     if not resolved_song_id:
         raise ValueError("Fish record must have a 'title' field to resolve song_id.")
 
-    # query artist and other metadata from songs metadata
+    # query artist and other metadata from fusion metadata
     song = query_songs_metadata(game_type, fish_record.get('title'), fish_record.get('artist', None))
     if not song:
         raise LookupError(f"Cannot find song metadata for song_id: {resolved_song_id} in game_type: {game_type}")
     
     resolved_artist = song.get('artist', None)
     # try get total notes for counting maimai dx max score, for chunithm it's always 0 (for now)
-    resolved_total_notes = song.get('noteCounts', {}).get('total', 0)
+    resolved_total_notes = song.get('note_counts', {}).get('total', 0)
     if not resolved_total_notes:  # to avoid null from data source
         resolved_total_notes = 0
 
     resolved_ds = fish_record.get('ds', 0.0)
     # check difficulty from metadata if missing (only for maimai now)
     if resolved_ds is None or resolved_ds == 0.0 and game_type == "maimai":
-        sheets = song.get('sheets', [])
+        sheets = song.get('charts_info', [])
         for s in sheets:
-            s_level_index = level_label_to_index(game_type, s['difficulty'])
+            s_level_index = s.get('difficulty', -1)  # "difficulty": int index
             s_type = chart_type_str2value(s.get('type', ''))
             if s_level_index == level_idx and s_type == chart_type:
-                resolved_ds = s.get('internalLevelValue', 0.0)
+                resolved_ds = get_level_value_from_chart_meta(s)
 
     chart_data = {
         'game_type': game_type,

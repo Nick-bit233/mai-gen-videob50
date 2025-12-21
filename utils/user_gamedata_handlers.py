@@ -10,10 +10,7 @@ from utils.dxnet_extension import ChartManager
 from utils.DataUtils import (
     FC_PROXY_ENDPOINT, 
     fish_to_new_record_format,
-    query_songs_metadata,
-    chart_type_str2value,
-    level_label_to_index,
-    chunithm_fc_status_to_label
+    chart_type_str2value
 )
 
 LEVEL_LABEL = ["Basic", "Advanced", "Expert", "Master", "Re:MASTER"]
@@ -491,7 +488,7 @@ def generate_archive_data_from_fish(fish_data, params) -> dict:
                     raise ValueError("Error: 目前仅支持tag为ap的查询类型。")
     elif type == "chunithm":
         if query == "best":
-            # 解析fish chunithm数据（仅保留b30）
+            # 解析fish chunithm数据（TODO：支持N20）
             charts_data = fish_data['records']['b30']
             # 为初始化数据添加clip_title_name字段，
             for i in range(len(charts_data)):
