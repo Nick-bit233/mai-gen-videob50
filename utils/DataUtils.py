@@ -611,22 +611,31 @@ def fish_to_new_record_format(fish_record: dict, game_type: str = "maimai") -> d
     song = query_songs_metadata(game_type, fish_record.get('title'), fish_record.get('artist', None))
     if not song:
         raise LookupError(f"Cannot find song metadata for song_id: {resolved_song_id} in game_type: {game_type}")
-    
     resolved_artist = song.get('artist', None)
-    # try get total notes for counting maimai dx max score, for chunithm it's always 0 (for now)
-    resolved_total_notes = song.get('note_counts', {}).get('total', 0)
-    if not resolved_total_notes:  # to avoid null from data source
+
+    # find matching chart info
+    chart_infos = song.get('charts_info', [])
+    # print(f"Searching chart infos for song_id: {resolved_song_id}, level_index: {level_idx}, type: {fish_record.get('type', '')}, found {len(chart_infos)} charts.")
+    matched_chart_info = None
+    for ci in chart_infos:
+        ci_level_index = ci.get('difficulty', -1)  # "difficulty": int index
+        ci_type = chart_type_str2value(ci.get('type', ''), fish_record_style=False)  # "type": to unified int
+        if ci_level_index == level_idx and ci_type == chart_type:
+            # found matching chart info
+            matched_chart_info = ci
+            break
+    
+    if matched_chart_info:
+        # 计算max_dx_score
+        total_notes = matched_chart_info.get('note_counts', {}).get('total', 0) or 0  # 防止NULL
+        resolved_total_notes = total_notes
+    else:
         resolved_total_notes = 0
 
     resolved_ds = fish_record.get('ds', 0.0)
     # check difficulty from metadata if missing (only for maimai now)
     if resolved_ds is None or resolved_ds == 0.0 and game_type == "maimai":
-        sheets = song.get('charts_info', [])
-        for s in sheets:
-            s_level_index = s.get('difficulty', -1)  # "difficulty": int index
-            s_type = chart_type_str2value(s.get('type', ''))
-            if s_level_index == level_idx and s_type == chart_type:
-                resolved_ds = get_level_value_from_chart_meta(s)
+        resolved_ds = get_level_value_from_chart_meta(matched_chart_info) if matched_chart_info else 0.0
 
     chart_data = {
         'game_type': game_type,
@@ -683,7 +692,7 @@ def get_jacket_image_from_url(image_code: str, source: str = "otoge", game_type:
     if source == "dxrating":
         url = get_dxrating_api_endpoint(game_type) + f"/{image_code}.jpg"
     elif source == "otoge":
-        url = get_otoge_db_api_endpoint(game_type) + f"/{image_code}.jpg"
+        url = get_otoge_db_api_endpoint(game_type) + f"/{image_code}"  # otoge image_code includes file extension
     else:
         raise ValueError("Unsupported image source.")
 
