@@ -3,7 +3,7 @@ import os
 import traceback
 from datetime import datetime
 from utils.PageUtils import load_style_config, open_file_explorer, get_video_duration, read_global_config, get_game_type_text
-from utils.PathUtils import get_user_base_dir, get_user_media_dir
+from utils.PathUtils import get_user_media_dir
 from utils.DataUtils import get_valid_time_range
 from utils.VideoUtils import render_one_video_clip, get_video_preview_frame
 from db_utils.DatabaseDataHandler import get_database_handler

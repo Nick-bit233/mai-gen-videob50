@@ -9,22 +9,14 @@ import requests
 from utils.dxnet_extension import ChartManager
 from utils.DataUtils import (
     FC_PROXY_ENDPOINT, 
-    fish_to_new_record_format,
-    chart_type_str2value
+    fish_to_new_record_format, lxns_to_new_record_format,
 )
 
+LXNS_API_BASE = "https://maimai.lxns.net"  # 落雪查分器API基础URL
 LEVEL_LABEL = ["Basic", "Advanced", "Expert", "Master", "Re:MASTER"]
 
-# 辅助函数：格式化song_id
-def format_record_songid(record, raw_song_id, game_type="maimai"):
-    """格式化song_id，如果无效则返回原始值"""
-    if raw_song_id and isinstance(raw_song_id, int) and raw_song_id > 0:
-        return raw_song_id
-    # 如果song_id无效，返回原始值或0
-    return raw_song_id if raw_song_id else 0
-
 ################################################
-# Query B50 data from diving-fish.com (maimai dx)
+# Query Achievement data from diving-fish.com (maimai dx)
 ################################################
 def get_data_from_fish(username, params=None):
     """从水鱼获取数据"""
@@ -105,293 +97,89 @@ def get_data_from_fish(username, params=None):
         raise ValueError("Invalid game data type for diving-fish.com")
 
 ################################################
-# Query B30 data from lxns.net (落雪查分器)
+# Query Achievement data from lxns.net (落雪查分器)
 ################################################
-def get_data_from_lxns(friend_code, api_key, params=None):
+def get_data_from_lxns(friend_code, params=None):
     """
-    从落雪查分器获取中二节奏数据
+    从落雪查分器获取数据（使用开发者API函数调用）
+    """
+    type = params.get("type", "maimai")
+    query = params.get("query", "best")
+
+    response = requests.get(
+        FC_PROXY_ENDPOINT, 
+        params={
+            "source": "lxns",
+            "friend_code": friend_code, 
+            "game": type,
+            "query": query
+        }, 
+        timeout=60
+    )
+    response.raise_for_status()
+    return json.loads(response.text)
+
+def get_data_from_lxns_user(friend_code, api_key, params=None):
+    """
+    从落雪查分器**使用个人api**获取数据
     
     Args:
         friend_code: 玩家好友码
-        api_key: 开发者API密钥
+        api_key: 个人API密钥
         params: 查询参数
     """
     if params is None:
         params = {}
-    type = params.get("type", "chunithm")
+    type = params.get("type", "maimai")
     query = params.get("query", "best")
-    
-    if type == "chunithm":
+
+    headers = {
+        "X-User-Token": api_key
+    }
+
+    if type == "maimai":
+        if query == "best":
+            # 获取B35和B15分表数据
+            bests_url = f"{LXNS_API_BASE}/api/v0/user/maimai/player/bests"
+        elif query == "best_ap":
+            # AP B50数据接口**不支持个人api**
+            raise ValueError("落雪查分器个人API不支持获取maimai AP B50数据")
+        elif query == "all":
+            # 获取完整B50数据（仅支持落雪查分器个人api）
+            bests_url = f"{LXNS_API_BASE}/api/v0/user/maimai/player/scores"
+        else:
+            # 注意：落雪查分器不支持返回完整all类型的查询
+            raise ValueError("Invalid filter type for MAIMAI")
+    elif type == "chunithm":
         if query == "best":
             # 获取B30和N20分表数据
-            base_url = "https://maimai.lxns.net"
-            bests_url = f"{base_url}/api/v0/chunithm/player/{friend_code}/bests"
-            
-            headers = {
-                "Authorization": api_key
-            }
-            
-            response = requests.get(bests_url, headers=headers, timeout=10)
-            if response.status_code == 200:
-                return response.json()
-            elif response.status_code == 401:
-                error_data = response.json() if response.text else {}
-                return {"error": f"认证失败，请检查API密钥是否正确。错误信息：{error_data}"}
-            elif response.status_code == 403:
-                error_data = response.json() if response.text else {}
-                return {"error": f"权限不足，API密钥需要 allow_third_party_fetch_scores 权限。错误信息：{error_data}"}
-            else:
-                return {"error": f"请求落雪查分器数据失败，状态码: {response.status_code}，返回消息：{response.text[:200]}"}
+            bests_url = f"{LXNS_API_BASE}/api/v0/user/chunithm/player/bests" 
         else:
             raise ValueError("Invalid filter type for CHUNITHM")
     else:
         raise ValueError("Invalid game data type for lxns.net")
+    
+    print(f"Fetching data from lxns.net: {bests_url}")
+    
+    response = requests.get(bests_url, headers=headers, timeout=10)
+    if response.status_code == 200:
+        return response.json()
+    elif response.status_code == 401:
+        error_data = response.json() if response.text else {}
+        raise ValueError(f"认证失败，请检查API密钥是否正确。错误信息：{error_data}")
+    elif response.status_code == 403:
+        error_data = response.json() if response.text else {}
+        raise ValueError(f"权限不足，API密钥需要 allow_third_party_fetch_scores 权限。错误信息：{error_data}")
+    else:
+        raise ValueError(f"请求落雪查分器数据失败，状态码: {response.status_code}，返回消息：{response.text[:200]}")
 
 ################################################
-# Convert lxns score data to internal format
-################################################
-def convert_lxns_score_to_internal(lxns_score, index, clip_prefix="Best"):
-    """
-    将落雪查分器的成绩数据转换为项目内部格式
-    
-    Args:
-        lxns_score: 落雪查分器的成绩数据
-        index: 索引（从1开始）
-        clip_prefix: clip_name前缀（Best或New）
-    
-    Returns:
-        转换后的成绩记录
-    """
-    # 难度标签映射
-    LEVEL_LABEL_MAP = {
-        0: "BASIC",
-        1: "ADVANCED", 
-        2: "EXPERT",
-        3: "MASTER",
-        4: "ULTIMA"
-    }
-    
-    # 解析level字符串获取定数（中二节奏中，+号表示0.6的增量）
-    level_str = lxns_score.get("level", "0")
-    if "+" in level_str:
-        base_level = float(level_str.replace("+", ""))
-        ds = base_level + 0.6
-    else:
-        ds = float(level_str)
-    
-    # 计算达成率（chunithm满分是1010000）
-    score = lxns_score.get("score", 0)
-    achievements = (score / 1010000.0) * 100.0 if score > 0 else 0.0
-    
-    # 保持落雪查分器的原始格式（不缩写）
-    fc_status = lxns_score.get("full_combo", "")
-    fc = fc_status if fc_status else ""  # 保持原始值：fullcombo, alljustice 等
-    
-    # 保持落雪查分器的原始格式（不缩写）
-    full_chain_status = lxns_score.get("full_chain", "")
-    full_chain = full_chain_status if full_chain_status else ""  # 保持原始值：fullchain, alljustice 等
-    
-    # 获取难度索引和标签
-    level_index = lxns_score.get("level_index", 0)
-    level_label = LEVEL_LABEL_MAP.get(level_index, "EXPERT")
-    
-    # 构建记录
-    record = {
-        "title": lxns_score.get("song_name", ""),
-        "artist": None,  # 落雪API不返回artist，需要从metadata中获取
-        "level": level_str,
-        "ds": ds,
-        "level_index": level_index,
-        "level_label": level_label,
-        "achievements": achievements,
-        "ra": lxns_score.get("rating", 0),
-        "fc": fc,
-        "fs": full_chain,
-        "type": "STANDARD",
-        "clip_name": f"{clip_prefix}_{index}",
-        "clip_id": f"clip_{index}",
-        "rank": lxns_score.get("rank", ""),
-        "score": score,
-        "over_power": lxns_score.get("over_power", 0),
-        "clear": lxns_score.get("clear", ""),
-    }
-    
-    # 格式化song_id
-    raw_song_id = lxns_score.get("id")
-    record["song_id"] = format_record_songid(record, raw_song_id, game_type="chunithm")
-    # 保存原始song_id以便后续从元数据中查找定数
-    record["raw_song_id"] = raw_song_id
-    
-    return record
-
-################################################
-# Convert internal format to new format (with chart_data)
-################################################
-def convert_internal_to_new_format(internal_record: dict, game_type: str = "chunithm") -> dict:
-    """
-    将内部格式的记录转换为包含chart_data的新格式
-    
-    Args:
-        internal_record: 内部格式的记录（来自convert_lxns_score_to_internal）
-        game_type: 游戏类型
-    
-    Returns:
-        包含chart_data的新格式记录
-    """
-    import math
-    from utils.DataUtils import query_songs_metadata, query_chunithm_ds_by_id
-    
-    # 获取歌曲信息
-    song_name = internal_record.get("title", "")
-    song_id = internal_record.get("song_id", "")
-    artist = internal_record.get("artist", None)
-    level_index = internal_record.get("level_index", 0)
-    
-    # 获取原始song_id（来自落雪API的id字段）
-    raw_song_id = None
-    if isinstance(song_id, str) and song_id.startswith("chunithm_"):
-        # 从格式化的song_id中提取原始ID
-        try:
-            raw_song_id = int(song_id.replace("chunithm_", ""))
-        except:
-            pass
-    elif isinstance(song_id, int):
-        raw_song_id = song_id
-    
-    # 如果internal_record中有原始id，优先使用
-    if 'raw_song_id' in internal_record:
-        raw_song_id = internal_record['raw_song_id']
-    
-    # 查询歌曲元数据（如果失败，使用internal_record中的artist）
-    resolved_artist = artist
-    ds_from_metadata = None
-    try:
-        song = query_songs_metadata(game_type, song_name, artist)
-        if song:
-            resolved_artist = song.get('artist', artist)
-            # 如果有原始song_id，尝试从元数据中获取定数
-            if raw_song_id is not None:
-                ds_from_metadata = query_chunithm_ds_by_id(raw_song_id, level_index)
-    except Exception as e:
-        print(f"警告: 查询歌曲元数据失败 ({song_name}): {e}")
-    
-    # 确定定数值：优先使用元数据中的internalLevelValue，否则使用internal_record中的ds
-    if ds_from_metadata is not None:
-        ds_value = ds_from_metadata
-    else:
-        ds_value = internal_record.get("ds", 0.0)
-    
-    # 截断ra到两位小数（不四舍五入）
-    ra_value = internal_record.get("ra", 0.0)
-    if isinstance(ra_value, (int, float)):
-        ra_truncated = math.floor(ra_value * 100) / 100.0
-    else:
-        ra_truncated = ra_value
-    
-    # 构建chart_data
-    chart_type = chart_type_str2value("normal", fish_record_style=False)  # Chunithm默认是normal (0)
-    
-    chart_data = {
-        'game_type': game_type,
-        'song_id': song_id if song_id else song_name,  # 如果没有song_id，使用song_name
-        'chart_type': chart_type,
-        'level_index': level_index,
-        'difficulty': str(ds_value),  # 使用从元数据获取的定数
-        'song_name': song_name,
-        'artist': resolved_artist,
-        'max_dx_score': 0,  # Chunithm不使用dx_score
-        'video_path': None
-    }
-    
-    # 构建新格式的记录（保持原始格式的fc和fs值）
-    new_record = {
-        'chart_data': chart_data,
-        'order_in_archive': 0,  # 将在后续设置
-        'achievement': internal_record.get("score", 0),  # Chunithm使用score作为achievement
-        'fc_status': internal_record.get("fc", ""),  # 保持原始格式：fullcombo, alljustice等
-        'fs_status': internal_record.get("fs", ""),  # 保持原始格式：fullchain, alljustice等
-        'dx_score': None,
-        'dx_rating': 0,
-        'chuni_rating': ra_truncated,  # 使用截断后的ra值
-        'play_count': 0,
-        'clip_title_name': internal_record.get("clip_name", ""),
-        # 存储原始数据（包含所有原始字段）
-        'raw_data': json.dumps(internal_record, ensure_ascii=True)
-    }
-    
-    return new_record
-
-################################################
-# Generate config file from lxns data
-################################################
-def generate_config_file_from_lxns(lxns_data, params, friend_code):
-    """
-    从落雪查分器数据生成存档初始化数据配置
-    
-    Args:
-        lxns_data: 落雪查分器返回的数据
-        params: 查询参数
-        friend_code: 好友码
-    
-    Returns:
-        用于创建新存档的数据字典
-    """
-    type = params.get("type", "chunithm")
-    query = params.get("query", "best")
-    
-    if type == "chunithm":
-        if query == "best":
-            # 解析落雪查分器的B30和N20数据
-            if not isinstance(lxns_data, dict) or 'data' not in lxns_data:
-                raise ValueError("Error: 落雪查分器返回数据格式不正确")
-            
-            bests_data = lxns_data['data']
-            b30_list = bests_data.get('bests', [])  # Best 30
-            n20_list = bests_data.get('new_bests', [])  # New 20
-            
-            # 转换B30数据
-            b30_records = []
-            for i, score in enumerate(b30_list):
-                # 先转换为内部格式（保持原始格式的fc和fs）
-                internal_record = convert_lxns_score_to_internal(score, i + 1, "Best")
-                # 再转换为包含chart_data的新格式
-                new_format_record = convert_internal_to_new_format(internal_record, game_type="chunithm")
-                b30_records.append(new_format_record)
-            
-            # 只使用B30数据
-            all_records = b30_records
-            
-            # 使用好友码作为用户名
-            username = friend_code
-            
-            # 计算总rating（B30的rating总和）
-            total_rating = sum(record.get('chuni_rating', 0) for record in b30_records)
-            
-            # 设置order_in_archive（倒序，rating最高的在最前面）
-            for i, record in enumerate(b30_records):
-                record['order_in_archive'] = len(b30_records) - i
-            
-            new_archive_data = {
-                "game_type": "chunithm",
-                "sub_type": "best",
-                "username": username,
-                "rating_mai": 0,
-                "rating_chu": total_rating,
-                "game_version": "latest_CN",
-                "initial_records": all_records
-            }
-            
-            return new_archive_data
-        else:
-            raise ValueError("Error: 目前仅支持best查询类型。")
-    else:
-        raise ValueError("Invalid game data type for lxns.net")
-    
-################################################
-# B50 data handlers from diving-fish.com
+# B50 data handlers (entry point)
 ################################################
 def fetch_user_gamedata(raw_file_path, username, params, source="fish") -> dict:
     """Entry point function for st_pages"""
+    response_data = None
+
     if source == "fish":
         try:
             fish_data = get_data_from_fish(username, params)
@@ -407,21 +195,26 @@ def fetch_user_gamedata(raw_file_path, username, params, source="fish") -> dict:
             raise Exception(f"Error: 从水鱼获得B50数据失败。错误信息：{fish_data['error']}")
         if 'msg' in fish_data:
             raise Exception(f"Error: 从水鱼获得B50数据失败。错误信息：{fish_data['msg']}")
+        response_data = fish_data
         
-        # 解析查分器数据，并生成适用于写入数据库的配置字典
-        return generate_archive_data_from_fish(fish_data, params)
     elif source == "lxns":
         # 从落雪查分器获取数据
-        api_key = params.get("api_key", "")
-        friend_code = params.get("friend_code", username)  # 如果没有提供friend_code，使用username
+        local_user_api = params.get("local_user_api", False)  # 是否使用个人api_key
+        local_api_key = params.get("api_key", None)  # 允许通过参数传入个人api_key
+        friend_code = params.get("friend_code", None)
         
-        if not api_key:
-            raise Exception("Error: 使用落雪查分器需要提供API密钥")
-        
-        try:
-            lxns_data = get_data_from_lxns(friend_code, api_key, params)
-        except Exception as e:
-            raise Exception(f"Error: 从落雪查分器获取数据失败: {e}")
+        if local_user_api: # 使用个人api_key
+            if not local_api_key:
+                raise ValueError("Error: 必须提供落雪查分器的API密钥（api_key）。")    
+            try:
+                lxns_data = get_data_from_lxns_user(friend_code, local_api_key, params)
+            except Exception as e:
+                raise Exception(f"Error: 从落雪查分器获取数据失败: {e}")
+        else:  # 使用开发者函数调用
+            try:
+                lxns_data = get_data_from_lxns(friend_code, params)
+            except Exception as e:
+                raise Exception(f"Error: 从落雪查分器获取数据失败: {e}")
         
         # 缓存，写入raw_file_path
         with open(raw_file_path, "w", encoding="utf-8") as f:
@@ -429,21 +222,32 @@ def fetch_user_gamedata(raw_file_path, username, params, source="fish") -> dict:
         
         if 'error' in lxns_data:
             raise Exception(f"Error: 从落雪查分器获得数据失败。错误信息：{lxns_data['error']}")
-        
-        # 生成存档初始化数据配置
-        return generate_config_file_from_lxns(lxns_data, params, friend_code)
+        response_data = lxns_data
+
     else:
         raise ValueError("Invalid source for fetching game data")
+    
+    return generate_archive_data(
+        username = username,
+        response_data=response_data,
+        source=source,
+        params=params
+    )
 
 
-def generate_archive_data_from_fish(fish_data, params) -> dict:
-    """根据从水鱼获取的原始数据，生成存档初始化数据配置
+################################################
+# Data transformation from third-party to archive data
+################################################
+def generate_archive_data(username, response_data, source, params) -> dict:
+    """
+    提取原始数据，经过筛选和变换，构成数据库初始化配置
     Args:
-        fish_data (dict): 从水鱼获取的原始数据
-        data_file_path (str): 生成的数据文件路径
+        username (str): 用户名
+        response_data (dict): 来自第三方的数据响应
+        source (str): 数据来源，"fish"或"lxns"
         params (dict): 处理参数:
-            type (str): 游戏类型，"maimai"或"chuni"，默认为"maimai"
-            query (str): 查询数据数量，"best"或"all"，默认为"best"
+            type (str): 游戏类型，"maimai"或"chunithm"，默认为"maimai"
+            query (str): 查询数据数量，"best"/"all"/"best_ap"，默认为"best"
             filter (dict): 过滤条件，有效键值示例：{"tag": "ap", "top": 50}
         Returns: 
             new_archive (dict): 用于创建新存档的数据字典，包括存档信息和initial_records的列表
@@ -451,93 +255,148 @@ def generate_archive_data_from_fish(fish_data, params) -> dict:
     type = params.get("type", "maimai")
     query = params.get("query", "best")
     filter = params.get("filter", None)
+    if filter:
+        tag = filter.get("tag", None)
+        top_len = filter.get("top", 50)
 
     sub_type_tag = ""
     to_modify_data = None
 
     if type == "maimai":
-        if query == "best":
-            # 解析fish b50数据
-            charts_data = fish_data['charts']
-            b35_data = charts_data['sd']
-            b15_data = charts_data['dx']
+        charts_key = 'charts' if source == "fish" else 'data'
+        b35_key = 'sd' if source == "fish" else 'standard'
+        n20_key = 'dx' # both fish and lxns use 'dx' for B15 data
+        if query == "best" or query == "best_ap":  # TODO: 需要测试best_ap接口
+            # 解析b50数据
+            charts_data = response_data[charts_key]
+            b35_data = charts_data[b35_key]
+            b15_data = charts_data[n20_key]
             # 为初始化数据添加clip_title_name字段，
             for i in range(len(b35_data)):
                 song = b35_data[i]
-                song['clip_title_name'] = f"PastBest_{i + 1}"
+                song['clip_title_name'] = f"PastBest_{i + 1}" if query == "best" else f"PastAP_{i + 1}"
 
             for i in range(len(b15_data)):
                 song = b15_data[i]
-                song['clip_title_name'] = f"NewBest_{i + 1}" 
+                song['clip_title_name'] = f"NewBest_{i + 1}"  if query == "best" else f"NewAP_{i + 1}"
             # 合并b35_data和b15_data到同一列表
             to_modify_data = b35_data + b15_data
-            sub_type_tag = "best"
-        else:
+            sub_type_tag = "best" if query == "best" else "ap"
+        elif query == "all":
             if not filter:
                 raise ValueError("Error: 查询类型为all时，必须提供filter参数。")
             else:
-                tag = filter.get("tag", None)
-                top_len = filter.get("top", 50)
                 if tag == "ap":
-                    data_list = filter_maimai_ap_data(fish_data, top_len)
+                    data_list = filter_maimai_ap_data(response_data, source, match_version=False, top_len=top_len)
                     if len(data_list) < top_len:
                         print(f"Warning: 仅找到{len(data_list)}条AP数据，生成实际数据长度小于top_len={top_len}的配置。")
                     to_modify_data = data_list
                     sub_type_tag = "ap"
                 else:
                     raise ValueError("Error: 目前仅支持tag为ap的查询类型。")
+        else:
+            raise ValueError("Invalid filter type for MAIMAI DX")
     elif type == "chunithm":
+        charts_key = 'records' if source == "fish" else 'data'
+        b30_key = 'b30' if source == "fish" else 'bests'
+        n20_key = 'n20' if source == "fish" else 'new_bests'
         if query == "best":
             # 解析fish chunithm数据（TODO：支持N20）
-            charts_data = fish_data['records']['b30']
+            charts_data = response_data[charts_key]
+            b30_data = charts_data[b30_key]
+            n20_data = charts_data[n20_key]
             # 为初始化数据添加clip_title_name字段，
-            for i in range(len(charts_data)):
-                song = charts_data[i]
-                song['clip_title_name'] = f"Best_{i + 1}"
-            to_modify_data = charts_data
+            for i in range(len(b30_data)):
+                song = b30_data[i]
+                song['clip_title_name'] = f"PastBest_{i + 1}"
+
+            for i in range(len(n20_data)):
+                song = n20_data[i]
+                song['clip_title_name'] = f"NewBest_{i + 1}"
+            to_modify_data = b30_data + n20_data
             sub_type_tag = "best"
         else:
+            # TODO：添加筛除N20，仅B30的filter
             raise ValueError("Error: 暂未支持chunithm ap列表查询。")
     else:
         raise ValueError("Invalid game data type for diving-fish.com")
     
     # 统一转换为数据库记录格式
-    new_record_data = [fish_to_new_record_format(song, type) for song in to_modify_data]
+    if source == "fish":
+        new_record_data = [fish_to_new_record_format(song, type) for song in to_modify_data]
+    elif source == "lxns":
+        new_record_data = [lxns_to_new_record_format(song, type) for song in to_modify_data]
 
-    # 构建默认排序（默认倒序） # TODO: 该项排序可以自定义，记得取消生成视频时的排序选项
+    # 构建默认排序（默认倒序） # TODO: 该项排序可以自定义
     for i in range(len(new_record_data)):
         new_record_data[i]['order_in_archive'] = len(new_record_data) - i
+
+    # 获取元数据
+    archive_username = response_data.get('username', username)
+    if source == "lxns":
+        rating = counting_total_rating_lxns(response_data, game_type=type)
+    else:
+        rating = response_data.get('rating', 0)
 
     new_archive_data = {
         "game_type": type,
         "sub_type": sub_type_tag,
-        "username": fish_data['username'],
-        "rating_mai": fish_data['rating'] if type == "maimai" else 0,
-        "rating_chu": fish_data['rating'] if type == "chunithm" else 0.0,
-        "game_version": "latest_CN",
+        "username": archive_username,
+        "rating_mai": rating if type == "maimai" else 0,
+        "rating_chu": rating if type == "chunithm" else 0.0,
+        "game_version": "latest_CN",  # TODO：规范化这个版本命名
         "initial_records": new_record_data
     }
     return new_archive_data
 
+def counting_total_rating_lxns(response_data, game_type="maimai"):
+    """
+    计算落雪查分器返回数据的总rating
+    """
+    if game_type == "maimai":
+        total_rating = 0
+        data = response_data.get('data', {})
+        if 'standard_total' in data and 'dx_total' in data:
+            total_rating = data.get('standard_total', 0) + data.get('dx_total', 0)
+        else:
+            total_rating = 0  # TODO：对于从全部成绩中抽取的分表（如ap b50），完善计算逻辑
+    elif game_type == "chunithm":
+        total_rating = 0.0
+        data = response_data.get('data', {})
+        charts = data.get('bests', []) + data.get('new_bests', [])
+        for record in charts:
+            rating = record.get("chuni_rating", 0.0)
+            total_rating += rating
+        total_rating = total_rating / len(charts) if charts else 0.0
+    return total_rating
 
-def filter_maimai_ap_data(fish_data, top_len=50):
-    charts_data = fish_data['records']
+def filter_maimai_ap_data(data, source, match_version=False, top_len=50):
+    """
+    筛选maimai AP数据: TODO: 实现match_version，即与普通分表一样区分新旧版本
+    """
+    charts_data = data['records'] if source == "fish" else data['data']
 
     # 解析AP数据
     ap_data = []
     for song in charts_data:
-        fc_flag = song.get('fc', '').lower()
+        fc_flag = song.get('fc', '')
+        if fc_flag is None:
+            continue
         if 'ap' in fc_flag or 'app' in fc_flag:
             ap_data.append(song)
 
     # 按照ra值降序排序，如果ra值相同，按照ds定数降序排序
-    ap_data.sort(key=lambda x: (x.get('ra', 0), x.get('ds', 0)), reverse=True)
+    if source == "fish":
+        ap_data.sort(key=lambda x: (x.get('ra', 0), x.get('ds', 0)), reverse=True)
+    else:  # lxns data，词条中没有ds字段，仅使用dx_rating排序
+        ap_data.sort(key=lambda x: (x.get('dx_rating', 0)), reverse=True)
     ap_data = ap_data[:top_len]
 
     for song in ap_data:
         index = ap_data.index(song) + 1
-        # 将level_label转换为全大写
-        song["level_label"] = song.get("level_label", "").upper()
+        if source == "fish":
+            # 将level_label转换为全大写
+            song["level_label"] = song.get("level_label", "").upper()
         # 添加clip_id字段
         song['clip_title_name'] = f"APBest_{index}"
 
@@ -555,8 +414,7 @@ def find_origin_b50(username, file_type = "html", game_type = "maimai"):
         file_type: 文件类型，html 或 json
         game_type: 游戏类型，maimai 或 chunithm
     """
-    data_dir = "chunithm_datas" if game_type == "chunithm" else "b50_datas"
-    DATA_ROOT = f"./{data_dir}/{username}"
+    DATA_ROOT = f"./b50_datas/{username}"
     # 1. Check for the {username}.html
     user_data_file = f"{DATA_ROOT}/{username}.{file_type}"
     if os.path.exists(user_data_file):

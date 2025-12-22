@@ -224,7 +224,7 @@ def get_showing_records(records, game_type="maimai"):
     """根据存档类型，返回排序后的记录列表"""
     import math
     from utils.PageUtils import format_chunithm_rank
-    from utils.DataUtils import query_songs_metadata, query_chunithm_ds_by_id
+    from utils.DataUtils import query_songs_metadata, get_level_value_from_chart_meta
     
     ret_records = deepcopy(records)
     for r in ret_records:
@@ -259,33 +259,17 @@ def get_showing_records(records, game_type="maimai"):
                     pass
             elif isinstance(song_id, int):
                 raw_song_id = song_id
+
+            
             
             # 从元数据获取定数
-            ds_from_metadata = None
-            if raw_song_id is not None:
-                try:
-                    ds_from_metadata = query_chunithm_ds_by_id(raw_song_id, level_index)
-                except:
-                    pass
-            
-            if ds_from_metadata is not None:
-                r['ds'] = ds_from_metadata
-            else:
-                difficulty_str = chart_data.get('difficulty', '0.0')
-                try:
-                    r['ds'] = float(difficulty_str)
-                except:
-                    r['ds'] = 0.0
-            
-            # 从XV元数据获取新定数（lev_XX_i）
-            from utils.DataUtils import query_chunithm_xv_ds_by_id
-            xv_ds = None
-            if raw_song_id is not None:
-                try:
-                    xv_ds = query_chunithm_xv_ds_by_id(raw_song_id, level_index)
-                except:
-                    pass
-            r['xv_ds'] = xv_ds if xv_ds is not None else 0.0
+            chart_info = query_songs_metadata(game_type, r['title'], r['artist'])
+            ds_cur = get_level_value_from_chart_meta(chart_info)
+            ds_next = get_level_value_from_chart_meta(chart_info, latest_first=True)
+
+            # TODO: 正确修改key名称
+            r['ds'] = ds_cur if ds_cur is not None else 0.0
+            r['xv_ds'] = ds_next if ds_next is not None else 0.0
             
             # 从元数据获取谱师
             note_designer = None

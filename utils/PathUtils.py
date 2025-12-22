@@ -1,30 +1,18 @@
 import os
 from datetime import datetime
 
-def get_data_dir_name(game_type="maimai"):
-    """根据游戏类型返回数据目录名称"""
-    if game_type == "chunithm":
-        return "chunithm_datas"
-    else:
-        return "b50_datas"
 
-def get_user_base_dir(username, game_type="maimai"):
-    """Get base directory for user data
-    
-    Args:
-        username: 用户名
-        game_type: 游戏类型，maimai 或 chunithm
+def get_user_base_dir(username):
     """
-    data_dir = get_data_dir_name(game_type)
-    return os.path.join(data_dir, username)
+    Get base directory for user data, use same base dir for all game_type
+    """
+    return os.path.join("b50_datas", username)
 
 def get_user_media_dir(username, game_type="maimai"):
     """Get media directory for user data"""
     # TODO: convert_to safe username
-    base_dir = get_user_base_dir(username, game_type)
-    raw_file_name = "chunithm_b30_raw.json" if game_type == "chunithm" else "b50_raw.json"
+    base_dir = get_user_base_dir(username)
     return {
-        'raw_file': os.path.join(base_dir, raw_file_name),
         'image_dir': os.path.join(base_dir, "images"),
         'output_video_dir': os.path.join(base_dir, "videos"),
     }
@@ -37,7 +25,7 @@ def get_user_version_dir(username, timestamp=None, game_type="maimai"):
     # 如果没有指定时间戳，则使用当前时间，返回新的时间戳组成的文件夹路径
     if timestamp is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return os.path.join(get_user_base_dir(username, game_type), timestamp)
+    return os.path.join(get_user_base_dir(username), timestamp)
 @DeprecationWarning
 def get_data_paths(username, timestamp=None, game_type="maimai"):
     """Get all data file paths for a specific version"""
@@ -56,7 +44,7 @@ def get_data_paths(username, timestamp=None, game_type="maimai"):
 @DeprecationWarning
 def get_user_versions(username, game_type="maimai"):
     """Get all available versions for a user"""
-    base_dir = get_user_base_dir(username, game_type)
+    base_dir = get_user_base_dir(username)
     if not os.path.exists(base_dir):
         return []
     versions = [d for d in os.listdir(base_dir) 

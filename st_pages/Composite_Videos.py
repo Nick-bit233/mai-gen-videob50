@@ -4,7 +4,7 @@ import os
 
 from datetime import datetime
 from utils.PageUtils import load_style_config, open_file_explorer, read_global_config, write_global_config, get_game_type_text
-from utils.PathUtils import get_user_base_dir, get_user_media_dir
+from utils.PathUtils import get_user_media_dir
 from utils.VideoUtils import render_all_video_clips, combine_full_video_direct, combine_full_video_ffmpeg_concat_gl, render_complete_full_video
 from db_utils.DatabaseDataHandler import get_database_handler
 

@@ -18,7 +18,7 @@ G_type = st.session_state.get('game_type', 'maimai')
 
 def st_generate_b50_images(placeholder, user_id, archive_id, save_paths):
     # get data format for image generation scripts
-    # TODO：maimai可能需要在此处下载曲绘资源，需要处理可能的等待时间
+    # maimai可能需要在此处下载曲绘资源，需要处理可能的等待时间
     with st.spinner("正在获取资源数据，请稍等 ……"):
         game_type, records = db_handler.load_archive_for_image_generation(archive_id)
 
@@ -208,10 +208,10 @@ if archive_id:
                 open_file_explorer(absolute_path)
         
         # 检查是否已有图片
-        if os.path.exists(image_path):
-            existing_images = [f for f in os.listdir(image_path) if f.endswith('.png')]
-            if existing_images:
-                st.info(f"ℹ️ 检测到已有 {len(existing_images)} 张图片。如需重新生成，请点击上方按钮。")
+        # if os.path.exists(image_path):
+        #     existing_images = [f for f in os.listdir(image_path) if f.endswith('.png')]
+        #     if existing_images:
+        #         st.info(f"ℹ️ 检测到已有 {len(existing_images)} 张图片。如需重新生成，请点击上方按钮。")
     
     st.divider()
     st.markdown("### ➡️ 下一步")

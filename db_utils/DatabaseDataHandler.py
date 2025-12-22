@@ -502,10 +502,7 @@ class DatabaseDataHandler:
                     'clip_name': record['clip_title_name'] or f"Clip_{record['order_in_archive'] + 1}"
                 }
                 ret_records.append(reformat_data)
-        elif game_type == 'chunithm':
-            from utils.DataUtils import query_chunithm_ds_by_id
-            import json
-            
+        elif game_type == 'chunithm':       
             for record in records:
                 title = record.get('song_name', '')
                 artist = record.get('artist', '')
