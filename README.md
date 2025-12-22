@@ -20,6 +20,8 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 > 本预览版本的中二落雪查分器支持，以及YouTube Data API v3和部分界面重构支持，由[caiccu](https://github.com/CAICCU)提供
 
+目前预览版的中二生成支持可能存在问题，如果您需要制作中二分表，请移步由 [〖天蓝〗](https://github.com/MetallicAllex) 修改的 [chu-gen-videob30](https://github.com/MetallicAllex/chu-gen-videob30/tree/get_userdata_FC)
+
 ---
 
 `v0.6.5`版本更新：
