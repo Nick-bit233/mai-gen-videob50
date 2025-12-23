@@ -48,7 +48,13 @@ def get_data_from_fish(username, params=None):
             
         elif query == "all":
             # get all data from thrid party function call
-            response = requests.get(FC_PROXY_ENDPOINT, params={"username": username, "game": "maimai"}, timeout=60)
+            response = requests.get(FC_PROXY_ENDPOINT, 
+                                    params={
+                                        "source": "fish",
+                                        "username": username, 
+                                        "game": "maimai",
+                                        "query": "all"
+                                    }, timeout=60)
             response.raise_for_status()
 
             return json.loads(response.text)
@@ -86,11 +92,16 @@ def get_data_from_fish(username, params=None):
             else:
                 return {"error": f"请求水鱼数据失败，状态码: {response.status_code}，返回消息：{response.json()}"}
         elif query == "all":
-            # TODO: update Function Call service.
-            raise NotImplementedError("Function Call service for CHUNITHM is not implemented yet.")
-            # response = requests.get(FC_PROXY_ENDPOINT, params={"username": username, "game": "chunithm"}, timeout=60)
-            # response.raise_for_status()
-            # return json.loads(response.text)
+            response = requests.get(FC_PROXY_ENDPOINT, 
+                                    params={
+                                        "source": "fish",
+                                        "username": username, 
+                                        "game": "chunithm",
+                                        "query": "all"
+                                    }, timeout=60)
+            response.raise_for_status()
+
+            return json.loads(response.text)
         else:
             raise ValueError("Invalid filter type for CHUNITHM")
     else:
@@ -116,7 +127,7 @@ def get_data_from_lxns(friend_code, params=None):
         }, 
         timeout=60
     )
-    response.raise_for_status()
+    response.raise_for_status() 
     return json.loads(response.text)
 
 def get_data_from_lxns_user(friend_code, api_key, params=None):
@@ -124,7 +135,7 @@ def get_data_from_lxns_user(friend_code, api_key, params=None):
     从落雪查分器**使用个人api**获取数据
     
     Args:
-        friend_code: 玩家好友码
+        friend_code: 玩家好友码 (事实上使用个人api并不需要)
         api_key: 个人API密钥
         params: 查询参数
     """
@@ -187,14 +198,14 @@ def fetch_user_gamedata(raw_file_path, username, params, source="fish") -> dict:
             print("Error: 读取 JSON 文件时发生错误，请检查数据格式。")
             return None
         
+        # 函数计算返回体的错误处理
+        if fish_data.get('error') and 'msg' in fish_data:
+            raise Exception(f"Error: 从水鱼获得B50数据失败，请将以下错误信息报告给开发者。错误信息：{fish_data['msg']}")
+        
         # 缓存，写入b50_raw_file
         with open(raw_file_path, "w", encoding="utf-8") as f:
             json.dump(fish_data, f, ensure_ascii=False, indent=4)
 
-        if 'error' in fish_data:
-            raise Exception(f"Error: 从水鱼获得B50数据失败。错误信息：{fish_data['error']}")
-        if 'msg' in fish_data:
-            raise Exception(f"Error: 从水鱼获得B50数据失败。错误信息：{fish_data['msg']}")
         response_data = fish_data
         
     elif source == "lxns":
@@ -205,7 +216,7 @@ def fetch_user_gamedata(raw_file_path, username, params, source="fish") -> dict:
         
         if local_user_api: # 使用个人api_key
             if not local_api_key:
-                raise ValueError("Error: 必须提供落雪查分器的API密钥（api_key）。")    
+                raise ValueError("Error: 使用个人api时，必须提供落雪查分器的API密钥（api_key）。")    
             try:
                 lxns_data = get_data_from_lxns_user(friend_code, local_api_key, params)
             except Exception as e:
@@ -216,12 +227,17 @@ def fetch_user_gamedata(raw_file_path, username, params, source="fish") -> dict:
             except Exception as e:
                 raise Exception(f"Error: 从落雪查分器获取数据失败: {e}")
         
+        # 函数计算返回体的错误处理
+        if lxns_data.get('error') and 'msg' in lxns_data:
+            if "404 Client Error" in lxns_data['msg']:
+                raise Exception(f"Error: 落雪查分器用户不存在，请检查好友码是否正确。错误信息：{lxns_data['msg']}")
+            else:
+                raise Exception(f"Error: 从落雪查分器获得数据失败，请将以下错误信息报告给开发者。错误信息：{lxns_data['msg']}")
+        
         # 缓存，写入raw_file_path
         with open(raw_file_path, "w", encoding="utf-8") as f:
             json.dump(lxns_data, f, ensure_ascii=False, indent=4)
         
-        if 'error' in lxns_data:
-            raise Exception(f"Error: 从落雪查分器获得数据失败。错误信息：{lxns_data['error']}")
         response_data = lxns_data
 
     else:

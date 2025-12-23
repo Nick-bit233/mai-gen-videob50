@@ -201,9 +201,14 @@ def lxns_api_instructions():
                 
     1. 进入“账号详情”页面。
     2. 在页面中找到“好友码”一栏，复制您的好友码，粘贴到输入框即可。
-                
+    """)
+
+    st.warning("关于个人API密钥：通常情况下，您不需要使用个人API密钥即可从落雪查分器获取数据，\
+               如果常规查询失败或遇到访问限制时，参考下方说明使用个人API密钥。")
+
+    st.markdown("""
     ### 如何获取落雪查分器的个人API密钥？
-    
+
     1. 进入“账号详情”页面。
     2. 找到“第三方应用”选项，点击下方生成个人 API 密钥按钮，生成并复制个人API密钥。
     3. 将该密钥粘贴到输入框中，点击保存凭证按钮。
@@ -248,7 +253,7 @@ def handle_new_data(username: str, source: str, raw_file_path: str, params: dict
                 source=source,
                 username=username,
                 params=params,
-        )
+            )
         else:
             st.error(f"不支持的数据源: {source}")
             return
