@@ -381,8 +381,9 @@ def counting_total_rating_lxns(response_data, game_type="maimai"):
         data = response_data.get('data', {})
         charts = data.get('bests', []) + data.get('new_bests', [])
         for record in charts:
-            rating = record.get("chuni_rating", 0.0)
+            rating = record.get("rating", 0.0)
             total_rating += rating
+        # TODO： 分表长度依照查询选项（B50/B30/记录长度）调整
         total_rating = total_rating / len(charts) if charts else 0.0
     return total_rating
 
