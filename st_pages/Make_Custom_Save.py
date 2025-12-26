@@ -108,24 +108,31 @@ def create_empty_record(chart_data, index, game_type="maimai"):
                 "clip_title_name": f"{prefix}_{index}" if add_name_index else prefix,
                 "play_count": 0
             }
+    
+    # 自动填充理论值成绩
+    try:
+        ds = float(chart_data.get('difficulty', 0))
+    except (ValueError, TypeError):
+        ds = 0.0
 
     match game_type:
         case "maimai":
+            max_acc, max_dx_score = (101.0, chart_data.get('max_dx_score', 0)) if auto_all_perfect else (0.0, 0)
             record_template.update({
-                "achievement": 101.0000 if auto_all_perfect else 0.0,
+                "achievement": max_acc,
                 "fc_status": "app" if auto_all_perfect else "",
                 "fs_status": "fsdp" if auto_all_perfect else "",
-                "dx_rating": 0,
-                "dx_score": 0,
+                "dx_rating": compute_rating(ds=ds, score=max_acc) if auto_all_perfect else 0,
+                "dx_score": max_dx_score,
             })
         case "chunithm":
+            max_score = 1010000 if auto_all_perfect else 0
             record_template.update({
-                "achievement": 1010000 if auto_all_perfect else 0,
+                "achievement": max_score,
                 "fc_status": "ajc" if auto_all_perfect else "",
                 "fs_status": "fcr" if auto_all_perfect else "",
-                "chuni_rating": 0.0,
+                "chuni_rating": compute_chunithm_rating(ds=ds, score=max_score) if auto_all_perfect else 0.0,
             })
-            
         case _:
             raise ValueError(f"Unsupported game type: {game_type}")
     
@@ -217,103 +224,17 @@ def get_chart_info_str(record: dict, game_type="maimai", split='|'):
     title = chart_data.get('song_name', '')
     chart_type = chart_type_value2str(chart_data.get('chart_type', -1), game_type=game_type)
     level_label = level_label_lists[game_type][chart_data.get('level_index', '3')] # default to MASTER
-    return f"{title} {split} {level_label} [{chart_type}]"
+    if game_type == "maimai":
+        return f"{title} {split} {level_label} [{chart_type}]"
+    else: 
+        return f"{title} {split} {level_label}"
 
 
 def get_showing_records(records, game_type="maimai"):
-    """根据存档类型，返回排序后的记录列表"""
-    import math
-    from utils.PageUtils import format_chunithm_rank
-    from utils.DataUtils import query_songs_metadata, get_level_value_from_chart_meta
-    
+    """ 为记录添加字段，主要为chart_info，目的是为了在页面中显示曲目的相关信息 """
     ret_records = deepcopy(records)
     for r in ret_records:
-        if game_type == "maimai":
-            r['chart_info'] = get_chart_info_str(r, game_type=game_type, split='|')
-        elif game_type == "chunithm":
-            # 为chunithm添加单独的字段，与查看页面一致
-            chart_data = r.get('chart_data', {})
-            r['title'] = chart_data.get('song_name', '')
-            r['artist'] = chart_data.get('artist', '')
-            
-            # 获取难度标签
-            level_index = chart_data.get('level_index', 0)
-            level_label_list = level_label_lists.get(game_type, [])
-            if level_index < len(level_label_list):
-                r['level_label'] = level_label_list[level_index]
-            else:
-                r['level_label'] = "UNKNOWN"
-            
-            # 从元数据获取定数和谱师
-            song_id = chart_data.get('song_id', '')
-            raw_song_id = None
-            if isinstance(song_id, str) and song_id.startswith("chunithm_"):
-                try:
-                    raw_song_id = int(song_id.replace("chunithm_", ""))
-                except:
-                    pass
-            elif isinstance(song_id, str) and song_id.isdigit():
-                try:
-                    raw_song_id = int(song_id)
-                except:
-                    pass
-            elif isinstance(song_id, int):
-                raw_song_id = song_id
-
-            
-            
-            # 从元数据获取定数
-            chart_info = query_songs_metadata(game_type, r['title'], r['artist'])
-            ds_cur = get_level_value_from_chart_meta(chart_info)
-            ds_next = get_level_value_from_chart_meta(chart_info, latest_first=True)
-
-            # TODO: 正确修改key名称
-            r['ds'] = ds_cur if ds_cur is not None else 0.0
-            r['xv_ds'] = ds_next if ds_next is not None else 0.0
-            
-            # 从元数据获取谱师
-            note_designer = None
-            try:
-                metadata = query_songs_metadata(game_type, r['title'], r['artist'])
-                if metadata and 'charts_info' in metadata:
-                    sheets = metadata.get('charts_info', [])
-                    if level_index < len(sheets):
-                        note_designer = sheets[level_index].get('note_designer', '')
-            except:
-                pass
-            r['note_designer'] = note_designer or ''
-            
-            # 从raw_data获取rank
-            raw_data = r.get('raw_data', {})
-            if isinstance(raw_data, str):
-                try:
-                    import json
-                    raw_data = json.loads(raw_data)
-                except:
-                    raw_data = {}
-            elif not isinstance(raw_data, dict):
-                raw_data = {}
-            
-            rank = raw_data.get('rank', '') if isinstance(raw_data, dict) else ''
-            r['rank_display'] = format_chunithm_rank(rank)
-            
-            # 确保字段名一致
-            r['score'] = r.get('achievement', 0)
-            r['combo_type'] = r.get('fc_status', '')
-            r['chain_type'] = r.get('fs_status', '')
-            
-            # 截断ra到两位小数
-            ra_value = r.get('chuni_rating', 0.0)
-            if isinstance(ra_value, (int, float)):
-                r['ra'] = math.floor(ra_value * 100) / 100.0
-            else:
-                r['ra'] = ra_value
-            
-            # 确保play_count字段被保留（如果存在playCount，也映射到play_count）
-            if 'playCount' in r and 'play_count' not in r:
-                r['play_count'] = r.get('playCount', 0)
-            elif 'play_count' not in r:
-                r['play_count'] = r.get('playCount', 0)
+        r['chart_info'] = get_chart_info_str(r, game_type=game_type, split='|')
 
     return ret_records
 
@@ -331,25 +252,7 @@ def update_record_grid(grid, external_placeholder):
         for r in to_update_records:
             # 还原chart_data
             r.pop('chart_info', None) # 清理chart_info
-            # 清理chunithm的显示字段
-            if game_type == "chunithm":
-                r.pop('title', None)
-                r.pop('artist', None)
-                r.pop('level_label', None)
-                r.pop('note_designer', None)
-                r.pop('rank_display', None)
-                # 将score映射回achievement
-                if 'score' in r:
-                    r['achievement'] = r.pop('score')
-                # 将combo_type和chain_type映射回fc_status和fs_status
-                if 'combo_type' in r:
-                    r['fc_status'] = r.pop('combo_type')
-                if 'chain_type' in r:
-                    r['fs_status'] = r.pop('chain_type')
-                # 将ra映射回chuni_rating
-                if 'ra' in r:
-                    r['chuni_rating'] = r.pop('ra')
-            
+
             chart_data = r.get('chart_data', {})
             if isinstance(chart_data, str):  # 反序列化解析chart_data
                 try:
@@ -372,16 +275,10 @@ def update_record_grid(grid, external_placeholder):
                 if r.get('achievement', 0) >= 101.0:
                     r['dx_score'] = chart_data.get('max_dx_score', 0)
             if game_type == "chunithm":
-                # 使用编辑后的ds值（如果存在）更新chart_data中的difficulty
-                if 'ds' in r:
-                    chart_data['difficulty'] = str(r['ds'])
-                    r['chart_data'] = chart_data
-                    ds = r['ds']
                 # 计算chuni_rating
                 r['chuni_rating'] = compute_chunithm_rating(ds=ds, score=r.get('achievement', 0))
             
             # 确保play_count字段被保留（deepcopy应该已经保留了，但这里明确确保）
-            # play_count字段不需要特殊处理，应该已经被deepcopy保留了
             if 'play_count' not in r and 'playCount' in r:
                 r['play_count'] = r.get('playCount', 0)
 
@@ -435,6 +332,8 @@ def update_record_grid(grid, external_placeholder):
                         "dx_rating": st.column_config.NumberColumn(
                             "单曲Ra",
                             format="%d",
+                            disabled=True,
+                            help="你不需要填写此字段，它会根据达成率自动计算",
                             width=65,
                             required=True
                         ),
@@ -457,16 +356,10 @@ def update_record_grid(grid, external_placeholder):
                 edited_records = st.data_editor(
                     st.session_state._editor_showing_records,
                     key=editor_key,
-                    column_order=["clip_title_name", "title", "artist", "level_label", "ds", "xv_ds", "note_designer", 
-                                 "score", "rank_display", "combo_type", "chain_type", "ra", "play_count"],
+                    column_order=["clip_title_name", "chart_info", "score", "combo_type", "chain_type", "chuni_rating", "play_count"],
                     column_config={
                         "clip_title_name": "抬头标题",
-                        "title": "曲名",
-                        "artist": "曲师",
-                        "level_label": st.column_config.TextColumn("难度", width=80),
-                        "ds": st.column_config.NumberColumn("定数", format="%.1f", width=60),
-                        "xv_ds": st.column_config.NumberColumn("新定数", format="%.1f", width=60),
-                        "note_designer": "谱师",
+                        "chart_info": "乐曲信息",
                         "score": st.column_config.NumberColumn(
                             "分数",
                             min_value=0,
@@ -474,13 +367,14 @@ def update_record_grid(grid, external_placeholder):
                             format="%d",
                             required=True
                         ),
-                        "rank_display": st.column_config.TextColumn("RANK", width=60),
                         "combo_type": st.column_config.TextColumn("FC标", width=80),
                         "chain_type": st.column_config.TextColumn("FullChain标", width=100),
-                        "ra": st.column_config.NumberColumn(
+                        "chuni_rating": st.column_config.NumberColumn(
                             "单曲Ra",
                             format="%.2f",
+                            disabled=True,
                             width=75,
+                            help="你不需要填写此字段，它会根据分数自动计算",
                             required=True
                         ),
                         "play_count": st.column_config.NumberColumn(
@@ -496,7 +390,7 @@ def update_record_grid(grid, external_placeholder):
                 raise ValueError(f"Unsupported game type: {game_type}")
             
             # st.data_editor 会自动管理状态，edited_records 就是最新的编辑结果
-            # 我们不需要在这里做任何处理，只在提交时才处理
+            # 不需要在这里做任何处理，只在提交时才处理
 
             # 记录管理按钮
             col1, col2 = st.columns(2)
@@ -589,6 +483,7 @@ def update_sortable_items(sort_grid):
             with col1:
                 if st.button("应用排序更改", key="apply_sort_changes_manual"):
                     st.session_state.records = sorted_records
+                    st.session_state._force_refresh_editor = True
                     save_current_archive()
                     st.rerun()
             with col2:
@@ -599,6 +494,7 @@ def update_sortable_items(sort_grid):
                     # （手动）同步clip name
                     for i, record in enumerate(st.session_state.records):
                         record["clip_title_name"] = f"{st.session_state.generate_setting['clip_prefix']}_{i+1}"
+                    st.session_state._force_refresh_editor = True
                     save_current_archive()
                     st.rerun()
 
@@ -615,7 +511,6 @@ def update_sortable_items(sort_grid):
                 sorted_records.append(st.session_state.records[index])
 
 def clear_all_records_achievement():    
-    # TODO: 修改格式和处理中二
     if st.session_state.archive_meta.get("game_type", "maimai") == "maimai":
         for record in st.session_state.records:
             record["achievements"] = 0.0
@@ -623,6 +518,14 @@ def clear_all_records_achievement():
             record["fs_status"] = ""
             record["dx_rating"] = 0
             record["dx_score"] = 0
+    elif st.session_state.archive_meta.get("game_type", "maimai") == "chunithm":
+        for record in st.session_state.records:
+            record["score"] = 0
+            record["combo_type"] = ""
+            record["chain_type"] = ""
+            record["chuni_rating"] = 0.0
+    else:
+        pass
     # 清除编辑器缓存，强制重新生成显示数据
     if '_editor_showing_records' in st.session_state:
         del st.session_state._editor_showing_records
@@ -837,9 +740,15 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
                 if st.button("🎚️ 按定数降序排序"):
                     st.session_state.records.sort(key=lambda r: r.get('chart_data', {}).get('difficulty', 0), reverse=True)
                     st.rerun()
-            if st.button("🔁 反转当前分表顺序"):
-                st.session_state.records.reverse()
-                st.rerun()
+            col4, col5 = st.columns(2)
+            with col5:
+                text = "交换B35/B15顺序" if cur_game_type == "maimai" else "交换B30/N20顺序"
+                if st.button(f"🔃 {text}"):
+                    pass  # TODO：实现交换
+            with col4:
+                if st.button("🔁 反转整个分表排序"):
+                    st.session_state.records.reverse()
+                    st.rerun()
             st.divider() # 添加分割线
             if st.button("应用排序更改", key="apply_sort_changes_auto"):
                 save_current_archive()

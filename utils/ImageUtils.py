@@ -422,10 +422,10 @@ class ChuniImageGenerater:
                 
     def ChainStatusLoader(self, chain_status: str = ""):
         match chain_status:
-            case _ if chain_status == 'fc':
+            case _ if chain_status == 'fc':  # 金full chain
                 with Image.open(f"{self.image_root_path}/ComboStatus/21.png") as _chainStatus:
                     return _chainStatus.copy()
-            case _ if chain_status == 'fcr':
+            case _ if chain_status == 'fcr': # 铂金full chain
                 with Image.open(f"{self.image_root_path}/ComboStatus/22.png") as _chainStatus:
                     return _chainStatus.copy()
             case _:

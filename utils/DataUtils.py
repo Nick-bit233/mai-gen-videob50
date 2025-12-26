@@ -407,11 +407,16 @@ def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tupl
     results = []
     if game_type == "maimai":
         for song in songs_data:
+            title = song.get('title', '')
+            artist = song.get('artist', '')
+            if not title or not artist:
+                continue
+
             # 合并所有别名为单个字符串
             all_acronyms = ",".join(song.get('searchAcronyms', []))
             # 匹配关键词
-            if query.lower() in song.get('title', '').lower() \
-            or query.lower() in song.get('artist', '').lower() \
+            if query.lower() in title.lower() \
+            or query.lower() in artist.lower() \
             or query.lower() in all_acronyms:
                 
                 sheets = song.get('charts_info', [])
@@ -441,6 +446,8 @@ def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tupl
         for song in songs_data:
             title = song.get('title', '')
             artist = song.get('artist', '')
+            if not title or not artist:
+                continue
             
             # 匹配关键词（标题、艺术家）# TODO: 支持别名匹配
             if query.lower() in title.lower() \
@@ -460,7 +467,7 @@ def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tupl
                             'difficulty': str(get_level_value_from_chart_meta(s)),
                             'song_name': title,
                             'artist': artist,
-                            'max_dx_score': 0,  # Chunithm不使用dx_score
+                            'max_dx_score': 0,  # 不使用dx_score
                             'video_path': None
                         }
                         results.append((result_string, chart_data))
