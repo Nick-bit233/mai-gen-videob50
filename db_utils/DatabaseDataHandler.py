@@ -108,15 +108,237 @@ class DatabaseDataHandler:
         return archives
 
     def delete_save_archive(self, username: str, archive_name: str) -> bool:
-        """Delete a save archive"""
+        """Delete a save archive and associated local files"""
         user_id = self.set_current_user(username)
         archive_id = self.load_save_archive(username, archive_name)
         
         if archive_id:
+            # Delete from database (cascade will handle related records, configs, etc.)
             with self.db.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('DELETE FROM archives WHERE id = ?', (archive_id,))
                 conn.commit()
+            
+            # Delete local files associated with this archive
+            try:
+                from utils.PathUtils import get_user_base_dir
+                from utils.PageUtils import process_username
+                import re
+                
+                # Get safe username for file paths
+                _, safe_username = process_username(username)
+                user_base_dir = get_user_base_dir(safe_username)
+                
+                if not os.path.exists(user_base_dir):
+                    return True  # Directory doesn't exist, nothing to delete
+                
+                # Try to extract timestamp from archive_name
+                # Archive name format: {username}_{game_type}_{sub_type}_{timestamp}
+                # Or might be just timestamp in some cases
+                timestamp_match = re.search(r'(\d{8}_\d{6})$', archive_name)
+                timestamp = timestamp_match.group(1) if timestamp_match else None
+                
+                # Extract source type from archive_name (if available)
+                # Archive name might contain source info like: {username}_chunithm_best_{timestamp}
+                source_match = re.search(r'_(lxns|fish|dxnet)_', archive_name)
+                source = source_match.group(1) if source_match else None
+                
+                # Delete archive-specific files (try multiple naming patterns)
+                archive_files = [
+                    f"{archive_name}_raw.json",
+                    f"{archive_name}_raw.yaml",
+                    f"{archive_name}_raw.yml",
+                ]
+                
+                # If we found a timestamp, also try timestamp-based naming
+                if timestamp:
+                    archive_files.extend([
+                        f"{timestamp}_raw.json",
+                        f"{timestamp}_raw.yaml",
+                        f"{timestamp}_raw.yml",
+                    ])
+                
+                deleted_files = []
+                for filename in archive_files:
+                    file_path = os.path.join(user_base_dir, filename)
+                    if os.path.exists(file_path):
+                        try:
+                            os.remove(file_path)
+                            deleted_files.append(filename)
+                        except Exception as e:
+                            print(f"Warning: Failed to delete file {file_path}: {e}")
+                
+                # Delete debug files in b50_datas root directory
+                # Debug file format: debug_new_archive_{source}_{timestamp}.json
+                if timestamp:
+                    debug_files = []
+                    if source:
+                        debug_files.append(f"debug_new_archive_{source}_{timestamp}.json")
+                    # Also try without source (in case source wasn't in archive_name)
+                    debug_files.append(f"debug_new_archive_lxns_{timestamp}.json")
+                    debug_files.append(f"debug_new_archive_fish_{timestamp}.json")
+                    debug_files.append(f"debug_new_archive_dxnet_{timestamp}.json")
+                    
+                    b50_datas_root = "b50_datas"
+                    if os.path.exists(b50_datas_root):
+                        for debug_filename in debug_files:
+                            debug_path = os.path.join(b50_datas_root, debug_filename)
+                            if os.path.exists(debug_path):
+                                try:
+                                    os.remove(debug_path)
+                                    deleted_files.append(f"debug: {debug_filename}")
+                                except Exception as e:
+                                    print(f"Warning: Failed to delete debug file {debug_path}: {e}")
+                
+                # Check if user has any remaining archives
+                remaining_archives = self.get_user_save_list(username)
+                
+                # If no archives remain, clean up the user directory
+                if not remaining_archives and os.path.exists(user_base_dir):
+                    try:
+                        import shutil
+                        
+                        # Delete images folder if it exists
+                        images_dir = os.path.join(user_base_dir, "images")
+                        if os.path.exists(images_dir):
+                            try:
+                                shutil.rmtree(images_dir)
+                            except Exception as e:
+                                print(f"Warning: Failed to delete images directory: {e}")
+                        
+                        # Check what files remain
+                        if os.path.exists(user_base_dir):
+                            try:
+                                remaining_items = os.listdir(user_base_dir)
+                            except OSError:
+                                remaining_items = []
+                            
+                            # Keep only credential/config files
+                            important_files = ['lxns_credentials.json', 'credentials.json']
+                            
+                            # Delete all non-important files and folders
+                            for item in remaining_items:
+                                item_path = os.path.join(user_base_dir, item)
+                                if item not in important_files:
+                                    try:
+                                        if os.path.isfile(item_path):
+                                            os.remove(item_path)
+                                        elif os.path.isdir(item_path):
+                                            shutil.rmtree(item_path)
+                                    except Exception as e:
+                                        print(f"Warning: Failed to delete {item_path}: {e}")
+                            
+                            # Check what remains after deletion
+                            if os.path.exists(user_base_dir):
+                                try:
+                                    final_items = os.listdir(user_base_dir)
+                                except OSError:
+                                    final_items = []
+                                
+                                # If directory is empty or only has important files, delete the directory
+                                if not final_items or all(f in important_files for f in final_items):
+                                    # Move important files to parent directory (if any)
+                                    if final_items:
+                                        b50_datas_root = os.path.dirname(user_base_dir)
+                                        for important_file in final_items:
+                                            if important_file in important_files:
+                                                src = os.path.join(user_base_dir, important_file)
+                                                dst = os.path.join(b50_datas_root, important_file)
+                                                try:
+                                                    # Check if destination already exists
+                                                    if os.path.exists(dst):
+                                                        os.remove(dst)  # Remove existing file first
+                                                    shutil.move(src, dst)
+                                                except Exception as e:
+                                                    print(f"Warning: Failed to move {important_file}: {e}")
+                                    
+                                    # Delete the empty user directory
+                                    # Retry logic to handle potential race conditions or file system delays
+                                    max_retries = 3
+                                    deleted = False
+                                    for attempt in range(max_retries):
+                                        try:
+                                            if not os.path.exists(user_base_dir):
+                                                deleted = True
+                                                break  # Already deleted
+                                            
+                                            # Double check it's empty before deleting
+                                            try:
+                                                remaining_check = os.listdir(user_base_dir)
+                                                if not remaining_check:
+                                                    # Directory is empty, try to delete
+                                                    os.rmdir(user_base_dir)
+                                                    if not os.path.exists(user_base_dir):
+                                                        print(f"Successfully removed empty user directory: {user_base_dir}")
+                                                        deleted = True
+                                                        break  # Success
+                                                    else:
+                                                        # Still exists, might be a timing issue
+                                                        if attempt < max_retries - 1:
+                                                            import time
+                                                            time.sleep(0.2)  # Brief delay before retry
+                                                            continue
+                                                else:
+                                                    # Still has files, try to delete them
+                                                    for remaining_item in remaining_check:
+                                                        remaining_path = os.path.join(user_base_dir, remaining_item)
+                                                        try:
+                                                            if os.path.isfile(remaining_path):
+                                                                os.remove(remaining_path)
+                                                            elif os.path.isdir(remaining_path):
+                                                                shutil.rmtree(remaining_path)
+                                                        except Exception as del_e:
+                                                            print(f"Warning: Failed to delete remaining item {remaining_path}: {del_e}")
+                                                    
+                                                    # Check again after cleanup
+                                                    if attempt < max_retries - 1:
+                                                        import time
+                                                        time.sleep(0.2)
+                                                        continue
+                                                    else:
+                                                        # Final check
+                                                        final_check = os.listdir(user_base_dir) if os.path.exists(user_base_dir) else []
+                                                        if final_check:
+                                                            print(f"Warning: Directory {user_base_dir} still contains items after cleanup: {final_check}")
+                                                        else:
+                                                            # Now empty, try one more time
+                                                            try:
+                                                                os.rmdir(user_base_dir)
+                                                                deleted = True
+                                                            except:
+                                                                pass
+                                            except OSError as e:
+                                                if attempt < max_retries - 1:
+                                                    import time
+                                                    time.sleep(0.2)
+                                                    continue
+                                                else:
+                                                    print(f"Warning: Cannot list directory {user_base_dir}: {e}")
+                                            
+                                        except Exception as e:
+                                            if attempt < max_retries - 1:
+                                                import time
+                                                time.sleep(0.2)
+                                                continue
+                                            else:
+                                                print(f"Warning: Failed to remove user directory {user_base_dir}: {e}")
+                                                import traceback
+                                                traceback.print_exc()
+                                    
+                                    if not deleted and os.path.exists(user_base_dir):
+                                        print(f"Warning: Could not delete user directory {user_base_dir} after {max_retries} attempts")
+                            
+                    except Exception as e:
+                        print(f"Warning: Failed to clean up user directory: {e}")
+                        import traceback
+                        traceback.print_exc()
+                
+            except Exception as e:
+                # If file deletion fails, log but don't fail the operation
+                print(f"Warning: Failed to delete local files for archive {archive_name}: {e}")
+                import traceback
+                traceback.print_exc()
+            
             return True
         return False
 
@@ -153,6 +375,18 @@ class DatabaseDataHandler:
                 chart_id=chart_id,
                 chart_data={
                     'video_path': video_path
+                }
+            )
+            return self.load_chart_by_id(chart_id)
+        return None
+    
+    def update_chart_video_search_results(self, chart_id: int, video_search_results: List[Dict]) -> Optional[Dict]:
+        """Update video search results list for a chart."""
+        if video_search_results is not None:
+            self.db.update_chart(
+                chart_id=chart_id,
+                chart_data={
+                    'video_search_results': video_search_results
                 }
             )
             return self.load_chart_by_id(chart_id)
@@ -395,11 +629,24 @@ class DatabaseDataHandler:
                 metadata = query_songs_metadata(game_type, title, artist)
                 chart_info = metadata.get('charts_info', [])
                 # 获取定数信息
+                ds_value_cur = None
+                ds_value_next = None
                 for chart_meta in chart_info:
                     chart_level_index = chart_meta.get('difficulty', -1)
                     if chart_level_index == level_index:
                         ds_value_cur = get_level_value_from_chart_meta(chart_meta)
                         ds_value_next = get_level_value_from_chart_meta(chart_meta, latest_first=True)
+                        break  # 找到匹配的谱面后退出循环
+                
+                # 如果仍未找到定数，尝试从chart的difficulty字段获取（作为备用）
+                if ds_value_cur is None:
+                    chart_difficulty = record.get('difficulty', '0.0')
+                    try:
+                        ds_value_cur = float(chart_difficulty) if chart_difficulty else 0.0
+                    except (ValueError, TypeError):
+                        ds_value_cur = 0.0
+                if ds_value_next is None:
+                    ds_value_next = ds_value_cur  # 如果新定数未找到，使用当前定数
                 
                 # 注意：chunithm暂时不需要获取jacket（曲绘）
                 
@@ -422,6 +669,14 @@ class DatabaseDataHandler:
                 chain_type = ''
                 if fs_status_raw:
                     fs_status_lower = str(fs_status_raw).lower().strip()
+                    if fs_status_lower == 'ac':
+                        fs_status_lower = 'fullchain'
+                    elif fs_status_lower == 'fs':
+                        fs_status_lower = 'fullchainrainbow'
+                    if fs_status_lower == 'ac':
+                        fs_status_lower = 'fullchain'
+                    elif fs_status_lower == 'fs':
+                        fs_status_lower = 'fullchainrainbow'
                     # 精确匹配落雪API的可能值
                     if fs_status_lower == 'fullchain' or fs_status_lower == 'fc':
                         chain_type = 'fc'   # Full Chain
@@ -431,6 +686,10 @@ class DatabaseDataHandler:
                         # alljustice 也可以作为 chain_type
                         chain_type = 'fc'   # 使用 Full Chain 表示
                 
+                # 确保定数值是float类型，如果为None则设为0.0
+                ds_cur_value = float(ds_value_cur) if ds_value_cur is not None else 0.0
+                ds_next_value = float(ds_value_next) if ds_value_next is not None else (ds_cur_value if ds_value_cur is not None else 0.0)
+                
                 reformat_data = {
                     'chart_id': record.get('chart_id'),
                     'song_id': song_id,
@@ -438,8 +697,10 @@ class DatabaseDataHandler:
                     'artist': artist,
                     'type': record.get('chart_type', 0),
                     'level_index': level_index,
-                    'ds_cur': ds_value_cur,
-                    'ds_next': ds_value_next,
+                    'ds_cur': ds_cur_value,
+                    'ds_next': ds_next_value,
+                    'ds': ds_cur_value,  # 兼容字段：当前定数
+                    'xv_ds': ds_next_value,  # 兼容字段：新定数
                     'score': int(record.get('achievement', 0)), # Format as integer score
                     'combo_type': combo_type,  # 转换后的格式：fc, aj, ajc
                     'chain_type': chain_type,  # 转换后的格式：fc, fcr
@@ -508,16 +769,84 @@ class DatabaseDataHandler:
                 artist = record.get('artist', '')
                 level_index = record.get('level_index', 0)
                 song_id = record.get('song_id', '')
+                chart_id = record.get('chart_id')
                 
-                # 获取歌曲元数据
+                # 优先从数据库的chart表获取信息
+                chart_data = None
+                note_designer = ''
+                ds_value_cur = None
+                if chart_id:
+                    chart_data = self.db.get_chart(chart_id)
+                    if chart_data:
+                        note_designer = chart_data.get('note_designer', '')
+                        # 从数据库获取当前定数
+                        chart_difficulty = chart_data.get('difficulty', '0.0')
+                        try:
+                            ds_value_cur = float(chart_difficulty) if chart_difficulty else None
+                        except (ValueError, TypeError):
+                            ds_value_cur = None
+                
+                # 获取歌曲元数据（用于获取新定数和其他信息）
                 metadata = query_songs_metadata(game_type, title, artist)
                 chart_info = metadata.get('charts_info', [])
-                # 获取定数信息
+                
+                # 从元数据中获取新定数
+                ds_value_next = None
+                matched_chart_meta = None
                 for chart_meta in chart_info:
                     chart_level_index = chart_meta.get('difficulty', -1)
                     if chart_level_index == level_index:
-                        ds_value_cur = get_level_value_from_chart_meta(chart_meta)
+                        matched_chart_meta = chart_meta
+                        # 如果数据库中没有定数，从元数据获取当前定数
+                        if ds_value_cur is None:
+                            ds_value_cur = get_level_value_from_chart_meta(chart_meta)
+                        # 从元数据获取新定数
                         ds_value_next = get_level_value_from_chart_meta(chart_meta, latest_first=True)
+                        break  # 找到匹配的谱面后退出循环
+                
+                # 如果仍未找到定数，尝试从record的difficulty字段获取（作为最后备用）
+                if ds_value_cur is None:
+                    chart_difficulty = record.get('difficulty', '0.0')
+                    try:
+                        ds_value_cur = float(chart_difficulty) if chart_difficulty else 0.0
+                    except (ValueError, TypeError):
+                        ds_value_cur = 0.0
+                if ds_value_next is None:
+                    ds_value_next = ds_value_cur  # 如果新定数未找到，使用当前定数
+                
+                # 从元数据获取note_designer（如果数据库中没有）
+                if not note_designer and matched_chart_meta:
+                    note_designer = matched_chart_meta.get('note_designer', '')
+                
+                # 计算rank（根据achievement分数）
+                achievement = record.get('achievement', 0)
+                rank = ''
+                if achievement >= 1009500:
+                    rank = 'SSS+'
+                elif achievement >= 1009000:
+                    rank = 'SSS'
+                elif achievement >= 1007500:
+                    rank = 'SS+'
+                elif achievement >= 1005000:
+                    rank = 'SS'
+                elif achievement >= 1000000:
+                    rank = 'S+'
+                elif achievement >= 975000:
+                    rank = 'S'
+                elif achievement >= 950000:
+                    rank = 'AAA+'
+                elif achievement >= 925000:
+                    rank = 'AAA'
+                elif achievement >= 900000:
+                    rank = 'AA+'
+                elif achievement >= 800000:
+                    rank = 'AA'
+                elif achievement >= 700000:
+                    rank = 'A+'
+                elif achievement >= 600000:
+                    rank = 'A'
+                else:
+                    rank = 'B'
                 
                 # 注意：chunithm暂时不需要获取jacket（曲绘）
                 
@@ -525,7 +854,7 @@ class DatabaseDataHandler:
                 # 落雪API返回的值可能是: null, "fullcombo", "alljustice" 等
                 # TODO: 不要在数据库脚本中进行查分器的格式转换，此逻辑应该在DataUtils中处理
                 fc_status_raw = record.get('fc_status', '')
-                combo_type = ''
+                combo_type = 'none'  # 默认为 'none'，而不是空字符串
                 if fc_status_raw:
                     fc_status_lower = str(fc_status_raw).lower().strip()
                     # 精确匹配落雪API的可能值
@@ -537,7 +866,7 @@ class DatabaseDataHandler:
                         combo_type = 'fc'   # Full Combo
                 
                 fs_status_raw = record.get('fs_status', '')
-                chain_type = ''
+                chain_type = 'none'  # 默认为 'none'，而不是空字符串
                 if fs_status_raw:
                     fs_status_lower = str(fs_status_raw).lower().strip()
                     # 精确匹配落雪API的可能值
@@ -549,18 +878,26 @@ class DatabaseDataHandler:
                         # alljustice 也可以作为 chain_type
                         chain_type = 'fc'   # 使用 Full Chain 表示
                 
+                # 确保定数值是float类型，如果为None则设为0.0
+                ds_cur_value = float(ds_value_cur) if ds_value_cur is not None else 0.0
+                ds_next_value = float(ds_value_next) if ds_value_next is not None else (ds_cur_value if ds_value_cur is not None else 0.0)
+                
                 reformat_data = {
-                    'chart_id': record.get('chart_id'),
+                    'chart_id': chart_id,
                     'song_id': song_id,
                     'title': title,
                     'artist': artist,
                     'type': record.get('chart_type', 0),
                     'level_index': level_index,
-                    'ds_cur': ds_value_cur,
-                    'ds_next': ds_value_next,
+                    'ds_cur': ds_cur_value,
+                    'ds_next': ds_next_value,
+                    'ds': ds_cur_value,  # 兼容字段：当前定数
+                    'xv_ds': ds_next_value,  # 兼容字段：新定数
+                    'note_designer': note_designer,  # 谱师
+                    'rank': rank,  # RANK等级
                     'score': int(record.get('achievement', 0)), # Format as integer score
-                    'combo_type': combo_type,  # 转换后的格式：fc, aj, ajc
-                    'chain_type': chain_type,  # 转换后的格式：fc, fcr
+                    'combo_type': combo_type,  # 转换后的格式：fc, aj, ajc, none
+                    'chain_type': chain_type,  # 转换后的格式：fc, fcr, none
                     # 注意：chunithm暂时不支持jacket
                     'ra': record.get('chuni_rating', 0.0),
                     'playCount': record.get('play_count', 0),  # TODO: 统一命名为play_count

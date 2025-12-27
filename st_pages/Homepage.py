@@ -69,10 +69,10 @@ with col_header1:
 with col_header2:
     st.title("mai-gen-videob50 视频生成器")
     G_type = st.session_state.get('game_type', 'maimai')
-    st.caption(f"当前版本 v1.0 (alpha test) |\
-               Created by: [Nickbit](https://github.com/Nick-bit233), [caiccu](https://github.com/CAICCU) |\
+    st.caption(f"当前版本 v1.0 (beta test) |\
+               Created by: [Nickbit](https://github.com/Nick-bit233), [caiccu](https://github.com/CAICCU), [〖天蓝〗](https://github.com/MetallicAllex) |\
                当前模式: **{get_game_type_text(G_type)}** ")
-    st.warning("⚠️ 您正在使用本工具的Alpha测试版本，可能存在未知问题。")
+    st.warning("⚠️ 您正在使用本工具的Beta测试版本，可能存在未知问题。")
 
 # 游戏类型切换
 with st.container(border=True):

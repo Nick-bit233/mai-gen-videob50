@@ -2,6 +2,9 @@ import streamlit as st
 import os
 import json
 import traceback
+import csv
+import io
+from collections import defaultdict
 from datetime import datetime
 from utils.user_gamedata_handlers import fetch_user_gamedata, update_b50_data_int
 from utils.PageUtils import get_db_manager, process_username, get_game_type_text
@@ -16,6 +19,121 @@ level_label_lists = {
     "maimai": ["BASIC", "ADVANCED", "EXPERT", "MASTER", "RE:MASTER"],
     "chunithm": ["BASIC", "ADVANCED", "EXPERT", "MASTER", "ULTIMA"]
 }
+
+def import_playcount_from_csv(username: str, archive_name: str):
+    """从CSV文件导入游玩次数"""
+    st.info("💡 上传落雪备份的CSV成绩文件，系统将根据 song_name 和 level_index 自动统计并填写游玩次数。")
+    
+    uploaded_file = st.file_uploader(
+        "选择CSV文件",
+        type=['csv'],
+        help="请上传落雪备份的CSV成绩文件，必须包含 song_name 和 level_index 列"
+    )
+    
+    if uploaded_file is not None:
+        try:
+            # 读取CSV文件
+            content = uploaded_file.read().decode('utf-8-sig')  # 使用utf-8-sig处理BOM
+            csv_reader = csv.DictReader(io.StringIO(content))
+            
+            # 检查必需的列
+            required_columns = ['song_name', 'level_index']
+            if not all(col in csv_reader.fieldnames for col in required_columns):
+                st.error(f"❌ CSV文件缺少必需的列。需要包含: {', '.join(required_columns)}")
+                st.info(f"当前CSV文件的列: {', '.join(csv_reader.fieldnames)}")
+                return
+            
+            # 统计游玩次数：根据 (song_name, level_index) 组合计数
+            play_count_map = defaultdict(int)
+            total_rows = 0
+            for row in csv_reader:
+                song_name = row.get('song_name', '').strip()
+                level_index_str = row.get('level_index', '').strip()
+                
+                if song_name and level_index_str:
+                    try:
+                        level_index = int(level_index_str)
+                        key = (song_name, level_index)
+                        play_count_map[key] += 1
+                        total_rows += 1
+                    except ValueError:
+                        continue
+            
+            if not play_count_map:
+                st.warning("⚠️ CSV文件中没有找到有效的游玩记录。")
+                return
+            
+            st.success(f"✅ 成功解析CSV文件，共找到 {total_rows} 条记录，涉及 {len(play_count_map)} 个不同的谱面。")
+            
+            # 显示统计信息预览
+            with st.expander("📊 游玩次数统计预览（前10条）", expanded=False):
+                preview_items = list(play_count_map.items())[:10]
+                for (song_name, level_index), count in preview_items:
+                    st.write(f"- **{song_name}** (难度索引: {level_index}): {count} 次")
+                if len(play_count_map) > 10:
+                    st.caption(f"... 还有 {len(play_count_map) - 10} 个谱面")
+            
+            # 获取存档ID和所有记录
+            archive_id = db_handler.load_save_archive(username, archive_name)
+            if not archive_id:
+                st.error("❌ 无法加载存档，请重试。")
+                return
+            
+            # 获取存档中的所有记录（包含song_name和level_index）
+            records = db_handler.db.get_records_with_extented_data(archive_id)
+            
+            if not records:
+                st.warning("⚠️ 存档中没有找到任何记录。")
+                return
+            
+            # 匹配并更新游玩次数
+            updated_count = 0
+            matched_count = 0
+            unmatched_items = []
+            
+            for record in records:
+                record_song_name = record.get('song_name', '').strip()
+                record_level_index = record.get('level_index')
+                record_id = record.get('record_id')
+                
+                if record_song_name and record_level_index is not None:
+                    key = (record_song_name, record_level_index)
+                    if key in play_count_map:
+                        play_count = play_count_map[key]
+                        # 更新数据库
+                        db_handler.db.update_record(record_id, {'play_count': play_count})
+                        updated_count += 1
+                        matched_count += 1
+                    else:
+                        unmatched_items.append((record_song_name, record_level_index))
+            
+            # 显示结果
+            if updated_count > 0:
+                st.success(f"✅ 成功更新 {updated_count} 条记录的游玩次数！")
+                
+                if unmatched_items:
+                    with st.expander(f"⚠️ 未匹配的记录（{len(unmatched_items)} 条）", expanded=False):
+                        st.info("以下记录在CSV文件中未找到匹配项，游玩次数未更新：")
+                        for song_name, level_index in unmatched_items[:20]:  # 只显示前20条
+                            st.write(f"- **{song_name}** (难度索引: {level_index})")
+                        if len(unmatched_items) > 20:
+                            st.caption(f"... 还有 {len(unmatched_items) - 20} 条未匹配记录")
+                
+                # 添加刷新按钮
+                if st.button("🔄 刷新数据并关闭", use_container_width=True, type="primary"):
+                    st.rerun()
+            else:
+                st.warning("⚠️ 没有找到任何匹配的记录。请检查CSV文件中的 song_name 和 level_index 是否与存档中的记录一致。")
+                
+                # 显示存档中的一些示例记录
+                with st.expander("📋 存档中的记录示例（前5条）", expanded=True):
+                    for record in records[:5]:
+                        st.write(f"- **{record.get('song_name', 'N/A')}** (难度索引: {record.get('level_index', 'N/A')})")
+        
+        except Exception as e:
+            st.error(f"❌ 处理CSV文件时发生错误: {str(e)}")
+            with st.expander("详细错误信息"):
+                st.code(traceback.format_exc())
 
 def view_b50_data(username: str, archive_name: str):
     """Displays the records of a selected archive in a read-only table."""
@@ -168,6 +286,22 @@ def view_b50_data(username: str, archive_name: str):
             # 确保xv_ds字段存在（如果不存在则设为0.0）
             if 'xv_ds' not in record:
                 record['xv_ds'] = 0.0
+            # 确保combo_type字段存在（如果不存在或为空，设为'none'）
+            if 'combo_type' not in record:
+                record['combo_type'] = 'none'
+            elif not record.get('combo_type'):
+                record['combo_type'] = 'none'
+            # 确保chain_type字段存在（如果不存在或为空，设为'none'）
+            if 'chain_type' not in record:
+                record['chain_type'] = 'none'
+            elif not record.get('chain_type'):
+                record['chain_type'] = 'none'
+            else:
+                chain_value = str(record.get('chain_type')).lower().strip()
+                if chain_value in ('ac', 'fullchain', 'fc'):
+                    record['chain_type'] = 'fc'
+                elif chain_value in ('fs', 'fullchainrainbow', 'fcr'):
+                    record['chain_type'] = 'fcr'
         
         st.dataframe(
             show_records,
@@ -291,8 +425,10 @@ def handle_new_data(username: str, source: str, raw_file_path: str, params: dict
             st.warning(f"警告: 保存的记录数 ({len(saved_records)}) 与预期 ({len(initial_records)}) 不匹配！")
         
         st.session_state.archive_name = archive_name
+        st.session_state.archive_id = archive_id
         print(f"成功创建新存档: {archive_name}， ID: {archive_id}，保存了 {len(saved_records)} 条记录")
         st.session_state.data_created_step1 = True
+        st.session_state.data_updated_step1 = True  # 同时设置，以便显示下一步按钮
         st.rerun()
 
     except Exception as e:
@@ -434,7 +570,7 @@ if st.session_state.get('config_saved', False):
             if current_loaded == selected_archive_name:
                 st.info(f"✅ 当前已加载: **{selected_archive_name}**")
             
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             with col1:
                 # 如果已加载当前选中的存档，按钮显示为已加载状态
                 if current_loaded == selected_archive_name:
@@ -455,6 +591,13 @@ if st.session_state.get('config_saved', False):
                         view_b50_data(username, selected_archive_name)
                     show_data_dialog()
             with col3:
+                if st.button("📊 导入游玩次数", key=f"import_playcount_{selected_archive_name}", use_container_width=True):
+                    # 使用dialog装饰器包装函数
+                    @st.dialog("从CSV导入游玩次数", width="large")
+                    def import_playcount_dialog():
+                        import_playcount_from_csv(username, selected_archive_name)
+                    import_playcount_dialog()
+            with col4:
                 if st.button("❌ 删除此存档", key=f"delete_{selected_archive_name}", use_container_width=True, type="secondary"):
                     confirm_delete_archive(username, selected_archive_name)
 
@@ -464,7 +607,13 @@ if st.session_state.get('config_saved', False):
         st.caption(f"当前用户名: **{username}**")
 
         # 获得原始数据缓存路径
-        b50_raw_file = f"{user_base_dir}/{st.session_state.archive_name}_raw.json"
+        # 如果还没有存档名，使用时间戳作为临时文件名
+        if st.session_state.get('archive_name'):
+            archive_name_for_file = st.session_state.archive_name
+        else:
+            # 生成临时文件名（实际创建存档时会使用数据库生成的存档名）
+            archive_name_for_file = datetime.now().strftime('%Y%m%d_%H%M%S')
+        b50_raw_file = f"{user_base_dir}/{archive_name_for_file}_raw.json"
         
         # Data from FISH (CN Server)
         with st.expander("🌊 从水鱼查分器获取（国服）", expanded=True):
@@ -619,11 +768,16 @@ if st.session_state.get('config_saved', False):
 
     # --- Navigation ---
     st.divider()
-    if st.session_state.get('data_updated_step1', False) and st.session_state.get('archive_name'):
+    # 检查是否有存档已创建或加载（支持两种状态）
+    has_archive = (st.session_state.get('data_created_step1', False) or 
+                   st.session_state.get('data_updated_step1', False)) and \
+                  st.session_state.get('archive_name')
+    
+    if has_archive:
         if st.session_state.get('data_created_step1', False):
-            st.success(f"已成功创建新存档：**{st.session_state.get('archive_name')}**！")
+            st.success(f"✅ 已成功创建新存档：**{st.session_state.get('archive_name')}**！")
         elif st.session_state.get('data_updated_step1', False):
-            st.success(f"已加载存档：**{st.session_state.get('archive_name')}**！")
+            st.success(f"✅ 已加载存档：**{st.session_state.get('archive_name')}**！")
 
         with st.container(border=True):
             col_nav1, col_nav2 = st.columns([3, 1])

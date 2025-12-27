@@ -5,7 +5,7 @@ import time
 import re
 
 from copy import deepcopy
-from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
+from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader, YtDlpDownloader
 from utils.DataUtils import chart_type_value2str, level_index_to_label
 from utils.video_search_strategy import VideoSearchStrategy, SearchStrategy
 
@@ -59,8 +59,8 @@ def get_keyword(downloader_type, game_type, title_name, difficulty_name, type):
     dif_game_name = "maimaiでらっく 外部出力" if game_type == "maimai" else "CHUNITHM チュウニズム 譜面確認"
     dif_game_CN_name = "maimai 舞萌DX 谱面确认" if game_type == "maimai" else "CHUNITHM 中二节奏 谱面确认"
     
-    if downloader_type == "youtube":
-        # 对于YouTube，优化关键词格式：
+    if downloader_type == "youtube" or downloader_type == "youtube-ytdlp":
+        # 对于YouTube（包括yt-dlp），优化关键词格式：
         # 1. 初始搜索包含游戏标识，确保找到正确的游戏视频
         # 2. 如果失败，简化搜索会移除游戏标识，但会验证结果
         # 3. 关键词顺序：歌曲名 + 难度 + 游戏标识（更符合搜索习惯）
@@ -85,6 +85,9 @@ def get_keyword(downloader_type, game_type, title_name, difficulty_name, type):
     elif downloader_type == "bilibili":
         return f"{dif_game_CN_name} {title_name} {type_CN_name} {dif_CN_name}  "
     
+    # 如果下载器类型不匹配，返回空字符串而不是 None
+    return ""
+    
 def search_one_video(downloader, chart_data):
     """
     使用成熟的搜索策略搜索视频
@@ -99,7 +102,7 @@ def search_one_video(downloader, chart_data):
     title_name = chart_data['song_name']
     difficulty_name = level_index_to_label(game_type, chart_data['level_index'])
     chart_type = chart_data['chart_type']
-    dl_type = "youtube" if isinstance(downloader, PurePytubefixDownloader) \
+    dl_type = "youtube" if isinstance(downloader, (PurePytubefixDownloader, YtDlpDownloader)) \
                 else "bilibili" if isinstance(downloader, BilibiliDownloader) \
                 else "None"
     

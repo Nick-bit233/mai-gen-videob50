@@ -49,26 +49,26 @@ class VideoSearchStrategy:
     提供多策略搜索、结果评分和智能匹配
     """
     
-    # 游戏标识关键词
+    # 游戏标识关键词（包含各种大小写变体，匹配时会统一转换为大写进行比较）
     GAME_KEYWORDS = {
         GameType.CHUNITHM: {
-            "primary": ["CHUNITHM", "チュウニズム", "中二"],
+            "primary": ["CHUNITHM", "chunithm", "Chunithm", "チュウニズム", "中二", "中二节奏"],
             "secondary": ["譜面確認", "譜面", "譜面動画"]
         },
         GameType.MAIMAI: {
-            "primary": ["maimai", "舞萌", "でらっく"],
+            "primary": ["maimai", "Maimai", "MAIMAI", "舞萌", "でらっく", "デラックス"],
             "secondary": ["外部出力", "譜面確認", "譜面"]
         }
     }
     
-    # 难度关键词映射
+    # 难度关键词映射（包含各种大小写变体，匹配时会统一转换为大写进行比较）
     DIFFICULTY_KEYWORDS = {
-        "BASIC": ["Basic", "BASIC", "绿谱", "绿"],
-        "ADVANCE": ["Advance", "ADVANCE", "ADV", "黄谱", "黄"],
-        "EXPERT": ["Expert", "EXPERT", "EXP", "红谱", "红"],
-        "MASTER": ["Master", "MASTER", "MAS", "紫谱", "紫"],
-        "RE:MASTER": ["Re:MASTER", "RE:MASTER", "REM", "白谱", "白"],
-        "ULTIMA": ["ULTIMA", "ULT", "黑谱", "黑"]
+        "BASIC": ["Basic", "BASIC", "basic", "绿谱", "绿"],
+        "ADVANCE": ["Advance", "ADVANCE", "advance", "ADV", "adv", "黄谱", "黄"],
+        "EXPERT": ["Expert", "EXPERT", "expert", "EXP", "exp", "红谱", "红"],
+        "MASTER": ["Master", "MASTER", "master", "MAS", "mas", "紫谱", "紫"],
+        "RE:MASTER": ["Re:MASTER", "RE:MASTER", "re:master", "Re:Master", "REM", "rem", "白谱", "白"],
+        "ULTIMA": ["ULTIMA", "ultima", "Ultima", "ULT", "ult", "黑谱", "黑"]
     }
     
     def __init__(self, game_type: str):
@@ -189,9 +189,18 @@ class VideoSearchStrategy:
         if matched_game:
             score += 40.0
         else:
-            # 如果搜索策略是简化版本，不匹配游戏类型会扣分
-            if search_strategy in [SearchStrategy.SIMPLE, SearchStrategy.MINIMAL]:
-                score -= 20.0
+            # 检查是否匹配了其他游戏类型（严重扣分）
+            other_game_type = GameType.MAIMAI if self.game_type == GameType.CHUNITHM else GameType.CHUNITHM
+            other_game_keywords = self.GAME_KEYWORDS[other_game_type]["primary"]
+            matched_other_game = any(kw.upper() in title_upper for kw in other_game_keywords)
+            
+            if matched_other_game:
+                # 如果匹配了其他游戏类型，大幅扣分（确保不会被选中）
+                score -= 50.0
+            else:
+                # 如果搜索策略是简化版本，不匹配游戏类型会扣分
+                if search_strategy in [SearchStrategy.SIMPLE, SearchStrategy.MINIMAL]:
+                    score -= 20.0
         
         # 2. 歌曲名匹配（30分）
         matched_title = self._check_title_match(title_upper, target_title_upper)
@@ -233,6 +242,15 @@ class VideoSearchStrategy:
     
     def _check_game_match(self, title_upper: str) -> bool:
         """检查是否匹配游戏类型"""
+        # 首先检查是否匹配了其他游戏类型（排除误判）
+        other_game_type = GameType.MAIMAI if self.game_type == GameType.CHUNITHM else GameType.CHUNITHM
+        other_game_keywords = self.GAME_KEYWORDS[other_game_type]["primary"]
+        
+        # 如果标题中包含其他游戏的关键词，说明不匹配当前游戏类型
+        for keyword in other_game_keywords:
+            if keyword.upper() in title_upper:
+                return False
+        
         # 检查主要关键词
         for keyword in self.game_keywords["primary"]:
             if keyword.upper() in title_upper:
@@ -344,15 +362,31 @@ class VideoSearchStrategy:
         从评分结果中选择最佳匹配
         
         优先选择：
-        1. 评分最高的
-        2. 匹配游戏类型的
-        3. 匹配难度的
+        1. 匹配游戏类型的（必须）
+        2. 匹配难度的
+        3. 评分最高的
         """
         if not results:
             return None
         
+        # 首先排除匹配了其他游戏类型的结果（即使评分高也要排除）
+        other_game_type = GameType.MAIMAI if self.game_type == GameType.CHUNITHM else GameType.CHUNITHM
+        other_game_keywords = self.GAME_KEYWORDS[other_game_type]["primary"]
+        
+        valid_results = []
+        for r in results:
+            title_upper = r.title.upper()
+            # 检查是否包含其他游戏的关键词
+            has_other_game = any(kw.upper() in title_upper for kw in other_game_keywords)
+            if not has_other_game:
+                valid_results.append(r)
+        
+        # 如果没有有效结果，返回 None（不返回其他游戏的结果）
+        if not valid_results:
+            return None
+        
         # 优先选择匹配游戏类型的结果
-        game_matched = [r for r in results if r.matched_game]
+        game_matched = [r for r in valid_results if r.matched_game]
         if game_matched:
             # 在匹配游戏类型的结果中，优先选择匹配难度的
             difficulty_matched = [r for r in game_matched if r.matched_difficulty]
@@ -360,6 +394,6 @@ class VideoSearchStrategy:
                 return difficulty_matched[0]
             return game_matched[0]
         
-        # 如果没有匹配游戏类型的，返回评分最高的
-        return results[0]
+        # 如果没有匹配游戏类型的，返回评分最高的有效结果
+        return valid_results[0]
 

@@ -242,6 +242,38 @@ def load_metadata(game_type: str) -> dict:
     else:
         raise FileNotFoundError(f"Metadata file not found: {json_path}")
 
+
+def filter_records_by_best_group(items, include_newbest=True, include_pastbest=True):
+    """
+    Filter records by clip title prefix (NewBest/PastBest/NewAP/PastAP).
+    Items without a known prefix are kept.
+    """
+    if include_newbest and include_pastbest:
+        return items
+
+    filtered = []
+    for item in items:
+        clip_name = (
+            item.get('clip_title_name')
+            or item.get('clip_name')
+            or item.get('record_tag')
+            or ''
+        )
+        if not isinstance(clip_name, str):
+            filtered.append(item)
+            continue
+
+        if clip_name.startswith("NewBest") or clip_name.startswith("NewAP"):
+            if include_newbest:
+                filtered.append(item)
+        elif clip_name.startswith("PastBest") or clip_name.startswith("PastAP"):
+            if include_pastbest:
+                filtered.append(item)
+        else:
+            filtered.append(item)
+
+    return filtered
+
 # --------------------------------------
 # song_id 编码/解码方法（TODO：暂时弃用，需要重新设计）
 # --------------------------------------
