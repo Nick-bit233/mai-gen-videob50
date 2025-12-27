@@ -2,12 +2,29 @@ import os
 import numpy as np
 import subprocess
 import traceback
+import gc
+import time
 from PIL import Image, ImageFilter
 from moviepy import VideoFileClip, ImageClip, TextClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip, concatenate_videoclips
 from moviepy import vfx, afx
 from utils.VisionUtils import find_circle_center, draw_center_marker
 from utils.PageUtils import remove_invalid_chars
+from utils.Variables import HARD_RENDER_METHOD
 from typing import Union, Tuple
+try:
+    from moviepy.video.io.ffmpeg_reader import FFMPEG_VideoReader
+    if not getattr(FFMPEG_VideoReader, "_safe_del_patched", False):
+        def _safe_ffmpeg_reader_del(self):
+            try:
+                self.close()
+            except OSError:
+                pass
+            except Exception:
+                pass
+        FFMPEG_VideoReader.__del__ = _safe_ffmpeg_reader_del
+        FFMPEG_VideoReader._safe_del_patched = True
+except Exception:
+    pass
 
 
 def get_splited_text(text, text_max_bytes=60):
@@ -130,6 +147,55 @@ def save_jacket_background_image(img_data: Image.Image, save_path: str):
     except Exception as e:
         print(f"Warning: 保存曲绘背景图片{save_path}失败 - {str(e)}")
 
+
+
+def validate_cache_video_file(file_path, expected_fps=None):
+    """
+    验证缓存视频文件是否有效
+    
+    Args:
+        file_path: 视频文件路径
+        expected_fps: 期望的帧率（可选，用于验证）
+    
+    Returns:
+        tuple: (is_valid, error_message)
+        - is_valid: bool, 文件是否有效
+        - error_message: str, 如果无效，返回错误信息
+    """
+    if not os.path.exists(file_path):
+        return False, f"文件不存在: {file_path}"
+    
+    try:
+        clip = VideoFileClip(file_path, audio=False)  # 使用 audio=False 加快验证速度
+        
+        # 检查时长
+        if clip.duration is None or clip.duration <= 0:
+            clip.close()
+            return False, f"视频时长无效: {clip.duration}"
+        
+        # 检查帧率（如果提供了期望值）
+        if expected_fps is not None:
+            actual_fps = clip.fps
+            if abs(actual_fps - expected_fps) > 1.0:  # 允许1fps的误差
+                clip.close()
+                return False, f"帧率不匹配: 期望 {expected_fps}fps, 实际 {actual_fps}fps"
+        
+        # 尝试读取第一帧和最后一帧（验证文件完整性）
+        try:
+            _ = clip.get_frame(0)
+            # 尝试读取接近末尾的帧（但不超出范围）
+            last_frame_time = min(clip.duration - 0.1, clip.duration * 0.9)
+            last_frame_time = max(0, last_frame_time)
+            _ = clip.get_frame(last_frame_time)
+        except Exception as e:
+            clip.close()
+            return False, f"无法读取视频帧: {str(e)}"
+        
+        clip.close()
+        return True, None
+        
+    except Exception as e:
+        return False, f"验证视频文件时发生错误: {str(e)}"
 
 
 def normalize_audio_volume(clip, target_dbfs=-20):
@@ -259,12 +325,154 @@ def create_info_segment(clip_config, style_config, resolution):
 
 def edit_game_video_clip(game_type, clip_config, resolution, auto_center_align=False) -> Union[VideoFileClip, tuple]:
     if 'video' in clip_config and clip_config['video'] is not None and os.path.exists(clip_config['video']):
-        video_clip = VideoFileClip(clip_config['video'])
+        video_path = clip_config['video']
+        
+        # 尝试读取视频，添加错误处理和重试机制
+        video_clip = None
+        max_retries = 2
+        for attempt in range(max_retries):
+            try:
+                # 尝试使用不同的参数读取视频
+                if attempt == 0:
+                    # 第一次尝试：正常读取
+                    video_clip = VideoFileClip(video_path)
+                else:
+                    # 第二次尝试：使用 audio=False 和更宽松的参数
+                    video_clip = VideoFileClip(video_path, audio=False)
+                
+                # 验证视频是否可以正常访问
+                test_duration = video_clip.duration
+                if test_duration is None or test_duration <= 0:
+                    raise ValueError(f"视频时长无效: {test_duration}")
+                
+                # 尝试获取第一帧（验证视频可以正常读取）
+                try:
+                    _ = video_clip.get_frame(0)
+                except Exception as frame_error:
+                    if attempt < max_retries - 1:
+                        print(f"警告: 无法读取视频第一帧，尝试重新读取 (尝试 {attempt + 1}/{max_retries}): {frame_error}")
+                        if video_clip:
+                            try:
+                                video_clip.close()
+                            except:
+                                pass
+                        continue
+                    else:
+                        # 最后一次尝试也失败，但继续使用（某些情况下可能仍然可以工作）
+                        print(f"警告: 无法读取视频第一帧，但继续处理: {frame_error}")
+                
+                # 成功读取，退出重试循环
+                break
+                
+            except (OSError, IOError, ValueError) as e:
+                error_msg = str(e)
+                is_memory_error = '1455' in error_msg or '页面文件太小' in error_msg or 'page file' in error_msg.lower()
+                
+                if attempt < max_retries - 1:
+                    if video_clip:
+                        try:
+                            video_clip.close()
+                        except:
+                            pass
+                    
+                    # 清理资源
+                    gc.collect()
+                    
+                    if is_memory_error:
+                        # 内存不足，等待更长时间并清理内存
+                        print(f"警告: 系统内存不足，等待 {2 * (attempt + 1)} 秒后重试 (尝试 {attempt + 1}/{max_retries})...")
+                        time.sleep(2 * (attempt + 1))  # 递增等待时间
+                        gc.collect()  # 再次清理
+                    else:
+                        print(f"警告: 读取视频失败，尝试重新读取 (尝试 {attempt + 1}/{max_retries}): {e}")
+                        time.sleep(1)  # 短暂等待
+                    
+                    continue
+                else:
+                    # 所有尝试都失败
+                    if is_memory_error:
+                        # 内存不足，创建占位符而不是抛出异常
+                        print(f"错误: 系统内存不足，无法读取视频文件 {video_path}")
+                        print(f"提示: 将使用黑色占位符替代该视频片段")
+                        print(f"建议: 1) 关闭其他占用内存的程序 2) 增加虚拟内存大小 3) 减少同时处理的视频数量")
+                        
+                        # 创建占位符
+                        duration = clip_config.get('duration', 10.0)
+                        target_height = int(0.667 * resolution[1]) if game_type == "chunithm" else int(0.5 * resolution[1])
+                        target_width = int(target_height * 16 / 9) if game_type == "chunithm" else target_height
+                        
+                        placeholder_clip = ImageClip(create_blank_image(target_width, target_height, color=(0, 0, 0, 255))).with_duration(duration)
+                        placeholder_clip = placeholder_clip.with_effects([vfx.Resize(width=target_width)])
+                        
+                        x_offset = (resolution[0] - target_width) // 2
+                        y_offset = (resolution[1] - target_height) // 2
+                        
+                        return placeholder_clip, (x_offset, y_offset)
+                    else:
+                        raise Exception(f"无法读取视频文件 {video_path}，已重试 {max_retries} 次: {e}")
+        
+        if video_clip is None:
+            raise Exception(f"无法读取视频文件 {video_path}")
+        
         # 添加调试信息
         print(f"Start time: {clip_config['start']}, Clip duration: {video_clip.duration}, End time: {clip_config['end']}")
+        
+        # 计算目标尺寸（考虑视频显示区域）
+        if game_type == "maimai":
+            # maimai: 目标区域约为 540x540 (正方形)
+            target_height = int(0.5 * resolution[1])  # 540/1080
+            target_width = target_height  # 正方形
+        else:  # chunithm
+            # chunithm: 目标区域约为 1280x720 (16:9)
+            target_height = int(0.667 * resolution[1])  # 720/1080
+            target_width = int(target_height * 16 / 9)  # 16:9 宽高比
+        
+        # 获取原始视频尺寸
+        orig_width = video_clip.w
+        orig_height = video_clip.h
+        orig_ar = orig_width / orig_height if orig_height > 0 else 1.0
+        target_ar = target_width / target_height if target_height > 0 else 1.0
+        
+        # 智能缩放：确保视频能够完整显示在目标区域内（使用填充而不是裁剪）
+        # 计算缩放比例：选择较小的缩放比例，确保视频完全适配目标区域
+        scale_by_height = target_height / orig_height
+        scale_by_width = target_width / orig_width
+        scale_ratio = min(scale_by_height, scale_by_width)  # 使用较小的比例，确保不超出
+        
         # 等比例缩放
-        h_resize_ratio = 0.5 if game_type == "maimai" else 0.667  # 540/1080 for maimai, 720/1080 for chunithm
-        video_clip = video_clip.with_effects([vfx.Resize(height=h_resize_ratio * resolution[1])])
+        new_width = int(orig_width * scale_ratio)
+        new_height = int(orig_height * scale_ratio)
+        
+        print(f"原始视频尺寸: {orig_width}x{orig_height}, 目标区域: {target_width}x{target_height}")
+        print(f"缩放比例: {scale_ratio:.3f}, 缩放后尺寸: {new_width}x{new_height}")
+        
+        # 使用 MoviePy 的 resized 方法
+        # MoviePy 2.1.1+ 的 resized 方法接受 newsize 作为位置参数或关键字参数
+        try:
+            # 尝试使用位置参数 (newsize 作为第一个参数)
+            video_clip = video_clip.resized((new_width, new_height))
+        except (TypeError, AttributeError):
+            try:
+                # 尝试使用关键字参数
+                video_clip = video_clip.resized(newsize=(new_width, new_height))
+            except (TypeError, AttributeError):
+                try:
+                    # 尝试使用 width 和 height 参数
+                    video_clip = video_clip.resized(width=new_width, height=new_height)
+                except (TypeError, AttributeError):
+                    # 如果都不支持，使用 Resize 效果（但 Resize 只支持 width，会保持宽高比）
+                    # 我们需要手动处理高度
+                    video_clip = video_clip.with_effects([vfx.Resize(width=new_width)])
+                    # 如果高度不匹配，需要裁剪或填充
+                    if abs(video_clip.h - new_height) > 1:  # 允许1像素误差
+                        if video_clip.h > new_height:
+                            # 高度超出，居中裁剪
+                            y_center = video_clip.h / 2
+                            video_clip = video_clip.cropped(y1=y_center - new_height/2, y2=y_center + new_height/2)
+                        else:
+                            # 高度不足，需要填充（创建黑色背景并居中放置视频）
+                            # 这种情况应该很少，因为我们的缩放逻辑确保视频能完全容纳
+                            print(f"警告: 视频高度 {video_clip.h} 小于目标高度 {new_height}，可能需要填充")
 
         # height and width after init resize
         video_height = video_clip.h
@@ -296,81 +504,52 @@ def edit_game_video_clip(game_type, clip_config, resolution, auto_center_align=F
         video_clip = video_clip.subclipped(start_time=clip_config['start'],
                                             end_time=clip_config['end'])
 
+        # 更新缩放后的尺寸（subclipped不会改变尺寸）
+        video_height = video_clip.h
+        video_width = video_clip.w
+
+        # 使用填充而不是裁剪，确保视频完整显示
+        # 如果缩放后的视频尺寸小于目标区域，创建带黑边的视频
         if game_type == "maimai":
-            visual_center = None
-            if auto_center_align:
-                # 从未剪裁的视频中提取中间一帧用于分析
-                analysis_frame = video_clip.get_frame(t=(video_clip.duration / 2))
-                # 检测传入谱面确认视频的视觉中心，此操作的目的是为了识别原始视频存在中心偏移的情况
-                visual_center = find_circle_center(analysis_frame, debug=False, name=clip_config['clip_title_name'])
-    
-            # 改进的裁剪逻辑：避免过度裁剪
-            # 如果视频不是正方形，优先保留更多内容
-            if abs(video_height - video_width) > 2:  # 允许2像素的误差，避免浮点数精度问题
-                # 确定裁剪中心（优先使用视觉中心，未识别到时使用几何中心）
-                center_x = visual_center[0] if visual_center else video_width / 2
+            # maimai: 目标区域是正方形
+            if video_width != target_width or video_height != target_height:
+                # 创建黑色背景
+                black_bg = create_blank_image(target_width, target_height)
+                bg_clip = ImageClip(black_bg).with_duration(video_clip.duration)
                 
-                # 根据宽高比决定裁剪策略
-                if video_width > video_height:
-                    # 视频更宽：裁剪左右两侧，保留中间部分
-                    # 计算方形宽度范围（以高度为基准）
-                    x1 = center_x - (video_height / 2)
-                    x2 = center_x + (video_height / 2)
-                    
-                    # 处理边界：如果裁剪框超出边界，调整到边界
-                    if x1 < 0:
-                        x1 = 0
-                        x2 = video_height
-                    elif x2 > video_width:
-                        x2 = video_width
-                        x1 = video_width - video_height
-                    
-                    # 裁剪成正方形（保留完整高度）
-                    video_clip = video_clip.cropped(x1=x1, y1=0, x2=x2, y2=video_height)
-                else:
-                    # 视频更高：裁剪上下两侧，保留中间部分
-                    # 计算方形高度范围（以宽度为基准）
-                    center_y = video_height / 2
-                    y1 = center_y - (video_width / 2)
-                    y2 = center_y + (video_width / 2)
-                    
-                    # 处理边界
-                    if y1 < 0:
-                        y1 = 0
-                        y2 = video_width
-                    elif y2 > video_height:
-                        y2 = video_height
-                        y1 = video_height - video_width
-                    
-                    # 裁剪成正方形（保留完整宽度）
-                    video_clip = video_clip.cropped(x1=0, y1=y1, x2=video_width, y2=y2)
+                # 计算居中位置
+                x_offset = (target_width - video_width) // 2
+                y_offset = (target_height - video_height) // 2
+                
+                # 将视频叠加到黑色背景上（居中显示）
+                video_clip = CompositeVideoClip([
+                    bg_clip.with_position((0, 0)),
+                    video_clip.with_position((x_offset, y_offset))
+                ], size=(target_width, target_height))
+                
+                print(f"maimai: 视频已填充到目标尺寸 {target_width}x{target_height}，居中偏移 ({x_offset}, {y_offset})")
         elif game_type == "chunithm":
-            # 检查视频宽高比，若非近似16:9则使用填充或裁剪，避免拉伸变形
-            target_ar = 16.0 / 9.0
-            # 使用当前裁剪/缩放后的尺寸判断
-            current_ar = video_width / video_height if video_height > 0 else target_ar
-            tolerance = 0.03  # 允许约3%的误差视为近似16:9
-            if abs(current_ar - target_ar) / target_ar > tolerance:
-                print(f"Video Generator Info: chunithm 视频宽高比 {current_ar:.3f} 与 16:9 差异超出容差，执行适配处理")
+            # chunithm: 目标区域是16:9
+            if video_width != target_width or video_height != target_height:
+                # 创建黑色背景
+                black_bg = create_blank_image(target_width, target_height)
+                bg_clip = ImageClip(black_bg).with_duration(video_clip.duration)
                 
-                # 改进策略：使用填充或裁剪，而不是拉伸变形
-                if current_ar > target_ar:
-                    # 视频更宽：裁剪左右两侧，保留中间部分
-                    target_w = int(round(video_height * target_ar))
-                    crop_x1 = int(round((video_width - target_w) / 2))
-                    crop_x2 = crop_x1 + target_w
-                    video_clip = video_clip.cropped(x1=crop_x1, y1=0, x2=crop_x2, y2=video_height)
-                    print(f"  裁剪左右两侧，从宽度 {video_width} 裁剪到 {target_w}")
-                else:
-                    # 视频更高：裁剪上下两侧，保留中间部分
-                    target_h = int(round(video_width / target_ar))
-                    crop_y1 = int(round((video_height - target_h) / 2))
-                    crop_y2 = crop_y1 + target_h
-                    video_clip = video_clip.cropped(x1=0, y1=crop_y1, x2=video_width, y2=crop_y2)
-                    print(f"  裁剪上下两侧，从高度 {video_height} 裁剪到 {target_h}")
+                # 计算居中位置
+                x_offset = (target_width - video_width) // 2
+                y_offset = (target_height - video_height) // 2
                 
-                video_width = video_clip.w
-                video_height = video_clip.h
+                # 将视频叠加到黑色背景上（居中显示）
+                video_clip = CompositeVideoClip([
+                    bg_clip.with_position((0, 0)),
+                    video_clip.with_position((x_offset, y_offset))
+                ], size=(target_width, target_height))
+                
+                print(f"chunithm: 视频已填充到目标尺寸 {target_width}x{target_height}，居中偏移 ({x_offset}, {y_offset})")
+        
+        # 更新最终尺寸
+        video_width = video_clip.w
+        video_height = video_clip.h
 
     else:
         print(f"Video Generator Warning:{clip_config['clip_title_name']} 没有对应的视频, 请检查本地资源")
@@ -509,11 +688,17 @@ def create_video_segment(
     text_clip, text_pos = edit_game_text_clip(game_type, clip_config, resolution, style_config)
 
     # 叠放剪辑，以生成完整片段
+    # 图层顺序（从下到上）：
+    # 1. black_clip - 黑色背景（避免透明素材的通道bug）
+    # 2. bg_clip - 背景图片或视频
+    # 3. main_image_clip - 成绩图片（包含紫色边框和完整UI框架，应该在游戏视频之前）
+    # 4. video_clip - 游戏视频（叠加在成绩图片之上）
+    # 5. text_clip - 评论文字（最上层）
     composite_clip = CompositeVideoClip([
             black_clip.with_position((0, 0)),  # 使用一个pure black的视频作为背景（此背景用于避免透明素材的通道的bug问题）
             bg_clip.with_position((0, 0)),  # 背景图片或视频
-            video_clip.with_position((video_pos[0], video_pos[1])),  # 谱面确认视频
-            main_image_clip.with_position((0, 0)),  # 成绩图片
+            main_image_clip.with_position((0, 0)),  # 成绩图片（包含完整UI框架，应该在游戏视频之前）
+            video_clip.with_position((video_pos[0], video_pos[1])),  # 谱面确认视频（叠加在成绩图片之上）
             text_clip.with_position((text_pos[0], text_pos[1]))  # 评论文字
         ],
         size=resolution,
@@ -530,10 +715,113 @@ def get_video_preview_frame(game_type, clip_config, style_config, resolution, pa
     elif part == "content":
         preview_clip = create_video_segment(game_type, clip_config, style_config, resolution)
     
-    frame = preview_clip.get_frame(t=1)
-    pil_img = Image.fromarray(frame.astype("uint8"))
-    return pil_img
+    try:
+        frame = preview_clip.get_frame(t=1)
+        pil_img = Image.fromarray(frame.astype("uint8"))
+        return pil_img
+    finally:
+        if hasattr(preview_clip, "close"):
+            preview_clip.close()
 
+
+
+def add_transitions_to_clips(clips, trans_time=1, resolution=None):
+    """
+    为视频片段列表添加过渡效果（交叉淡入淡出），使用 CompositeVideoClip 实现
+    
+    Args:
+        clips: 视频片段列表
+        trans_time: 过渡时长
+        resolution: 视频分辨率（用于 CompositeVideoClip）
+    
+    Returns:
+        添加了过渡效果的合成视频片段
+    """
+    if not clips or len(clips) == 0:
+        return None
+
+    min_duration = min((clip.duration for clip in clips if clip is not None), default=0)
+    if min_duration and trans_time > min_duration:
+        safe_trans_time = max(0.0, min_duration / 2)
+        print(f"Warning: trans_time {trans_time}s exceeds clip duration; clamping to {safe_trans_time}s")
+        trans_time = safe_trans_time
+    
+    if len(clips) == 1:
+        # 只有一个片段，只添加淡入淡出
+        clip = clips[0]
+        clip = clip.with_effects([
+            vfx.FadeIn(duration=trans_time),
+            vfx.FadeOut(duration=trans_time),
+            afx.AudioFadeIn(duration=trans_time),
+            afx.AudioFadeOut(duration=trans_time)
+        ])
+        return clip
+    
+    # 多个片段，使用 CompositeVideoClip 实现交叉淡入淡出
+    transitioned_clips = []
+    current_time = 0
+    
+    for i, clip in enumerate(clips):
+        # 确保所有片段的位置都是 (0, 0)，避免画面被裁剪
+        clip = clip.with_position((0, 0))
+        
+        # 第一个片段：只有淡入，从时间 0 开始
+        if i == 0:
+            # 第一个片段不需要 CrossFadeIn，只需要在最后添加淡出（如果有下一个片段）
+            if len(clips) > 1:
+                # 如果有下一个片段，添加淡出效果
+                clip = clip.with_effects([
+                    vfx.FadeOut(duration=trans_time),
+                    afx.AudioFadeOut(duration=trans_time)
+                ])
+            clip = clip.with_start(current_time)
+            transitioned_clips.append(clip)
+            current_time = clip.duration - trans_time  # 减去重叠部分
+        # 最后一个片段：只有淡出，与前一个片段有重叠
+        elif i == len(clips) - 1:
+            # 最后一个片段添加淡入效果（与前一个片段交叉）
+            clip = clip.with_effects([
+                vfx.FadeIn(duration=trans_time),
+                afx.AudioFadeIn(duration=trans_time),
+                vfx.FadeOut(duration=trans_time),
+                afx.AudioFadeOut(duration=trans_time)
+            ])
+            # 与前一个片段重叠 trans_time 秒
+            clip = clip.with_start(current_time)
+            transitioned_clips.append(clip)
+        # 中间片段：交叉淡入淡出，与前一个片段有重叠
+        else:
+            # 中间片段添加淡入和淡出效果
+            clip = clip.with_effects([
+                vfx.FadeIn(duration=trans_time),
+                afx.AudioFadeIn(duration=trans_time),
+                vfx.FadeOut(duration=trans_time),
+                afx.AudioFadeOut(duration=trans_time)
+            ])
+            # 与前一个片段重叠 trans_time 秒
+            clip = clip.with_start(current_time)
+            transitioned_clips.append(clip)
+            # 更新当前时间：当前片段结束时间减去下一个片段的过渡重叠时间
+            current_time = current_time + clip.duration - trans_time
+    
+    # 计算最终时长
+    if transitioned_clips:
+        max_end_time = max(clip.end if hasattr(clip, 'end') else (getattr(clip, 'start', 0) + clip.duration) 
+                          for clip in transitioned_clips)
+        
+        # 使用 CompositeVideoClip 合成，确保所有片段位置正确
+        if resolution:
+            final_clip = CompositeVideoClip(transitioned_clips, size=resolution, use_bgclip=False)
+        else:
+            final_clip = CompositeVideoClip(transitioned_clips, use_bgclip=False)
+        
+        # 确保时长正确
+        if hasattr(final_clip, 'duration') and final_clip.duration < max_end_time:
+            final_clip = final_clip.with_duration(max_end_time)
+        
+        return final_clip
+    
+    return None
 
 
 def add_clip_with_transition(clips, new_clip, set_start=False, trans_time=1):
@@ -572,47 +860,324 @@ def add_clip_with_transition(clips, new_clip, set_start=False, trans_time=1):
 def create_full_video(game_type: str, style_config: dict, resolution: tuple,
                       main_configs: list, 
                       intro_configs: list = None, ending_configs: list = None,
-                      auto_add_transition=True, trans_time=1, full_last_clip=False):
-    """ 创建完整视频的 Moviepy Clip，包含开场、主要视频片段和结尾片段 """
+                      auto_add_transition=True, trans_time=1, full_last_clip=False,
+                      batch_size: int = None, temp_output_dir: str = None,
+                      batch_inner_trans_enable: bool = False,
+                      progress_callback=None, fps: int = 60, skip_cache_files: dict = None):
+    """ 创建完整视频的 Moviepy Clip，包含开场、主要视频片段和结尾片段 
+    
+    Args:
+        batch_size: 每批处理的视频数量，None 表示不分批（一次性处理所有）
+        temp_output_dir: 临时文件输出目录，如果提供且使用分批处理，将生成临时视频文件
+    Returns:
+        如果使用分批处理且提供了 temp_output_dir，返回临时文件路径列表
+        否则返回 VideoClip 对象
+    """
     clips = []
     ending_clips = []
+    temp_video_files = []  # 存储临时视频文件路径
 
     # 处理开场片段
     if intro_configs:
-        print(f"处理开场片段，共 {len(intro_configs)} 个")
-        for idx, clip_config in enumerate(intro_configs):
-            print(f"开场片段 {idx + 1}: 配置键 = {list(clip_config.keys())}")
-            clip = create_info_segment(clip_config, style_config, resolution)
-            clip = normalize_audio_volume(clip)
-            add_clip_with_transition(clips, clip, 
-                                    set_start=True, 
-                                    trans_time=trans_time)
+        # 检查是否使用缓存的开场文件
+        if skip_cache_files and 'intro' in skip_cache_files and os.path.exists(skip_cache_files['intro']):
+            # 验证缓存文件是否有效
+            is_valid, error_msg = validate_cache_video_file(skip_cache_files['intro'], expected_fps=fps)
+            if is_valid:
+                print(f"使用缓存的开场文件: {skip_cache_files['intro']}")
+                if temp_output_dir:
+                    temp_video_files.insert(0, skip_cache_files['intro'])
+            else:
+                print(f"警告: 缓存的开场文件无效，将重新生成")
+                print(f"错误信息: {error_msg}")
+                # 继续生成开场片段
+                print(f"处理开场片段，共 {len(intro_configs)} 个")
+                for idx, clip_config in enumerate(intro_configs):
+                    print(f"开场片段 {idx + 1}: 配置键 = {list(clip_config.keys())}")
+                    clip = create_info_segment(clip_config, style_config, resolution)
+                    clip = normalize_audio_volume(clip)
+                    add_clip_with_transition(clips, clip, 
+                                            set_start=True, 
+                                            trans_time=trans_time)
+        else:
+            print(f"处理开场片段，共 {len(intro_configs)} 个")
+            for idx, clip_config in enumerate(intro_configs):
+                print(f"开场片段 {idx + 1}: 配置键 = {list(clip_config.keys())}")
+                clip = create_info_segment(clip_config, style_config, resolution)
+                clip = normalize_audio_volume(clip)
+                add_clip_with_transition(clips, clip, 
+                                        set_start=True, 
+                                        trans_time=trans_time)
 
     combined_start_time = 0
 
-    # 处理主要视频片段
-    for clip_config in main_configs:
-        # 判断是否是最后一个片段
-        if main_configs.index(clip_config) == len(main_configs) - 1 and full_last_clip:
-            start_time = clip_config['start']
-            # 获取原始视频的长度（不是配置文件中配置的duration）
-            full_clip_duration = VideoFileClip(clip_config['video']).duration - 5
-            # 修改配置文件中的duration，因此下面创建视频片段时，会使用加长版duration
-            clip_config['duration'] = full_clip_duration - start_time
-            clip_config['end'] = full_clip_duration
+    # 处理主要视频片段（分批处理）
+    total_main_configs = len(main_configs)
+    if batch_size and batch_size > 0 and total_main_configs > batch_size and temp_output_dir:
+        # 分批处理并生成临时文件
+        num_batches = (total_main_configs + batch_size - 1) // batch_size
+        print(f"主要视频片段总数: {total_main_configs}，将分 {num_batches} 批处理，每批 {batch_size} 个")
+        print(f"每批将生成临时视频文件保存到: {temp_output_dir}")
+        
+        os.makedirs(temp_output_dir, exist_ok=True)
+        
+        for batch_idx in range(num_batches):
+            start_idx = batch_idx * batch_size
+            end_idx = min(start_idx + batch_size, total_main_configs)
+            batch_configs = main_configs[start_idx:end_idx]
+            
+            # 首先检查是否使用缓存的批次文件（在开始处理片段之前）
+            cache_key = f'batch_{batch_idx}'
+            if skip_cache_files and cache_key in skip_cache_files and os.path.exists(skip_cache_files[cache_key]):
+                # 验证缓存文件是否有效
+                is_valid, error_msg = validate_cache_video_file(skip_cache_files[cache_key], expected_fps=fps)
+                if is_valid:
+                    print(f"\n{'='*60}")
+                    print(f"跳过第 {batch_idx + 1}/{num_batches} 批，使用缓存文件")
+                    print(f"缓存文件: {skip_cache_files[cache_key]}")
+                    print(f"{'='*60}")
+                    temp_video_files.append(skip_cache_files[cache_key])
+                    # 更新进度：跳过批次
+                    if progress_callback:
+                        progress_callback({
+                            'stage': 'batch_processing',
+                            'current_batch': batch_idx + 1,
+                            'total_batches': num_batches,
+                            'progress': ((batch_idx + 1) / num_batches) * 0.7
+                        })
+                    continue  # 跳过整个批次的处理
+                else:
+                    print(f"\n{'='*60}")
+                    print(f"警告: 缓存文件无效，将重新生成第 {batch_idx + 1} 批")
+                    print(f"错误信息: {error_msg}")
+                    print(f"{'='*60}")
+            
+            print(f"\n{'='*60}")
+            print(f"处理第 {batch_idx + 1}/{num_batches} 批 (片段 {start_idx + 1}-{end_idx})")
+            print(f"{'='*60}")
+            
+            # 更新进度：批次处理开始
+            if progress_callback:
+                progress_callback({
+                    'stage': 'batch_processing',
+                    'current_batch': batch_idx + 1,
+                    'total_batches': num_batches,
+                    'progress': (batch_idx / num_batches) * 0.7  # 批次处理占70%进度
+                })
+            
+            batch_clips = []  # 当前批次的片段
+            
+            for local_idx, clip_config in enumerate(batch_configs):
+                global_idx = start_idx + local_idx
+                is_last_in_all = (global_idx == total_main_configs - 1)
+                
+                # 更新进度：单个片段处理
+                if progress_callback:
+                    batch_progress = (local_idx + 1) / len(batch_configs)
+                    overall_progress = (batch_idx / num_batches) * 0.7 + (batch_progress / num_batches) * 0.7
+                    progress_callback({
+                        'stage': 'clip_processing',
+                        'current_batch': batch_idx + 1,
+                        'total_batches': num_batches,
+                        'current_clip': global_idx + 1,
+                        'total_clips': total_main_configs,
+                        'progress': overall_progress
+                    })
+                
+                # 判断是否是最后一个片段
+                if is_last_in_all and full_last_clip:
+                    start_time = clip_config['start']
+                    # 获取原始视频的长度（不是配置文件中配置的duration）
+                    full_clip = VideoFileClip(clip_config['video'])
+                    try:
+                        full_clip_duration = full_clip.duration - 5
+                    finally:
+                        full_clip.close()
+                    # 修改配置文件中的duration，因此下面创建视频片段时，会使用加长版duration
+                    clip_config['duration'] = full_clip_duration - start_time
+                    clip_config['end'] = full_clip_duration
 
-            clip = create_video_segment(game_type, clip_config, style_config, resolution)  
-            clip = normalize_audio_volume(clip)
+                clip = create_video_segment(game_type, clip_config, style_config, resolution)  
+                clip = normalize_audio_volume(clip)
+                batch_clips.append(clip)
+            
+            # 合成当前批次的视频并保存为临时文件
+            # 注意：批次内的片段不添加过渡效果，过渡效果只在合并批次时添加
+            # 这样可以避免双重过渡（批次内过渡 + 批次间过渡）
+            if batch_clips:
+                print(f"合成第 {batch_idx + 1} 批视频片段，共 {len(batch_clips)} 个片段...")
+                # 更新进度：批次合成
+                if progress_callback:
+                    progress_callback({
+                        'stage': 'batch_compositing',
+                        'current_batch': batch_idx + 1,
+                        'total_batches': num_batches,
+                        'progress': ((batch_idx + 0.8) / num_batches) * 0.7
+                    })
+                
+                # 批次内的片段直接拼接，不添加过渡效果
+                # 过渡效果将在合并批次时统一添加，避免双重过渡
+                print(f"  直接拼接批次内片段（过渡效果将在合并批次时添加）...")
+                if auto_add_transition and batch_inner_trans_enable and trans_time > 0:
+                    inner_trans_time = trans_time
+                    min_duration = min((clip.duration for clip in batch_clips if clip is not None), default=0)
+                    if min_duration and inner_trans_time > min_duration:
+                        inner_trans_time = max(0.0, min_duration / 2)
+                    print(f"  为批次内片段添加过渡效果（{inner_trans_time}秒）...")
+                    transitioned_batch_clips = []
+                    for clip in batch_clips:
+                        if not transitioned_batch_clips:
+                            transitioned_batch_clips.append(clip)
+                        else:
+                            add_clip_with_transition(
+                                transitioned_batch_clips,
+                                clip,
+                                set_start=True,
+                                trans_time=inner_trans_time
+                            )
+                    batch_video = CompositeVideoClip(
+                        transitioned_batch_clips,
+                        size=resolution,
+                        use_bgclip=False
+                    )
+                else:
+                    batch_video = concatenate_videoclips(batch_clips, method="compose")
+                print(f"  批次视频时长: {batch_video.duration:.2f}秒")
+                
+                temp_file = os.path.join(temp_output_dir, f"batch_{batch_idx:04d}.mp4")
+                print(f"保存第 {batch_idx + 1} 批临时视频到: {temp_file}")
+                batch_video.write_videofile(
+                    temp_file,
+                    fps=fps,  # 使用用户设置的帧率
+                    codec='libx264',
+                    preset='medium',
+                    audio_codec='aac',
+                    audio_bitrate='192k',
+                    logger=None  # 减少输出
+                )
+                batch_video.close()
+                temp_video_files.append(temp_file)
+                
+                # 关闭所有片段，释放内存
+                for clip in batch_clips:
+                    if hasattr(clip, 'close'):
+                        clip.close()
+                batch_clips = []
+                batch_ending_clips = []
+                
+                print(f"第 {batch_idx + 1} 批处理完成，已保存临时文件")
+                gc.collect()
+                time.sleep(2)  # 等待系统释放资源
+            else:
+                print(f"警告：第 {batch_idx + 1} 批没有生成任何片段")
+        
+        # 如果有开场片段，也需要保存为临时文件（如果还没有使用缓存）
+        if clips and not (skip_cache_files and 'intro' in skip_cache_files):
+            print("合成开场片段...")
+            if auto_add_transition:
+                intro_video = CompositeVideoClip(clips)
+            else:
+                intro_video = concatenate_videoclips(clips)
+            
+            intro_temp_file = os.path.join(temp_output_dir, "intro.mp4")
+            intro_video.write_videofile(
+                intro_temp_file,
+                fps=fps,  # 使用用户设置的帧率
+                codec='libx264',
+                preset='medium',
+                audio_codec='aac',
+                audio_bitrate='192k',
+                logger=None
+            )
+            intro_video.close()
+            temp_video_files.insert(0, intro_temp_file)  # 插入到开头
+            
+            for clip in clips:
+                if hasattr(clip, 'close'):
+                    clip.close()
+            clips = []
+            gc.collect()
+        
+        # 返回临时文件列表
+        return temp_video_files
+    elif batch_size and batch_size > 0 and total_main_configs > batch_size:
+        # 分批处理但不生成临时文件（原有逻辑）
+        num_batches = (total_main_configs + batch_size - 1) // batch_size
+        print(f"主要视频片段总数: {total_main_configs}，将分 {num_batches} 批处理，每批 {batch_size} 个")
+        
+        for batch_idx in range(num_batches):
+            start_idx = batch_idx * batch_size
+            end_idx = min(start_idx + batch_size, total_main_configs)
+            batch_configs = main_configs[start_idx:end_idx]
+            
+            print(f"\n{'='*60}")
+            print(f"处理第 {batch_idx + 1}/{num_batches} 批 (片段 {start_idx + 1}-{end_idx})")
+            print(f"{'='*60}")
+            
+            for local_idx, clip_config in enumerate(batch_configs):
+                global_idx = start_idx + local_idx
+                is_last_in_all = (global_idx == total_main_configs - 1)
+                
+                # 判断是否是最后一个片段
+                if is_last_in_all and full_last_clip:
+                    start_time = clip_config['start']
+                    # 获取原始视频的长度（不是配置文件中配置的duration）
+                    full_clip = VideoFileClip(clip_config['video'])
+                    try:
+                        full_clip_duration = full_clip.duration - 5
+                    finally:
+                        full_clip.close()
+                    # 修改配置文件中的duration，因此下面创建视频片段时，会使用加长版duration
+                    clip_config['duration'] = full_clip_duration - start_time
+                    clip_config['end'] = full_clip_duration
 
-            combined_start_time = clips[-1].end - trans_time
-            ending_clips.append(clip)     
-        else:
-            clip = create_video_segment(game_type, clip_config, style_config, resolution)  
-            clip = normalize_audio_volume(clip)
+                    clip = create_video_segment(game_type, clip_config, style_config, resolution)  
+                    clip = normalize_audio_volume(clip)
 
-            add_clip_with_transition(clips, clip, 
-                                    set_start=True, 
-                                    trans_time=trans_time)
+                    combined_start_time = clips[-1].end - trans_time if clips else 0
+                    ending_clips.append(clip)     
+                else:
+                    clip = create_video_segment(game_type, clip_config, style_config, resolution)  
+                    clip = normalize_audio_volume(clip)
+
+                    add_clip_with_transition(clips, clip, 
+                                            set_start=True, 
+                                            trans_time=trans_time)
+            
+            # 每批处理完后清理内存
+            if batch_idx < num_batches - 1:  # 不是最后一批
+                print(f"第 {batch_idx + 1} 批处理完成，清理内存...")
+                gc.collect()
+                time.sleep(1)  # 短暂等待，让系统释放资源
+    else:
+        # 不分批，一次性处理所有
+        print(f"处理主要视频片段，共 {total_main_configs} 个（不分批）")
+        for clip_config in main_configs:
+            # 判断是否是最后一个片段
+            if main_configs.index(clip_config) == len(main_configs) - 1 and full_last_clip:
+                start_time = clip_config['start']
+                # 获取原始视频的长度（不是配置文件中配置的duration）
+                full_clip = VideoFileClip(clip_config['video'])
+                try:
+                    full_clip_duration = full_clip.duration - 5
+                finally:
+                    full_clip.close()
+                # 修改配置文件中的duration，因此下面创建视频片段时，会使用加长版duration
+                clip_config['duration'] = full_clip_duration - start_time
+                clip_config['end'] = full_clip_duration
+
+                clip = create_video_segment(game_type, clip_config, style_config, resolution)  
+                clip = normalize_audio_volume(clip)
+
+                combined_start_time = clips[-1].end - trans_time if clips else 0
+                ending_clips.append(clip)     
+            else:
+                clip = create_video_segment(game_type, clip_config, style_config, resolution)  
+                clip = normalize_audio_volume(clip)
+
+                add_clip_with_transition(clips, clip, 
+                                        set_start=True, 
+                                        trans_time=trans_time)
 
     # 处理结尾片段
     if ending_configs:
@@ -759,7 +1324,8 @@ def get_combined_ending_clip(ending_clips, combined_start_time, trans_time):
 def render_all_video_clips(game_type: str, style_config: dict, main_configs: list,
                            video_output_path: str, video_res: tuple, video_bitrate: str,
                            intro_configs: list = None, ending_configs: list = None,
-                           auto_add_transition=True, trans_time=1, force_render=False):
+                           auto_add_transition=True, trans_time=1, force_render=False,
+                           use_hardware_acceleration=False, acceleration_method=None):
     """ 渲染所有视频片段，并按照clip_title_name输出到指定路径文件 """
     vfile_prefix = 0
 
@@ -785,7 +1351,19 @@ def render_all_video_clips(game_type: str, style_config: dict, main_configs: lis
             ])
         # 直接渲染clip为视频文件
         print(f"正在合成视频片段: {prefix}_{clip_title_name}.mp4")
-        clip.write_videofile(output_file, fps=30, threads=4, preset='ultrafast', bitrate=video_bitrate)
+        
+        # 根据硬件加速设置选择编码器
+        if use_hardware_acceleration and acceleration_method and acceleration_method in HARD_RENDER_METHOD:
+            encoder_prefix = "h264"
+            hardware_suffix = HARD_RENDER_METHOD[acceleration_method]["codec"]
+            final_codec = f"{encoder_prefix}_{hardware_suffix}"
+            print(f"使用硬件加速编码: {final_codec}")
+        else:
+            final_codec = "libx264"
+            print(f"使用软件编码: {final_codec}")
+        
+        clip.write_videofile(output_file, fps=30, threads=4, preset='ultrafast', 
+                            codec=final_codec, bitrate=video_bitrate)
         clip.close()
         # 强制垃圾回收
         del clip
@@ -840,12 +1418,55 @@ def render_complete_full_video(
         video_output_path: str, 
         intro_configs: list=None, ending_configs: list=None,
         video_res: tuple = (1920, 1080), video_bitrate: str = "4000k",
-        video_trans_enable: bool = True, video_trans_time: float = 1.0, full_last_clip: bool = False):
-    """ 根据完整配置合成完整视频，并保存到指定路径的文件 """
+        video_trans_enable: bool = True, video_trans_time: float = 1.0, full_last_clip: bool = False,
+        use_hardware_acceleration: bool = False, acceleration_method: str = None,
+        batch_size: int = None, progress_callback=None, video_fps: int = 60, skip_cache_files: dict = None,
+        batch_inner_trans_enable: bool = False):
+    """ 根据完整配置合成完整视频，并保存到指定路径的文件 
+    
+    Args:
+        batch_size: 每批处理的视频数量，None 表示不分批（一次性处理所有）
+    """
 
     print(f"正在合成完整视频...")
     try:
-        final_video = create_full_video(
+        # 根据硬件加速设置选择编码器
+        output_file = os.path.join(video_output_path, f"{username}_FULL_VIDEO.mp4")
+        
+        if use_hardware_acceleration and acceleration_method and acceleration_method in HARD_RENDER_METHOD:
+            encoder_prefix = "h264"
+            hardware_suffix = HARD_RENDER_METHOD[acceleration_method]["codec"]
+            final_codec = f"{encoder_prefix}_{hardware_suffix}"
+            render_mode = f"{acceleration_method} 硬件加速"
+            print("=" * 60)
+            print(f"使用 {render_mode} 渲染模式")
+            print("=" * 60)
+        else:
+            final_codec = 'libx264'
+            render_mode = "CPU 软件编码"
+            print("=" * 60)
+            print(f"使用 {render_mode} 渲染模式 (balanced 质量)")
+            print("=" * 60)
+        
+        print(f"输出文件: {output_file}")
+        print(f"视频比特率: {video_bitrate}")
+        print(f"编码器: {final_codec}")
+        print("提示：如需更快速度，可以考虑：")
+        print("  1. 降低视频分辨率（1280x720 比 1920x1080 快4倍）")
+        print("  2. 减少片段数量")
+        print("  3. 关闭转场效果")
+        if not use_hardware_acceleration:
+            print("  4. 启用 GPU 硬件加速（如果支持）")
+        print("=" * 60)
+        
+        # 如果使用分批处理，创建临时目录并生成临时文件
+        temp_dir = None
+        if batch_size and batch_size > 0 and len(main_configs) > batch_size:
+            temp_dir = os.path.join(video_output_path, "temp_batches")
+            os.makedirs(temp_dir, exist_ok=True)
+            print(f"使用分批处理模式，临时文件将保存到: {temp_dir}")
+        
+        result = create_full_video(
             game_type=game_type,
             style_config=style_config,
             main_configs=main_configs,
@@ -854,39 +1475,390 @@ def render_complete_full_video(
             resolution=video_res,
             auto_add_transition=video_trans_enable,
             trans_time=video_trans_time,
-            full_last_clip=full_last_clip
+            full_last_clip=full_last_clip,
+            batch_size=batch_size,
+            temp_output_dir=temp_dir,
+            batch_inner_trans_enable=batch_inner_trans_enable,
+            progress_callback=progress_callback,
+            fps=video_fps,
+            skip_cache_files=skip_cache_files
         )
-        # 使用 CPU 渲染，质量设为 balanced (medium preset)
-        output_file = os.path.join(video_output_path, f"{username}_FULL_VIDEO.mp4")
         
-        print("=" * 60)
-        print("使用 CPU 渲染模式 (balanced 质量)")
-        print("=" * 60)
-        print(f"输出文件: {output_file}")
-        print(f"视频比特率: {video_bitrate}")
-        print("提示：如需更快速度，可以考虑：")
-        print("  1. 降低视频分辨率（1280x720 比 1920x1080 快4倍）")
-        print("  2. 减少片段数量")
-        print("  3. 关闭转场效果")
-        print("=" * 60)
+        # 如果返回的是临时文件列表，需要合并这些文件
+        if isinstance(result, list) and temp_dir:
+            print(f"\n{'='*60}")
+            print(f"开始合并 {len(result)} 个批次视频文件...")
+            print(f"{'='*60}")
+            
+            # 处理结尾片段（如果有）
+            ending_temp_file = None
+            if ending_configs:
+                # 检查是否使用缓存的结尾文件
+                if skip_cache_files and 'ending' in skip_cache_files and os.path.exists(skip_cache_files['ending']):
+                    # 验证缓存文件是否有效
+                    is_valid, error_msg = validate_cache_video_file(skip_cache_files['ending'], expected_fps=video_fps)
+                    if is_valid:
+                        print(f"使用缓存的结尾文件: {skip_cache_files['ending']}")
+                        result.append(skip_cache_files['ending'])
+                    else:
+                        print(f"警告: 缓存的结尾文件无效，将重新生成")
+                        print(f"错误信息: {error_msg}")
+                        # 继续生成结尾片段
+                        print("处理结尾片段...")
+                        ending_clips = []
+                        for clip_config in ending_configs:
+                            clip = create_info_segment(clip_config, style_config, video_res)
+                            clip = normalize_audio_volume(clip)
+                            ending_clips.append(clip)
+                        
+                        if ending_clips:
+                            # 在分批处理时，结尾片段单独处理，不需要与最后一个主要片段合并
+                            if video_trans_enable:
+                                ending_video = CompositeVideoClip(ending_clips)
+                            else:
+                                ending_video = concatenate_videoclips(ending_clips)
+                            
+                            ending_temp_file = os.path.join(temp_dir, "ending.mp4")
+                            ending_video.write_videofile(
+                                ending_temp_file,
+                                fps=video_fps,  # 使用用户设置的帧率
+                                codec='libx264',
+                                preset='medium',
+                                audio_codec='aac',
+                                audio_bitrate='192k',
+                                logger=None
+                            )
+                            ending_video.close()
+                            for clip in ending_clips:
+                                if hasattr(clip, 'close'):
+                                    clip.close()
+                            ending_clips = []
+                            gc.collect()
+                            result.append(ending_temp_file)
+                else:
+                    print("处理结尾片段...")
+                    ending_clips = []
+                    for clip_config in ending_configs:
+                        clip = create_info_segment(clip_config, style_config, video_res)
+                        clip = normalize_audio_volume(clip)
+                        ending_clips.append(clip)
+                    
+                    if ending_clips:
+                        # 在分批处理时，结尾片段单独处理，不需要与最后一个主要片段合并
+                        if video_trans_enable:
+                            ending_video = CompositeVideoClip(ending_clips)
+                        else:
+                            ending_video = concatenate_videoclips(ending_clips)
+                        
+                        ending_temp_file = os.path.join(temp_dir, "ending.mp4")
+                        ending_video.write_videofile(
+                            ending_temp_file,
+                            fps=video_fps,  # 使用用户设置的帧率
+                            codec='libx264',
+                            preset='medium',
+                            audio_codec='aac',
+                            audio_bitrate='192k',
+                            logger=None
+                        )
+                        ending_video.close()
+                        for clip in ending_clips:
+                            if hasattr(clip, 'close'):
+                                clip.close()
+                        ending_clips = []
+                        gc.collect()
+                        result.append(ending_temp_file)
+            
+            # 加载所有临时视频文件并合并
+            print("加载临时视频文件...")
+            if progress_callback:
+                progress_callback({
+                    'stage': 'loading_temp_files',
+                    'progress': 0.75
+                })
+            
+            temp_clips = []
+            for idx, temp_file in enumerate(result):
+                if os.path.exists(temp_file):
+                    clip = VideoFileClip(temp_file)
+                    temp_clips.append(clip)
+                    print(f"  已加载: {os.path.basename(temp_file)} ({clip.duration:.2f}秒)")
+                    if progress_callback:
+                        progress_callback({
+                            'stage': 'loading_temp_files',
+                            'current_file': idx + 1,
+                            'total_files': len(result),
+                            'progress': 0.75 + (idx + 1) / len(result) * 0.05
+                        })
+            
+            if not temp_clips:
+                return {"status": "error", "info": "没有找到有效的临时视频文件"}
+            
+            print(f"\n合并 {len(temp_clips)} 个视频文件...")
+            if progress_callback:
+                progress_callback({
+                    'stage': 'merging_videos',
+                    'progress': 0.80
+                })
+            
+            # 为批次视频之间添加过渡效果
+            if video_trans_enable and video_trans_time > 0:
+                print(f"为批次视频之间添加过渡效果（{video_trans_time}秒）...")
+                final_video = add_transitions_to_clips(temp_clips, video_trans_time, video_res)
+                if final_video is None:
+                    # 如果过渡效果失败，回退到直接拼接
+                    final_video = concatenate_videoclips(temp_clips, method="compose")
+            else:
+                # 不使用过渡效果，直接拼接
+                final_video = concatenate_videoclips(temp_clips, method="compose")
+            
+            print(f"最终视频时长: {final_video.duration:.2f}秒")
+            print("开始渲染最终视频...")
+            
+            if progress_callback:
+                progress_callback({
+                    'stage': 'rendering_final',
+                    'progress': 0.85
+                })
+            
+            # 构建 write_videofile 参数
+            write_params = {
+                'fps': video_fps,  # 使用用户设置的帧率
+                'threads': 12 if not use_hardware_acceleration else 4,
+                'codec': final_codec,
+                'bitrate': video_bitrate,
+                'audio_codec': 'aac',
+                'audio_bitrate': '192k',
+                'logger': 'bar'
+            }
+            # 只有在非硬件加速时才添加 preset 参数
+            if not use_hardware_acceleration:
+                write_params['preset'] = 'medium'
+            
+            final_video.write_videofile(output_file, **write_params)
+            
+            if progress_callback:
+                progress_callback({
+                    'stage': 'completed',
+                    'progress': 1.0
+                })
+            
+            # 关闭所有临时视频
+            final_video.close()
+            for clip in temp_clips:
+                clip.close()
+            temp_clips = []
+            gc.collect()
+            
+            # 清理临时文件
+            print("清理临时文件...")
+            try:
+                for temp_file in result:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                if os.path.exists(temp_dir):
+                    os.rmdir(temp_dir)
+                print("临时文件已清理")
+            except Exception as e:
+                print(f"警告：清理临时文件时出错: {e}")
+        else:
+            # 原有逻辑：直接渲染 VideoClip 对象
+            final_video = result
+            # 构建 write_videofile 参数
+            write_params = {
+                'fps': video_fps,  # 使用用户设置的帧率
+                'threads': 12 if not use_hardware_acceleration else 4,  # GPU模式使用较少线程
+                'codec': final_codec,
+                'bitrate': video_bitrate,
+                'audio_codec': 'aac',
+                'audio_bitrate': '192k',
+                'logger': 'bar'
+            }
+            # 只有在非硬件加速时才添加 preset 参数
+            if not use_hardware_acceleration:
+                write_params['preset'] = 'medium'
+            
+            final_video.write_videofile(output_file, **write_params)
+            print(f"✓ {render_mode} 渲染完成")
+            final_video.close()
         
-        final_video.write_videofile(
-            output_file, 
-            fps=30,
-            threads=12,  # CPU模式使用多线程
-            codec='libx264',
-            preset='medium',  # balanced 质量：medium preset
-            bitrate=video_bitrate,
-            audio_codec='aac',
-            audio_bitrate='192k',
-            logger='bar'
-        )
-        print("✓ CPU 渲染完成")
-        final_video.close()
         return {"status": "success", "info": f"合成完整视频成功"}
     except Exception as e:
         print(f"Error: 合成完整视频时发生异常: {traceback.print_exc()}")
         return {"status": "error", "info": f"合成完整视频时发生异常: {traceback.print_exc()}"}
+
+
+def combine_from_cached_batches(temp_batches_dir, output_file, 
+                                 use_hardware_acceleration=False, 
+                                 acceleration_method=None,
+                                 video_bitrate="4000k",
+                                 progress_callback=None,
+                                 fps=60,
+                                 trans_enable=True,
+                                 trans_time=1.0):
+    """
+    从缓存的批次文件直接合成最终视频
+    
+    Args:
+        temp_batches_dir: 临时批次文件目录路径
+        output_file: 输出文件路径
+        use_hardware_acceleration: 是否使用硬件加速
+        acceleration_method: 硬件加速方法
+        video_bitrate: 视频比特率
+        progress_callback: 进度回调函数
+    """
+    print(f"从缓存文件合成最终视频...")
+    print(f"缓存目录: {temp_batches_dir}")
+    print(f"输出文件: {output_file}")
+    
+    if not os.path.exists(temp_batches_dir):
+        return {"status": "error", "info": f"缓存目录不存在: {temp_batches_dir}"}
+    
+    # 查找所有批次文件
+    batch_files = []
+    intro_file = None
+    ending_file = None
+    
+    for file in os.listdir(temp_batches_dir):
+        if file.startswith("batch_") and file.endswith(".mp4"):
+            batch_files.append(file)
+        elif file == "intro.mp4":
+            intro_file = file
+        elif file == "ending.mp4":
+            ending_file = file
+    
+    # 按文件名排序批次文件
+    batch_files.sort()
+    
+    if not batch_files:
+        return {"status": "error", "info": "没有找到批次文件"}
+    
+    print(f"找到 {len(batch_files)} 个批次文件")
+    if intro_file:
+        print(f"找到开场文件: {intro_file}")
+    if ending_file:
+        print(f"找到结尾文件: {ending_file}")
+    
+    # 构建文件列表（按顺序：intro -> batches -> ending）
+    video_files = []
+    if intro_file:
+        video_files.append(os.path.join(temp_batches_dir, intro_file))
+    for batch_file in batch_files:
+        video_files.append(os.path.join(temp_batches_dir, batch_file))
+    if ending_file:
+        video_files.append(os.path.join(temp_batches_dir, ending_file))
+    
+    # 加载所有视频文件
+    print("加载视频文件...")
+    if progress_callback:
+        progress_callback({
+            'stage': 'loading_cached_files',
+            'progress': 0.1
+        })
+    
+    temp_clips = []
+    for idx, video_file in enumerate(video_files):
+        if os.path.exists(video_file):
+            clip = VideoFileClip(video_file)
+            temp_clips.append(clip)
+            print(f"  已加载: {os.path.basename(video_file)} ({clip.duration:.2f}秒)")
+            if progress_callback:
+                progress_callback({
+                    'stage': 'loading_cached_files',
+                    'current_file': idx + 1,
+                    'total_files': len(video_files),
+                    'progress': 0.1 + (idx + 1) / len(video_files) * 0.3
+                })
+    
+    if not temp_clips:
+        return {"status": "error", "info": "没有找到有效的视频文件"}
+    
+    # 合并视频
+    print(f"\n合并 {len(temp_clips)} 个视频文件...")
+    if progress_callback:
+        progress_callback({
+            'stage': 'merging_videos',
+            'progress': 0.5
+        })
+    
+    # 为批次视频之间添加过渡效果
+    # 需要从第一个视频片段获取分辨率
+    resolution = None
+    if temp_clips:
+        resolution = (temp_clips[0].w, temp_clips[0].h)
+    
+    if trans_enable and trans_time > 0:
+        print(f"为批次视频之间添加过渡效果（{trans_time}秒）...")
+        final_video = add_transitions_to_clips(temp_clips, trans_time, resolution)
+        if final_video is None:
+            # 如果过渡效果失败，回退到直接拼接
+            final_video = concatenate_videoclips(temp_clips, method="compose")
+    else:
+        # 不使用过渡效果，直接拼接
+        final_video = concatenate_videoclips(temp_clips, method="compose")
+    
+    print(f"最终视频时长: {final_video.duration:.2f}秒")
+    print("开始渲染最终视频...")
+    
+    # 根据硬件加速设置选择编码器
+    if use_hardware_acceleration and acceleration_method and acceleration_method in HARD_RENDER_METHOD:
+        encoder_prefix = "h264"
+        hardware_suffix = HARD_RENDER_METHOD[acceleration_method]["codec"]
+        final_codec = f"{encoder_prefix}_{hardware_suffix}"
+        render_mode = f"{acceleration_method} 硬件加速"
+    else:
+        final_codec = 'libx264'
+        render_mode = "CPU 软件编码"
+    
+    print(f"使用 {render_mode} 渲染模式")
+    
+    if progress_callback:
+        progress_callback({
+            'stage': 'rendering_final',
+            'progress': 0.6
+        })
+    
+    # 构建 write_videofile 参数
+    write_params = {
+        'fps': fps,  # 使用用户设置的帧率
+        'threads': 12 if not use_hardware_acceleration else 4,
+        'codec': final_codec,
+        'bitrate': video_bitrate,
+        'audio_codec': 'aac',
+        'audio_bitrate': '192k',
+        'logger': 'bar'
+    }
+    # 只有在非硬件加速时才添加 preset 参数（硬件加速编码器不支持 preset）
+    if not use_hardware_acceleration:
+        write_params['preset'] = 'medium'
+    # 注意：硬件加速编码器（如 h264_amf, h264_nvenc 等）不支持 preset 参数
+    
+    try:
+        final_video.write_videofile(output_file, **write_params)
+    except Exception as e:
+        # 如果硬件加速失败，尝试使用软件编码
+        if use_hardware_acceleration:
+            print(f"硬件加速编码失败，尝试使用软件编码: {e}")
+            write_params['codec'] = 'libx264'
+            write_params['preset'] = 'medium'
+            final_video.write_videofile(output_file, **write_params)
+        else:
+            raise
+    
+    # 关闭所有视频
+    final_video.close()
+    for clip in temp_clips:
+        clip.close()
+    temp_clips = []
+    gc.collect()
+    
+    if progress_callback:
+        progress_callback({
+            'stage': 'completed',
+            'progress': 1.0
+        })
+    
+    print(f"✓ {render_mode} 渲染完成")
+    return {"status": "success", "info": f"从缓存文件合成完整视频成功"}
 
 
 def combine_full_video_direct(video_clip_path):
@@ -905,6 +1877,7 @@ def combine_full_video_direct(video_clip_path):
     temp_dir = os.path.join(video_clip_path, "temp_ts")
     os.makedirs(temp_dir, exist_ok=True)
     
+    current_dir = os.getcwd()
     try:
         # 1. 创建MP4文件列表
         mp4_list_file = os.path.join(video_clip_path, "mp4_files.txt")
@@ -940,7 +1913,6 @@ def combine_full_video_direct(video_clip_path):
         output_path = os.path.join(video_clip_path, "final_output.mp4")
         
         # 切换到视频目录执行拼接命令
-        current_dir = os.getcwd()
         os.chdir(video_clip_path)
         
         cmd = [
@@ -953,10 +1925,13 @@ def combine_full_video_direct(video_clip_path):
         ]
         
         subprocess.run(cmd, check=True)
-        os.chdir(current_dir)  # 恢复原始工作目录
         print("视频拼接完成")
         
     finally:
+        try:
+            os.chdir(current_dir)  # 恢复原始工作目录
+        except Exception:
+            pass
         # 清理临时文件
         if os.path.exists(temp_dir):
             for file in os.listdir(temp_dir):

@@ -22,6 +22,8 @@ class DatabaseManager:
         """Context manager for database connections"""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row  # Enable dict-like access to rows
+        # Enable foreign key constraints (required for CASCADE deletes)
+        conn.execute('PRAGMA foreign_keys = ON')
         try:
             yield conn
         finally:
@@ -53,6 +55,14 @@ class DatabaseManager:
                 cursor.executescript(schema_sql)
                 conn.commit()
                 print("Database initialized successfully.")
+            else:
+                # Database exists, check and apply any pending migrations
+                try:
+                    self.check_and_apply_migrations()
+                except Exception as e:
+                    print(f"Warning: Failed to check/apply migrations: {e}")
+                    import traceback
+                    traceback.print_exc()
     
     def get_schema_version(self) -> str:
         """Get the current database schema version"""
@@ -119,11 +129,52 @@ class DatabaseManager:
             migration_path = os.path.join(migrations_dir, migration_file)
             
             try:
+                # Check if migration has been applied by checking if the changes exist
+                # For migration 002, check if video_search_results column exists
+                if migration_file == '002_add_video_search_results.sql':
+                    # Check if column already exists
+                    with self.get_connection() as conn:
+                        cursor = conn.cursor()
+                        try:
+                            cursor.execute("PRAGMA table_info(charts)")
+                            columns = [row[1] for row in cursor.fetchall()]
+                            if 'video_search_results' in columns:
+                                print(f"Skipping migration {migration_file}, column already exists.")
+                                continue
+                        except Exception as e:
+                            print(f"Warning: Could not check table schema: {e}")
+                
+                # Try to extract version from file
                 with open(migration_path, 'r', encoding='utf-8') as f:
-                    header = f.readline()
-                    if 'Version:' in header:
-                        file_version = header.split('Version:')[1].strip().replace('--', '').strip()
-                        
+                    lines = f.readlines()
+                    file_version = None
+                    for line in lines[:5]:  # Check first 5 lines for version
+                        if 'Version:' in line:
+                            file_version = line.split('Version:')[1].strip().replace('--', '').strip()
+                            break
+                    
+                    # For 002 migration, always check if column exists first
+                    if migration_file == '002_add_video_search_results.sql':
+                        # Double-check column existence (in case previous check was in different connection)
+                        with self.get_connection() as conn:
+                            cursor = conn.cursor()
+                            cursor.execute("PRAGMA table_info(charts)")
+                            columns = [row[1] for row in cursor.fetchall()]
+                            if 'video_search_results' not in columns:
+                                print(f"Applying migration {migration_file} (column missing)...")
+                                try:
+                                    self.apply_migration(migration_file)
+                                    if file_version:
+                                        self.update_schema_version(file_version, f"Applied migration {migration_file}")
+                                    print(f"Successfully applied migration {migration_file}")
+                                except sqlite3.OperationalError as e:
+                                    if 'duplicate column' in str(e).lower():
+                                        print(f"Column already exists (race condition?), skipping migration {migration_file}")
+                                    else:
+                                        raise
+                            else:
+                                print(f"Skipping migration {migration_file}, column already exists.")
+                    elif file_version:
                         # Simple version comparison (you might want to use proper semantic versioning)
                         if self._version_greater_than(file_version, current_version):
                             print(f"Applying migration {migration_file} for version {file_version}...")
@@ -131,11 +182,15 @@ class DatabaseManager:
                             self.update_schema_version(file_version, f"Applied migration {migration_file}")
                             print(f"Successfully applied migration {migration_file}")
                         else:
-                            print(f"Skipping migration {migration_file}, already applied.")
+                            print(f"Skipping migration {migration_file}, version {file_version} <= current {current_version}.")
+                    else:
+                        print(f"Warning: Migration {migration_file} has no version specified, skipping.")
                             
             except Exception as e:
                 print(f"Error applying migration {migration_file}: {e}")
-                raise
+                import traceback
+                traceback.print_exc()
+                # Don't raise, continue with other migrations
     
     def _version_greater_than(self, version1: str, version2: str) -> bool:
         """Simple version comparison - you might want to use proper semantic versioning"""
@@ -241,11 +296,20 @@ class DatabaseManager:
                 return row['id']
             
             # If not, create it
-            # Define all possible fields for a chart
-            all_fields = unique_keys + ['difficulty', 'song_name', 'artist', 'max_dx_score', 'video_path', 'video_metadata']
+            # Check which columns exist in the table
+            cursor.execute("PRAGMA table_info(charts)")
+            existing_columns = {row[1] for row in cursor.fetchall()}
             
-            # Prepare for insertion
-            columns = [field for field in all_fields if field in chart_data and chart_data[field] is not None]
+            # Define all possible fields for a chart
+            all_fields = unique_keys + ['difficulty', 'song_name', 'artist', 'max_dx_score', 'video_path', 'video_metadata', 'video_search_results']
+            
+            # Filter to only include fields that exist in the table and are in chart_data
+            columns = [field for field in all_fields if field in existing_columns and field in chart_data and chart_data[field] is not None]
+            
+            if not columns:
+                # At minimum, we need the unique keys
+                columns = [field for field in unique_keys if field in chart_data]
+            
             placeholders = ', '.join(['?'] * len(columns))
             values = [chart_data.get(col) for col in columns]
             
@@ -267,6 +331,8 @@ class DatabaseManager:
                 chart_data = dict(row)
                 if chart_data.get('video_metadata'):
                     chart_data['video_metadata'] = json.loads(chart_data['video_metadata'])
+                if chart_data.get('video_search_results'):
+                    chart_data['video_search_results'] = json.loads(chart_data['video_search_results'])
                 return chart_data
             return None
     
@@ -275,9 +341,17 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
 
+            # Check which columns exist in the table
+            cursor.execute("PRAGMA table_info(charts)")
+            existing_columns = {row[1] for row in cursor.fetchall()}
+
             updateable_fields = ['game_type', 'song_id', 'chart_type', 'level_index', 'difficulty', 
-                                 'song_name', 'artist', 'max_dx_score', 'video_path', 'video_metadata']
-            filtered_data = {k: v for k, v in chart_data.items() if k in updateable_fields and v is not None}
+                                 'song_name', 'artist', 'max_dx_score', 'video_path', 'video_metadata', 'video_search_results']
+            
+            # Filter out fields that don't exist in the table
+            available_fields = [f for f in updateable_fields if f in existing_columns]
+            filtered_data = {k: v for k, v in chart_data.items() if k in available_fields and v is not None}
+            
             if not filtered_data: 
                 return self.get_chart(chart_id)
 
@@ -286,8 +360,8 @@ class DatabaseManager:
 
             for field, value in filtered_data.items():
                 set_clauses.append(f'{field} = ?')
-                if field == 'video_metadata':
-                    update_values.append(json.dumps(value))
+                if field in ['video_metadata', 'video_search_results']:
+                    update_values.append(json.dumps(value) if value else None)
                 else:
                     update_values.append(value)
             
@@ -306,38 +380,80 @@ class DatabaseManager:
         """Get all charts associated with an archive (of every records)"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('''
-                SELECT
-                    r.id AS record_id,
-                    r.archive_id,
-                    r.order_in_archive,
-                    r.clip_title_name,
-                    c.id AS chart_id,
-                    c.game_type,
-                    c.song_id,
-                    c.chart_type,
-                    c.difficulty,
-                    c.level_index,
-                    c.song_name,
-                    c.artist,
-                    c.video_path,
-                    c.video_metadata
-                FROM
-                    records r
-                JOIN
-                    charts c ON r.chart_id = c.id
-                WHERE
-                    r.archive_id = ?
-                ORDER BY
-                    r.order_in_archive ASC;
-            ''', (archive_id,))
             
+            # Check if video_search_results column exists
+            cursor.execute("PRAGMA table_info(charts)")
+            columns = [row[1] for row in cursor.fetchall()]
+            has_video_search_results = 'video_search_results' in columns
+            
+            # Build query based on whether column exists
+            if has_video_search_results:
+                query = '''
+                    SELECT
+                        r.id AS record_id,
+                        r.archive_id,
+                        r.order_in_archive,
+                        r.clip_title_name,
+                        r.play_count,
+                        c.id AS chart_id,
+                        c.game_type,
+                        c.song_id,
+                        c.chart_type,
+                        c.difficulty,
+                        c.level_index,
+                        c.song_name,
+                        c.artist,
+                        c.video_path,
+                        c.video_metadata,
+                        c.video_search_results
+                    FROM
+                        records r
+                    JOIN
+                        charts c ON r.chart_id = c.id
+                    WHERE
+                        r.archive_id = ?
+                    ORDER BY
+                        r.order_in_archive ASC;
+                '''
+            else:
+                # Fallback query without video_search_results column
+                query = '''
+                    SELECT
+                        r.id AS record_id,
+                        r.archive_id,
+                        r.order_in_archive,
+                        r.clip_title_name,
+                        r.play_count,
+                        c.id AS chart_id,
+                        c.game_type,
+                        c.song_id,
+                        c.chart_type,
+                        c.difficulty,
+                        c.level_index,
+                        c.song_name,
+                        c.artist,
+                        c.video_path,
+                        c.video_metadata,
+                        NULL AS video_search_results
+                    FROM
+                        records r
+                    JOIN
+                        charts c ON r.chart_id = c.id
+                    WHERE
+                        r.archive_id = ?
+                    ORDER BY
+                        r.order_in_archive ASC;
+                '''
+            
+            cursor.execute(query, (archive_id,))
             results = cursor.fetchall()
             charts = []
             for row in results:
                 row_dict = dict(row)
                 if row_dict.get('video_metadata'):
                     row_dict['video_metadata'] = json.loads(row_dict['video_metadata'])
+                if row_dict.get('video_search_results'):
+                    row_dict['video_search_results'] = json.loads(row_dict['video_search_results'])
                 charts.append(row_dict)
             return charts
 

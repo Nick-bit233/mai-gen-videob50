@@ -3,13 +3,68 @@ import time
 import random
 import traceback
 import os
+import json
 import streamlit as st
 from typing import Dict, List, Optional
 from datetime import datetime
 from utils.PageUtils import escape_markdown_text, read_global_config, get_game_type_text
+from utils.PathUtils import get_user_base_dir
 from utils.WebAgentUtils import download_one_video, get_keyword
-from utils.DataUtils import get_record_tags_from_data_dict, level_index_to_label
+from utils.DataUtils import get_record_tags_from_data_dict, level_index_to_label, filter_records_by_best_group
 from db_utils.DatabaseDataHandler import get_database_handler
+
+# 导入缓存相关函数
+def get_search_results_cache_path(username, archive_name):
+    """获取搜索结果缓存文件路径"""
+    base_dir = get_user_base_dir(username)
+    cache_file = os.path.join(base_dir, f"video_search_results_{archive_name}.json")
+    return cache_file
+
+def save_search_results_to_cache(username, archive_name, search_results):
+    """保存搜索结果到JSON文件"""
+    cache_file = get_search_results_cache_path(username, archive_name)
+    base_dir = get_user_base_dir(username)
+    os.makedirs(base_dir, exist_ok=True)
+    
+    try:
+        # 确保 key 是字符串类型（JSON 要求）
+        json_data = {}
+        for key, value in search_results.items():
+            # 将整数 key 转换为字符串
+            json_key = str(key) if isinstance(key, int) else key
+            json_data[json_key] = value
+        
+        with open(cache_file, 'w', encoding='utf-8') as f:
+            json.dump(json_data, f, ensure_ascii=False, indent=2)
+        print(f"搜索结果已保存到: {cache_file}")
+    except Exception as e:
+        print(f"保存搜索结果缓存失败: {e}")
+
+def update_cache_with_video_info(chart_id, video_info_match, video_info_list=None):
+    """更新缓存中的视频信息"""
+    username = st.session_state.get("username", None)
+    archive_name = st.session_state.get("archive_name", None)
+    
+    if not username or not archive_name:
+        return
+    
+    # 确保 search_results 存在
+    if 'search_results' not in st.session_state:
+        st.session_state.search_results = {}
+    
+    # 更新或创建缓存条目
+    if chart_id not in st.session_state.search_results:
+        st.session_state.search_results[chart_id] = {}
+    
+    # 更新 video_info_match
+    st.session_state.search_results[chart_id]['video_info_match'] = video_info_match
+    
+    # 如果提供了 video_info_list，也更新它
+    if video_info_list is not None:
+        st.session_state.search_results[chart_id]['video_info_list'] = video_info_list
+    
+    # 保存到 JSON 文件
+    save_search_results_to_cache(username, archive_name, st.session_state.search_results)
 
 G_config = read_global_config()
 db_handler = get_database_handler()
@@ -22,10 +77,17 @@ def get_web_search_url(chart_data, dl_type):
     difficulty_name = level_index_to_label(game_type, chart_data['level_index'])
     type = chart_data['chart_type']
     keyword = get_keyword(dl_type, game_type, title_name, difficulty_name, type)
+    
+    # 确保 keyword 是字符串类型
+    if keyword is None:
+        keyword = ""
+    keyword = str(keyword)
+    
     # 将keyword中的非unicode字符转化为url参数形式
     from urllib.parse import quote
     keyword = quote(keyword)
-    if dl_type == "youtube":
+    
+    if dl_type == "youtube" or dl_type == "youtube-ytdlp":
         return f"https://www.youtube.com/results?search_query={keyword}"
     elif dl_type == "bilibili":
         return f"https://search.bilibili.com/all?keyword={keyword}"
@@ -98,9 +160,11 @@ def change_video_page(cur_chart_data, cur_p_index):
     if st.button("确定更新分p", key=f"confirm_selected_page_{cur_c_id}"):
         cur_chart_data['video_info_match']['p_index'] = selected_p_index
         db_handler.update_chart_video_metadata(cur_c_id, cur_chart_data['video_info_match'])
+        # 同步更新缓存
+        update_cache_with_video_info(cur_c_id, cur_chart_data['video_info_match'])
         st.rerun()
 
-def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instance=None):
+def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instance=None, downloader_type=None):
 
     def update_match_info(placeholder, video_info):
         with placeholder.container(border=True):
@@ -190,6 +254,8 @@ def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instanc
                         song['video_info_match'] = to_match_videos[selected_index]
                         # 将meta信息保存到数据库
                         db_handler.update_chart_video_metadata(c_id, song['video_info_match'])
+                        # 同步更新缓存
+                        update_cache_with_video_info(c_id, song['video_info_match'], to_match_videos)
                         st.toast("配置已保存！")
                         update_match_info(match_info_placeholder, song['video_info_match'])
             else:
@@ -200,9 +266,16 @@ def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instanc
 
         # 如果搜索结果均不符合，手动输入地址：
         with extra_search_placeholder.container(border=True): 
-            search_url = get_web_search_url(chart_data=song, dl_type=st.session_state.downloader_type)
+            # 安全获取下载器类型
+            dl_type = downloader_type if downloader_type else st.session_state.get('downloader_type', '')
             
             st.markdown('<p style="color: #08337B;"><b>以上都不对？手动输入谱面确认视频信息<b></p>', unsafe_allow_html=True)
+            
+            if not dl_type:
+                st.warning("⚠️ 无法进行手动搜索，请返回上一页保存配置。")
+                search_url = None
+            else:
+                search_url = get_web_search_url(chart_data=song, dl_type=dl_type)
             
             # 添加辅助函数：从URL中提取视频ID
             def extract_video_id(input_text: str, dl_type: str) -> str:
@@ -269,7 +342,8 @@ def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instanc
                 )
                 st.caption(f"💡 提示：也可以直接输入视频ID（YouTube: 11位字符，B站: BV号）")
             with col2:
-                st.markdown(f"[➡点击跳转到搜索页]({search_url})", unsafe_allow_html=True)
+                if search_url:
+                    st.markdown(f"[➡点击跳转到搜索页]({search_url})", unsafe_allow_html=True)
                 replace_p_index = st.number_input("分P序号（可选）", 
                                             help="如果视频来源是bilibili且有分P，可以选择直接填写分P序号（分p序号可从网页端查询，当谱面确认视频的p数较多时，直接输入序号加载更快），否则请忽略",
                                             min_value=0, max_value=999, value=0, key=f"replace_p_index_{c_id}")
@@ -278,11 +352,11 @@ def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instanc
             to_replace_video_info = None
             extra_search_button = st.button("获取视频信息并替换", 
                                             key=f"search_replace_id_{c_id}",
-                                            disabled=dl_instance is None or not replace_input)
+                                            disabled=dl_instance is None or not replace_input or not dl_type)
             if extra_search_button:
                 try:
                     # 从输入中提取视频ID
-                    extracted_id = extract_video_id(replace_input, downloader_type)
+                    extracted_id = extract_video_id(replace_input, dl_type)
                     
                     if not extracted_id:
                         st.error("无法从输入中提取视频ID，请检查输入格式")
@@ -320,6 +394,8 @@ def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instanc
                                 [🔗{to_replace_video_info['id']}]({to_replace_video_info['url']})")
                     song['video_info_match'] = to_replace_video_info
                     db_handler.update_chart_video_metadata(c_id, song['video_info_match'])
+                    # 同步更新缓存
+                    update_cache_with_video_info(c_id, song['video_info_match'])
                     st.toast("配置已保存！")
                     update_match_info(match_info_placeholder, song['video_info_match'])
 
@@ -330,7 +406,7 @@ def on_jump_to_record():
         st.session_state.current_index = target_index
         update_editor(link_editor_placeholder, 
                       to_edit_chart_data, 
-                      st.session_state.current_index, dl_instance)
+                      st.session_state.current_index, dl_instance, downloader_type)
     else:
         st.toast("已经是当前记录！")
 
@@ -384,18 +460,12 @@ with st.expander(f"更换{data_name}存档"):
                 st.error("加载存档数据失败。")
 ### Savefile Management - End ###
 
-# 尝试读取缓存下载器
-if 'downloader' in st.session_state and 'downloader_type' in st.session_state:
-    downloader_type = st.session_state.downloader_type
-    dl_instance = st.session_state.downloader
-else:
-    downloader_type = ""
-    dl_instance = None
-    st.error("未找到缓存的下载器，无法进行手动搜索和下载视频！请在上一页保存配置！")
-    st.stop()
-
 # 读取存档的charts信息（数据库中的，无视频信息或有旧的匹配信息）
 chart_list = db_handler.load_charts_of_archive_records(username, archive_name)
+scope = st.session_state.get('best_group_scope', G_config.get('BEST_GROUP_SCOPE', 'all'))
+include_newbest = scope != 'past'
+include_pastbest = scope != 'new'
+chart_list = filter_records_by_best_group(chart_list, include_newbest, include_pastbest)
 record_len = len(chart_list)
 if not chart_list:
     st.warning("未找到任何谱面信息。请确认存档是否有效，存档至少需要包含一条谱面信息。")
@@ -409,18 +479,138 @@ for each in chart_list:
         c_data['video_info_match'] = each['video_metadata']
     to_edit_chart_data.append(c_data)
 
-# 从缓存中读取（本次会话的）搜索结果信息（如果有）
+# 从缓存或数据库中读取搜索结果信息
 search_result = st.session_state.get("search_results", None)
-if search_result:
-    for chart in to_edit_chart_data:
-        key = chart['chart_id']
-        ret_data = search_result.get(key, None)
-        if ret_data:  # 如果有，使用缓存的搜索结果
-            chart['video_info_list'] = ret_data['video_info_list']
-        if not chart.get('video_info_match', None):  # 如果未从数据库中查找到过往匹配信息，使用默认搜索结果的第一位
-            chart['video_info_match'] = ret_data['video_info_match']
-else:
+
+# 如果session_state中没有搜索结果，尝试从JSON文件加载
+if not search_result:
+    cache_file = os.path.join(get_user_base_dir(username), f"video_search_results_{archive_name}.json")
+    if os.path.exists(cache_file):
+        try:
+            with open(cache_file, 'r', encoding='utf-8') as f:
+                cached_data = json.load(f)
+                # 将字符串类型的 key 转换为整数类型，以匹配 chart_id 的类型
+                search_result = {}
+                for key, value in cached_data.items():
+                    try:
+                        # 尝试将 key 转换为整数
+                        int_key = int(key)
+                        search_result[int_key] = value
+                    except (ValueError, TypeError):
+                        # 如果无法转换，保持原样
+                        search_result[key] = value
+                st.session_state.search_results = search_result
+                st.info(f"✓ 已从缓存文件加载 {len(search_result)} 条搜索结果")
+        except Exception as e:
+            print(f"从JSON文件加载搜索结果失败: {e}")
+
+for chart in to_edit_chart_data:
+    key = chart['chart_id']
+    
+    # 优先使用 session_state 中的缓存（本次会话的搜索结果或从JSON加载的）
+    if search_result and key in search_result:
+        ret_data = search_result[key]
+        if ret_data:
+            chart['video_info_list'] = ret_data.get('video_info_list', [])
+            if not chart.get('video_info_match', None):
+                chart['video_info_match'] = ret_data.get('video_info_match', None)
+    # 如果缓存中没有，从数据库加载
+    elif chart.get('video_search_results'):
+        chart['video_info_list'] = chart['video_search_results']
+        # 如果数据库中有搜索结果但没有匹配信息，使用第一个搜索结果作为默认匹配
+        if not chart.get('video_info_match', None) and chart['video_info_list']:
+            chart['video_info_match'] = chart['video_info_list'][0]
+
+if not any(chart.get('video_info_list') for chart in to_edit_chart_data):
     st.info("没有缓存的搜索结果，请尝试手动添加匹配视频信息！")
+
+# 尝试读取缓存下载器（用于手动搜索和下载，但不是必需的）
+if 'downloader' in st.session_state and 'downloader_type' in st.session_state:
+    downloader_type = st.session_state.downloader_type
+    dl_instance = st.session_state.downloader
+elif 'downloader_type' in st.session_state:
+    # 如果有下载器类型但没有实例，尝试从配置重新初始化
+    downloader_type = st.session_state.downloader_type
+    try:
+        from utils.PageUtils import read_global_config
+        from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader, YtDlpDownloader, YT_DLP_AVAILABLE
+        
+        G_config = read_global_config()
+        use_proxy = G_config.get('USE_PROXY', False)
+        proxy_address = G_config.get('PROXY_ADDRESS', '127.0.0.1:7890')
+        search_max_results = G_config.get('SEARCH_MAX_RESULTS', 3)
+        use_youtube_api = G_config.get('USE_YOUTUBE_API', False)
+        youtube_api_key = G_config.get('YOUTUBE_API_KEY', '')
+        no_credential = G_config.get('NO_BILIBILI_CREDENTIAL', False)
+        
+        if downloader_type == "youtube":
+            if use_youtube_api:
+                dl_instance = PurePytubefixDownloader(
+                    proxy=proxy_address if use_proxy else None,
+                    use_potoken=False,
+                    use_oauth=False,
+                    auto_get_potoken=False,
+                    search_max_results=search_max_results,
+                    use_api=True,
+                    api_key=youtube_api_key
+                )
+            else:
+                use_oauth = G_config.get('USE_OAUTH', False)
+                use_custom_po_token = G_config.get('USE_CUSTOM_PO_TOKEN', False)
+                use_auto_po_token = G_config.get('USE_AUTO_PO_TOKEN', False)
+                use_potoken = use_custom_po_token or use_auto_po_token
+                customer_po_token = G_config.get('CUSTOMER_PO_TOKEN', {})
+                po_token = customer_po_token.get('po_token', '') if isinstance(customer_po_token, dict) else ''
+                
+                dl_instance = PurePytubefixDownloader(
+                    proxy=proxy_address if use_proxy else None,
+                    use_potoken=use_potoken,
+                    use_oauth=use_oauth,
+                    auto_get_potoken=use_auto_po_token,
+                    search_max_results=search_max_results,
+                    use_api=False,
+                    api_key=None
+                )
+        elif downloader_type == "youtube-ytdlp":
+            if not YT_DLP_AVAILABLE:
+                dl_instance = None
+            else:
+                dl_instance = YtDlpDownloader(
+                    proxy=proxy_address if use_proxy else None,
+                    search_max_results=search_max_results,
+                    use_api=use_youtube_api,
+                    api_key=youtube_api_key if use_youtube_api else None
+                )
+        elif downloader_type == "bilibili":
+            dl_instance = BilibiliDownloader(
+                proxy=proxy_address if use_proxy else None,
+                no_credential=no_credential,
+                credential_path="./cred_datas/bilibili_cred.pkl",
+                search_max_results=search_max_results
+            )
+        else:
+            dl_instance = None
+        
+        if dl_instance:
+            st.session_state.downloader = dl_instance
+            st.info(f"✅ 已从配置重新初始化下载器: {downloader_type}")
+        else:
+            dl_instance = None
+    except Exception as e:
+        dl_instance = None
+        print(f"重新初始化下载器失败: {e}")
+else:
+    downloader_type = ""
+    dl_instance = None
+
+# 如果没有下载器实例，显示警告
+if not dl_instance:
+    # 如果有缓存数据，只显示警告，不阻止查看和编辑
+    if any(chart.get('video_info_list') or chart.get('video_info_match') for chart in to_edit_chart_data):
+        st.warning("⚠️ 未找到缓存的下载器，无法进行手动搜索和下载视频。但您可以查看和编辑已缓存的视频信息。如需搜索新视频，请返回上一页保存配置。")
+    else:
+        st.error("未找到缓存的下载器，无法进行手动搜索和下载视频！请在上一页保存配置！")
+        st.stop()
 
 # 获取所有视频片段的ID
 record_ids = get_record_tags_from_data_dict(to_edit_chart_data)
@@ -435,7 +625,7 @@ selector_container = st.container(border=True)
 link_editor_placeholder = st.empty()
 update_editor(link_editor_placeholder, 
               to_edit_chart_data, 
-              st.session_state.current_index, dl_instance)
+              st.session_state.current_index, dl_instance, downloader_type)
 
 with selector_container: 
     # 显示当前视频片段的选择框

@@ -16,6 +16,14 @@ import re
 import requests
 import time
 
+# 尝试导入 yt-dlp
+try:
+    import yt_dlp
+    YT_DLP_AVAILABLE = True
+except ImportError:
+    YT_DLP_AVAILABLE = False
+    yt_dlp = None
+
 # 根据操作系统选择FFMPEG的输出重定向方式
 # TODO：添加日志输出
 if platform.system() == "Windows":
@@ -718,6 +726,371 @@ class BilibiliDownloader(Downloader):
             })
 
         return page_info
+
+class YtDlpDownloader(Downloader):
+    """
+    使用 yt-dlp 进行搜索和下载的 YouTube 视频下载器
+    参考: https://github.com/yt-dlp/yt-dlp
+    """
+    def __init__(self, proxy=None, search_max_results=3, use_api=False, api_key=None):
+        if not YT_DLP_AVAILABLE:
+            raise ImportError("yt-dlp 库未安装。请运行: pip install yt-dlp")
+        
+        self.proxy = proxy
+        self.search_max_results = search_max_results
+        self.use_api = use_api  # 是否使用 YouTube Data API v3 进行搜索
+        self.api_key = api_key  # YouTube Data API v3 的 API Key
+        
+        # 如果没有提供 API Key，尝试从配置文件读取
+        if self.use_api and not self.api_key:
+            try:
+                with open("global_config.yaml", "r", encoding="utf-8") as f:
+                    config = yaml.load(f, Loader=yaml.FullLoader)
+                    self.api_key = config.get('YOUTUBE_API_KEY', '')
+            except Exception as e:
+                print(f"读取配置文件失败: {e}")
+                self.api_key = ''
+    
+    def search_video(self, keyword):
+        # 如果配置了使用 API，优先使用 YouTube Data API v3
+        if self.use_api and self.api_key:
+            return self._search_video_with_api(keyword)
+        else:
+            return self._search_video_with_ytdlp(keyword)
+    
+    def _search_video_with_api(self, keyword):
+        """
+        使用 YouTube Data API v3 进行搜索
+        参考: https://developers.google.com/youtube/v3/docs/search/list
+        """
+        keyword = keyword.strip()
+        
+        # YouTube Data API v3 搜索端点
+        api_url = "https://www.googleapis.com/youtube/v3/search"
+        
+        params = {
+            'part': 'snippet',
+            'q': keyword,
+            'type': 'video',
+            'maxResults': self.search_max_results,
+            'key': self.api_key,
+            'order': 'relevance'  # 按相关性排序
+        }
+        
+        # 配置代理
+        proxies = None
+        if self.proxy:
+            proxies = {
+                'http': self.proxy,
+                'https': self.proxy
+            }
+        
+        max_retries = 3
+        retry_delay = 2
+        
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(api_url, params=params, proxies=proxies, timeout=10)
+                response.raise_for_status()
+                
+                data = response.json()
+                
+                if 'items' not in data or len(data['items']) == 0:
+                    print(f"API搜索未找到结果: {keyword}")
+                    return []
+                
+                videos = []
+                for item in data['items']:
+                    video_id = item['id']['videoId']
+                    snippet = item['snippet']
+                    video_info = {
+                        'id': video_id,
+                        'title': snippet.get('title', ''),
+                        'duration': 0,  # API 搜索不返回时长，需要单独获取
+                        'page_count': 1,
+                        'url': f"https://www.youtube.com/watch?v={video_id}"
+                    }
+                    videos.append(video_info)
+                
+                return videos
+                
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code == 403:
+                    error_data = e.response.json() if e.response.content else {}
+                    error_msg = error_data.get('error', {}).get('message', str(e))
+                    raise Exception(f"YouTube API 搜索失败 (403错误): API Key 可能无效或配额已用完。请检查 API Key 配置。")
+                elif e.response.status_code == 400:
+                    error_data = e.response.json() if e.response.content else {}
+                    error_msg = error_data.get('error', {}).get('message', str(e))
+                    if 'quota' in error_msg.lower():
+                        raise Exception(f"YouTube API 搜索失败 (400错误): {error_msg}。系统将自动尝试其他搜索策略。")
+                    raise Exception(f"YouTube API 搜索失败 (400错误): {error_msg}。")
+                else:
+                    error_data = e.response.json() if e.response.content else {}
+                    error_msg = error_data.get('error', {}).get('message', str(e))
+                    raise Exception(f"YouTube API 搜索失败: {error_msg}")
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    print(f"搜索失败，{retry_delay}秒后重试... (尝试 {attempt + 1}/{max_retries})")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                else:
+                    raise Exception(f"YouTube API 搜索失败: {str(e)}")
+        
+        raise Exception("YouTube API 搜索失败，已超过最大重试次数。")
+    
+    def _search_video_with_ytdlp(self, keyword):
+        """
+        使用 yt-dlp 进行搜索
+        """
+        keyword = keyword.strip()
+        videos = []
+        
+        try:
+            # 格式化代理地址（yt-dlp 需要完整的 URL 格式）
+            proxy_url = None
+            if self.proxy:
+                if not self.proxy.startswith(('http://', 'https://', 'socks5://')):
+                    proxy_url = f"http://{self.proxy}"
+                else:
+                    proxy_url = self.proxy
+            
+            # yt-dlp 的搜索功能
+            ydl_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'extract_flat': True,
+                'default_search': 'ytsearch',
+                'max_downloads': self.search_max_results,
+            }
+            
+            if proxy_url:
+                ydl_opts['proxy'] = proxy_url
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                # 搜索视频
+                search_query = f"ytsearch{self.search_max_results}:{keyword}"
+                results = ydl.extract_info(search_query, download=False)
+                
+                if 'entries' in results:
+                    for entry in results['entries']:
+                        if entry:
+                            video_info = {
+                                'id': entry.get('id', ''),
+                                'title': entry.get('title', ''),
+                                'duration': entry.get('duration', 0),
+                                'page_count': 1,
+                                'url': entry.get('url', f"https://www.youtube.com/watch?v={entry.get('id', '')}")
+                            }
+                            videos.append(video_info)
+        except Exception as e:
+            print(f"yt-dlp 搜索失败: {e}")
+            traceback.print_exc()
+        
+        return videos
+    
+    def get_video_info(self, video_id):
+        """
+        通过视频ID直接获取视频信息
+        """
+        # 处理视频ID或URL
+        if 'youtube.com' in video_id or 'youtu.be' in video_id:
+            url = video_id
+        else:
+            url = f"https://www.youtube.com/watch?v={video_id}"
+        
+        max_retries = 3
+        retry_delay = 2
+        
+        for attempt in range(max_retries):
+            try:
+                # 格式化代理地址（yt-dlp 需要完整的 URL 格式）
+                proxy_url = None
+                if self.proxy:
+                    if not self.proxy.startswith(('http://', 'https://', 'socks5://')):
+                        proxy_url = f"http://{self.proxy}"
+                    else:
+                        proxy_url = self.proxy
+                
+                ydl_opts = {
+                    'quiet': True,
+                    'no_warnings': True,
+                }
+                
+                if proxy_url:
+                    ydl_opts['proxy'] = proxy_url
+                
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                    
+                    video_info = {
+                        'id': info.get('id', ''),
+                        'title': info.get('title', ''),
+                        'duration': info.get('duration', 0),
+                        'page_count': 1,
+                        'url': info.get('webpage_url', url)
+                    }
+                    
+                    return video_info
+                    
+            except Exception as e:
+                error_msg = str(e)
+                if attempt < max_retries - 1:
+                    print(f"获取视频信息失败，{retry_delay}秒后重试... (尝试 {attempt + 1}/{max_retries})")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                else:
+                    raise Exception(f"获取YouTube视频信息失败: {error_msg}")
+        
+        raise Exception("获取YouTube视频信息失败，已超过最大重试次数。")
+    
+    def get_video_pages(self, video_id):
+        """
+        获取YouTube视频的分P信息
+        YouTube视频没有分P的概念，返回一个只包含单个页面的列表
+        """
+        return [
+            {
+                "page": 1,
+                "part": "完整视频",
+                "duration": 0,
+                "first_frame": None,
+            }
+        ]
+    
+    def download_video(self, video_id, output_name, output_path, high_res=False, p_index=0):
+        """
+        使用 yt-dlp 下载视频
+        high_res: 如果为 True，使用 -f299 (视频) 和 -f140 (音频) 分别下载后合并
+        """
+        try:
+            if not os.path.exists(output_path):
+                os.makedirs(output_path)
+            
+            # 处理视频ID或URL
+            if 'youtube.com' in video_id or 'youtu.be' in video_id:
+                url = video_id
+            else:
+                url = f"https://www.youtube.com/watch?v={video_id}"
+            
+            output_file = os.path.join(output_path, f"{output_name}.mp4")
+            
+            if high_res:
+                # 高分辨率：分别下载视频和音频，然后合并
+                # -f299 是视频 (mp4), -f140 是音频 (m4a)
+                video_temp = os.path.join(output_path, "video_temp")
+                audio_temp = os.path.join(output_path, "audio_temp")
+                
+                # 格式化代理地址（yt-dlp 需要完整的 URL 格式）
+                proxy_url = None
+                if self.proxy:
+                    if not self.proxy.startswith(('http://', 'https://', 'socks5://')):
+                        proxy_url = f"http://{self.proxy}"
+                    else:
+                        proxy_url = self.proxy
+                
+                ydl_opts_video = {
+                    'format': '299/bestvideo[ext=mp4]/bestvideo',  # 优先使用 299，如果不可用则使用最佳视频
+                    'outtmpl': f'{video_temp}.%(ext)s',
+                    'quiet': False,
+                    'no_warnings': False,
+                }
+                
+                ydl_opts_audio = {
+                    'format': '140/bestaudio[ext=m4a]/bestaudio',  # 优先使用 140，如果不可用则使用最佳音频
+                    'outtmpl': f'{audio_temp}.%(ext)s',
+                    'quiet': False,
+                    'no_warnings': False,
+                }
+                
+                if proxy_url:
+                    ydl_opts_video['proxy'] = proxy_url
+                    ydl_opts_audio['proxy'] = proxy_url
+                
+                # 下载视频
+                print(f"正在下载视频流...")
+                with yt_dlp.YoutubeDL(ydl_opts_video) as ydl:
+                    ydl.download([url])
+                
+                # 下载音频
+                print(f"正在下载音频流...")
+                with yt_dlp.YoutubeDL(ydl_opts_audio) as ydl:
+                    ydl.download([url])
+                
+                # 查找实际下载的文件（因为扩展名可能不同）
+                video_file = None
+                audio_file = None
+                for file in os.listdir(output_path):
+                    if file.startswith("video_temp"):
+                        video_file = os.path.join(output_path, file)
+                    elif file.startswith("audio_temp"):
+                        audio_file = os.path.join(output_path, file)
+                
+                if not video_file or not audio_file:
+                    raise Exception("无法找到下载的视频或音频文件")
+                
+                # 合并视频和音频
+                print(f"正在合并视频和音频...")
+                os.system(f'{FFMPEG_PATH} -y -i "{video_file}" -i "{audio_file}" -vcodec copy -acodec copy "{output_file}" {REDIRECT}')
+                
+                # 删除临时文件
+                if os.path.exists(video_file):
+                    os.remove(video_file)
+                if os.path.exists(audio_file):
+                    os.remove(audio_file)
+                
+                print(f"合并完成，存储为: {output_name}.mp4")
+            else:
+                # 普通分辨率：也使用 299 格式（最高品质）
+                # 格式化代理地址（yt-dlp 需要完整的 URL 格式）
+                proxy_url = None
+                if self.proxy:
+                    if not self.proxy.startswith(('http://', 'https://', 'socks5://')):
+                        proxy_url = f"http://{self.proxy}"
+                    else:
+                        proxy_url = self.proxy
+                
+                # 使用 299 格式（最高品质视频）+ 最佳音频
+                ydl_opts = {
+                    'format': '299+bestaudio/best',  # 优先使用 299 视频格式 + 最佳音频，如果不可用则使用最佳质量
+                    'merge_output_format': 'mp4',  # 合并为 mp4 格式
+                    'outtmpl': output_file.replace('.mp4', '.%(ext)s'),
+                    'quiet': False,
+                    'no_warnings': False,
+                }
+                
+                if proxy_url:
+                    ydl_opts['proxy'] = proxy_url
+                
+                print(f"正在下载视频（最高品质 299 格式）...")
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
+                
+                # 查找实际下载的文件（因为扩展名可能不同）
+                downloaded_file = None
+                for file in os.listdir(output_path):
+                    if file.startswith(output_name):
+                        downloaded_file = os.path.join(output_path, file)
+                        break
+                
+                if not downloaded_file:
+                    raise Exception("无法找到下载的视频文件")
+                
+                # 如果下载的文件不是 mp4，重命名为 mp4
+                if not downloaded_file.endswith('.mp4'):
+                    if os.path.exists(output_file):
+                        os.remove(output_file)
+                    os.rename(downloaded_file, output_file)
+                    downloaded_file = output_file
+                
+                print(f"下载完成，存储为: {output_name}.mp4")
+            
+            return output_file
+            
+        except Exception as e:
+            print(f"下载视频时发生错误: {e}")
+            traceback.print_exc()
+            return None
 
 # test
 if __name__ == "__main__":

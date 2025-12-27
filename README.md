@@ -8,6 +8,40 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 ## 更新速览
 
+`v1.0 (beta test)` 版本现已更新：
+- ✨ **重大更新**：现已支持中二节奏（CHUNITHM）B30视频生成！您可以从落雪查分器获取中二节奏数据
+    - 中二节奏B30功能已完善，支持完整的视频生成流程
+    - 支持从落雪查分器CSV备份文件导入游玩次数数据
+- 🛠️ 数据库重构：使用本地Sqlite3数据库替换原基于文件的数据存储系统，在调取资源时更加灵活，并兼容分表数据的未来更新
+    - 支持数据库版本管理和自动迁移
+    - 提供完整的数据管理功能，包括数据清空和存档管理
+- 🎮 界面更新：统一的视频生成流程，根据游戏类型自动切换显示 B30（中二侧）或 B50（maimai侧）
+    - 支持在首页一键切换游戏类型
+    - 根据游戏类型自动切换主题配色
+- 🔍 搜索优化：支持 YouTube Data API v3，并优化更加快捷的手动搜索流程
+- 📥 **新增下载器**：引入 yt-dlp 作为 YouTube 视频下载的另一种选择，提供更稳定的下载体验，减少风控问题
+- ⚡ **GPU硬件加速**：支持 NVIDIA (CUDA + NVENC)、AMD (AMF)、Intel (Quick Sync Video) 三种硬件加速方案
+    - 可显著提升视频渲染速度，分担 CPU 负载
+    - 在合成视频页面可选择启用硬件加速
+- 🚀 **快速生成模式**：新增分批处理和快速拼接模式
+    - 分批处理模式可降低内存占用，适合处理大量视频片段
+    - 快速拼接模式可大幅减少生成时间，适合快速预览
+- 📝 自定义存档：新增"编辑数据/创建自定义数据"功能，支持手动创建和编辑分表数据
+    - 支持拖拽排序、搜索添加歌曲、批量编辑等功能
+- 🎨 **画面生成完善**：优化视频合成和画面渲染逻辑
+    - 改进视频片段合成算法，提升画面质量
+    - 优化内存管理，支持大批量视频生成
+    - 改进过渡效果处理，提供更流畅的视频衔接
+- 🐛 界面优化：优化前端界面，改进分表填写和媒体处理逻辑，提升用户体验
+
+我们经过短暂测试后将提供release包，目前请使用源代码安装。无需更新runtime，可以直接替换v0.6.5版本的所有源代码
+
+> 本预览版本的中二落雪查分器支持，以及YouTube Data API v3和yt-dlp下载器，部分界面重构支持，画面优化由[caiccu](https://github.com/CAICCU)提供，GPU硬件加速及快速生成由 [〖天蓝〗](https://github.com/MetallicAllex)提供
+
+目前预览版的中二生成支持可能存在问题，如果您需要制作中二分表，请移步由 [〖天蓝〗](https://github.com/MetallicAllex) 修改的 [chu-gen-videob30](https://github.com/MetallicAllex/chu-gen-videob30/tree/get_userdata_FC)
+
+---
+
 `v1.0 (alpha test)` 预览版本现已更新：
 - ✨ **重大更新**：现已支持中二节奏（CHUNITHM）B30视频生成！您可以从水鱼查分器和落雪查分器获取中二节奏数据
     - 中二节奏的自定义分表和国际服数据查询还在施工中，目前可能无法正常工作
@@ -15,14 +49,6 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 - 🎮 界面更新：统一的视频生成流程，根据游戏类型自动切换显示 B30（中二侧）或 B50（maimai侧）
 - 🔍 搜索优化：支持 YouTube Data API v3，并优化更加快捷的手动搜索流程
 - 🐛 界面优化：优化前端界面，改进分表填写和媒体处理逻辑，提升用户体验
-
-我们经过短暂测试后将提供release包，目前请使用源代码安装。无需更新runtime，可以直接替换v0.6.5版本的所有源代码
-
-> 本预览版本的中二落雪查分器支持，以及YouTube Data API v3和部分界面重构支持，由[caiccu](https://github.com/CAICCU)提供
-
-目前预览版的中二生成支持可能存在问题，如果您需要制作中二分表，请移步由 [〖天蓝〗](https://github.com/MetallicAllex) 修改的 [chu-gen-videob30](https://github.com/MetallicAllex/chu-gen-videob30/tree/get_userdata_FC)
-
----
 
 `v0.6.5`版本更新：
 - 修复：从舞萌2025版本，成绩图片中的等级+号显示，由每个等级的定数.7及以上调整为.6及以上
@@ -54,7 +80,7 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 生成视频效果展示：[【舞萌2024/工具发布】还在手搓b50视频？我写了一个自动生成器！](https://www.bilibili.com/video/BV1bJi2YVEiE)
 
 
-中二节奏生成效果：[【中二节奏2026】小伙时隔半个月成功抵达虹分，这是他分表发生的变化](https://www.bilibili.com/video/BV1m9yVBfExq)
+中二节奏生成效果：[【中二节奏2026】小伙入坑四个月在12月25日b30成功抵达16.25，特此纪念](https://www.bilibili.com/video/BV1vBB6BAE3z)
 
 使用教程视频：[【舞萌2024】新版B50视频生成器来啦！支持一键启动/站内下载/全面升级用户界面~](https://www.bilibili.com/video/BV1G2kBY5Edq)
 
@@ -340,10 +366,16 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 - Q：视频生成速度缓慢
 
     合并完整视频的时间取决于你设置的预览时长和设备的性能，在每个片段10s的情况下，生成完整视频大概需要60-100分钟。
-
-    本工具的性能瓶颈主要是CPU性能，由于依赖的第三方库特性，**目前无法实现GPU加速渲染**，敬请谅解。
     
-    如果设备性能不佳，请考虑缩减视频时长，或降低视频分辨率（不推荐，可能需要手动调整字号以防止文字错位）
+    从 `v1.0 (beta test)` 版本开始，已支持 GPU 硬件加速渲染，可显著提升生成速度：
+    - 在"合成视频"页面勾选"使用 GPU 硬件加速"
+    - 根据您的显卡选择对应的加速方案（NVIDIA/AMD/Intel）
+    - 如果 GPU 加速失败或效果不明显，可回退到 CPU 软件编码
+    
+    如果设备性能不佳，请考虑：
+    - 启用 GPU 硬件加速（如果支持）
+    - 使用快速生成模式（分批处理）
+    - 缩减视频时长，或降低视频分辨率（不推荐，可能需要手动调整字号以防止文字错位）
 
 
 - Q：生成视频最后出现如下控制台错误

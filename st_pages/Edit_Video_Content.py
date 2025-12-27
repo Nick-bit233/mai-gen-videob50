@@ -4,7 +4,7 @@ import traceback
 from datetime import datetime
 from utils.PageUtils import load_style_config, open_file_explorer, get_video_duration, read_global_config, get_game_type_text
 from utils.PathUtils import get_user_media_dir
-from utils.DataUtils import get_valid_time_range
+from utils.DataUtils import get_valid_time_range, filter_records_by_best_group
 from utils.VideoUtils import render_one_video_clip, get_video_preview_frame
 from db_utils.DatabaseDataHandler import get_database_handler
 
@@ -56,10 +56,14 @@ def update_preview(preview_placeholder, config, current_index):
         # 获取当前视频的配置信息
         item = config[current_index]
         chart_id = item['chart_id']
-        achievement_image_path = item['main_image']
-        video_path = item['video']
+        achievement_image_path = item.get('main_image')
+        video_path = item.get('video')
 
         # 检查是否存在图片和视频：
+        if not achievement_image_path:
+            st.error(f"图片路径为空，请检查前置步骤是否正常完成！")
+            return
+        
         if not os.path.exists(achievement_image_path):
             st.error(f"图片文件不存在: {achievement_image_path}，请检查前置步骤是否正常完成！")
             return
@@ -80,7 +84,10 @@ def update_preview(preview_placeholder, config, current_index):
                     open_file_explorer(absolute_path)
         main_col1, main_col2 = st.columns(2)
         with main_col1:
-            st.image(achievement_image_path, caption="成绩图片")
+            if achievement_image_path and os.path.exists(achievement_image_path):
+                st.image(achievement_image_path, caption="成绩图片")
+            else:
+                st.warning("⚠️ 成绩图片不可用")
         with main_col2:
             if not video_path:
                 st.warning("⚠️ 未找到视频路径信息，请检查下载步骤是否正常完成！")
@@ -303,6 +310,10 @@ else:
 try:
     video_configs = db_handler.load_video_configs(archive_id=archive_id)
     video_configs = try_update_default_configs(video_configs, archive_id=archive_id)  # 如果是新存档，将会生成默认配置
+    scope = st.session_state.get('best_group_scope', G_config.get('BEST_GROUP_SCOPE', 'all'))
+    include_newbest = scope != 'past'
+    include_pastbest = scope != 'new'
+    video_configs = filter_records_by_best_group(video_configs, include_newbest, include_pastbest)
 except Exception as e:
     st.error(f"读取存档配置失败: {e}")
     with st.expander("错误详情"):
