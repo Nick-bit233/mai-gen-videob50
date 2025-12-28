@@ -120,8 +120,8 @@ def create_empty_record(chart_data, index, game_type="maimai"):
             max_acc, max_dx_score = (101.0, chart_data.get('max_dx_score', 0)) if auto_all_perfect else (0.0, 0)
             record_template.update({
                 "achievement": max_acc,
-                "fc_status": "app" if auto_all_perfect else "",
-                "fs_status": "fsdp" if auto_all_perfect else "",
+                "fc_status": "app" if auto_all_perfect else "none",
+                "fs_status": "fsdp" if auto_all_perfect else "none",
                 "dx_rating": compute_rating(ds=ds, score=max_acc) if auto_all_perfect else 0,
                 "dx_score": max_dx_score,
             })
@@ -129,8 +129,8 @@ def create_empty_record(chart_data, index, game_type="maimai"):
             max_score = 1010000 if auto_all_perfect else 0
             record_template.update({
                 "achievement": max_score,
-                "fc_status": "ajc" if auto_all_perfect else "",
-                "fs_status": "fcr" if auto_all_perfect else "",
+                "fc_status": "ajc" if auto_all_perfect else "none",
+                "fs_status": "fcr" if auto_all_perfect else "none",
                 "chuni_rating": compute_chunithm_rating(ds=ds, score=max_score) if auto_all_perfect else 0.0,
             })
         case _:
@@ -319,13 +319,13 @@ def update_record_grid(grid, external_placeholder):
                         ),
                         "fc_status": st.column_config.SelectboxColumn(
                             "FC标",
-                            options=["", "fc", "fcp", "ap", "app"],
+                            options=["none", "fc", "fcp", "ap", "app"],
                             width=60,
                             required=False
                         ),
                         "fs_status": st.column_config.SelectboxColumn(
                             "Sync标",
-                            options=["", "sync", "fs", "fsp", "fsd", "fsdp"],
+                            options=["none", "sync", "fs", "fsp", "fsd", "fsdp"],
                             width=60,
                             required=False
                         ),
@@ -356,19 +356,26 @@ def update_record_grid(grid, external_placeholder):
                 edited_records = st.data_editor(
                     st.session_state._editor_showing_records,
                     key=editor_key,
-                    column_order=["clip_title_name", "chart_info", "score", "combo_type", "chain_type", "chuni_rating", "play_count"],
+                    column_order=["clip_title_name", "chart_info", "achievement", "fc_status", "fs_status", "chuni_rating", "play_count"],
                     column_config={
                         "clip_title_name": "抬头标题",
                         "chart_info": "乐曲信息",
-                        "score": st.column_config.NumberColumn(
+                        "achievement": st.column_config.NumberColumn(
                             "分数",
                             min_value=0,
                             max_value=1010000,
                             format="%d",
                             required=True
                         ),
-                        "combo_type": st.column_config.TextColumn("FC标", width=80),
-                        "chain_type": st.column_config.TextColumn("FullChain标", width=100),
+                        "fc_status": st.column_config.SelectboxColumn(
+                            "FullCombo标",
+                            options=["none", "fc", "aj", "ajc"],
+                            width=80),
+                        "fs_status": st.column_config.SelectboxColumn(
+                            "FullChain标", 
+                            options=["none", "fc", "fcr"],
+                            help="fc = 金FullChain, fcr = 铂FullChain",
+                            width=100),
                         "chuni_rating": st.column_config.NumberColumn(
                             "单曲Ra",
                             format="%.2f",
@@ -608,15 +615,15 @@ def clear_all_records_achievement():
     if st.session_state.archive_meta.get("game_type", "maimai") == "maimai":
         for record in st.session_state.records:
             record["achievements"] = 0.0
-            record["fc_status"] = ""
-            record["fs_status"] = ""
+            record["fc_status"] = "none"
+            record["fs_status"] = "none"
             record["dx_rating"] = 0
             record["dx_score"] = 0
     elif st.session_state.archive_meta.get("game_type", "maimai") == "chunithm":
         for record in st.session_state.records:
             record["score"] = 0
-            record["combo_type"] = ""
-            record["chain_type"] = ""
+            record["combo_type"] = "none"
+            record["chain_type"] = "none"
             record["chuni_rating"] = 0.0
     else:
         pass
@@ -729,6 +736,7 @@ with st.container(border=True):
                 }
                 st.session_state.archive_name = selected_archive_name
                 st.success(f"已加载存档 **{selected_archive_name}** ，共 {len(st.session_state.records)} 条记录。")
+                st.session_state._force_refresh_editor = True
                 st.rerun()
             else:
                 st.error("加载存档数据失败。")
@@ -750,6 +758,7 @@ with st.container(border=True):
             st.session_state.archive_name = archive_name
             st.session_state.records = []
             st.success(f"已创建并加载新的空白存档: **{archive_name}**")
+            st.session_state._force_refresh_editor = True
             st.rerun()
 
 # 存档记录编辑部分

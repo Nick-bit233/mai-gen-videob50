@@ -261,8 +261,8 @@ class MaiImageGenerater:
                 TempImage = self.TextDraw(TempImage, StarText, TextCentralPosition)
 
                 # 游玩次数（暂无获取方式，b50data中若有手动填写即可显示）
-                if "playCount" in record_detail:
-                    PlayCount = int(record_detail["playCount"])
+                if "play_count" in record_detail:
+                    PlayCount = int(record_detail["play_count"])
                 else:
                     PlayCount = 0
                 if PlayCount >= 1:
@@ -594,8 +594,8 @@ class ChuniImageGenerater:
                                           font_size=36, font_color=(26, 0, 84), h_align="left")
                 
                 # 游玩次数（暂无获取方式，b50data中若有手动填写即可显示）
-                if "playCount" in record_detail:
-                    play_count = int(record_detail["playCount"])
+                if "play_count" in record_detail:
+                    play_count = int(record_detail["play_count"])
                 else:
                     play_count = 0
                 if play_count >= 1:

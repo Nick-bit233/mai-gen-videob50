@@ -343,7 +343,7 @@ def generate_archive_data(username, response_data, source, params) -> dict:
     elif source == "lxns":
         new_record_data = [lxns_to_new_record_format(song, type) for song in to_modify_data]
 
-    # 构建默认排序（默认倒序） # TODO: 该项排序可以自定义
+    # 构建默认排序（默认倒序） 
     for i in range(len(new_record_data)):
         new_record_data[i]['order_in_archive'] = len(new_record_data) - i
 

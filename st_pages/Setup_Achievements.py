@@ -18,6 +18,7 @@ level_label_lists = {
 }
 
 def view_b50_data(username: str, archive_name: str):
+    # TODO：完全重构此预览部分，使用更好的视觉和统一的数据源
     """Displays the records of a selected archive in a read-only table."""
     result = db_handler.load_archive_as_old_b50_config(username, archive_name)
     
@@ -36,14 +37,8 @@ def view_b50_data(username: str, archive_name: str):
         return
     
     # 根据游戏类型设置对话框标题和数据名称
-    if game_type == "chunithm":
-        dialog_title = "B30数据查看"
-        data_name = "B30"
-        rating_label = "Rating"
-    else:
-        dialog_title = "B50数据查看"
-        data_name = "B50"
-        rating_label = "DX Rating"
+    dialog_title = "分表数据查看"
+    rating_label = "Rating"
     
     # 使用动态标题创建对话框（Streamlit不支持动态标题，所以我们需要在内容中显示）
     st.markdown(f"### {dialog_title}")
@@ -55,26 +50,29 @@ def view_b50_data(username: str, archive_name: str):
 
     # 处理不同游戏类型的数据格式
     if game_type == "maimai":
-        st.markdown(f"""**{rating_label}**: {b50_data.get('rating_mai', 0)}""", unsafe_allow_html=True)
+        rating = b50_data.get('rating_mai', 0)
+        if not rating:
+            rating = 0
+        st.markdown(f"""**{rating_label}**: {rating}""", unsafe_allow_html=True)
         show_records = b50_data.get('records', [])
     elif game_type == "chunithm":
         # Chunithm数据直接是列表格式（来自load_archive_for_image_generation）
         if isinstance(b50_data, list):
             show_records = b50_data
-            # 移除jacket字段（PIL Image对象），因为dataframe无法显示
-            for record in show_records:
-                if 'jacket' in record:
-                    del record['jacket']
             # 从archive获取rating
             archive_id = db_handler.load_save_archive(username, archive_name)
             if archive_id:
                 archive = db_handler.db.get_archive(archive_id)
-                rating = archive.get('rating_chu', 0.0) if archive else 0.0
+                rating = archive.get('rating_chu', 0.0)
+                if not rating:
+                    rating = 0.0
                 st.markdown(f"""**{rating_label}**: {rating:.2f}""", unsafe_allow_html=True)
         else:
             # 兼容旧格式
             show_records = b50_data.get('records', []) if isinstance(b50_data, dict) else []
             rating = b50_data.get('rating_chu', 0.0) if isinstance(b50_data, dict) else 0.0
+            if not rating:
+                rating = 0.0
             st.markdown(f"""**{rating_label}**: {rating:.2f}""", unsafe_allow_html=True)
     else:
         show_records = []
@@ -153,37 +151,25 @@ def view_b50_data(username: str, archive_name: str):
     elif game_type == "chunithm":
         # 使用math.floor截断ra到两位小数，格式化rank
         import math
-        from utils.PageUtils import format_chunithm_rank
         for record in show_records:
             if 'ra' in record and isinstance(record['ra'], (int, float)):
                 record['ra'] = math.floor(record['ra'] * 100) / 100.0
             # 确保play_count字段存在（可能是playCount）
             if 'play_count' not in record and 'playCount' in record:
                 record['play_count'] = record['playCount']
-            # 格式化rank显示
-            if 'rank' in record:
-                record['rank_display'] = format_chunithm_rank(record['rank'])
-            else:
-                record['rank_display'] = ''
-            # 确保xv_ds字段存在（如果不存在则设为0.0）
-            if 'xv_ds' not in record:
-                record['xv_ds'] = 0.0
         
         st.dataframe(
             show_records,
             column_order=["clip_name",  "title", "artist", "level_label",
-                        "ds", "xv_ds", "note_designer", "score", "rank_display", "combo_type", "chain_type", "ra", "play_count"],
+                          "ds", "score", "combo_type", "chain_type", "ra", "play_count"],
             column_config={
                 "clip_name": "抬头标题",
                 "title": "曲名",
                 "artist": "曲师",
                 "level_label": st.column_config.TextColumn("难度", width=80),
                 "ds": st.column_config.NumberColumn("定数", format="%.1f", width=60),
-                "xv_ds": st.column_config.NumberColumn("新定数", format="%.1f", width=60),
-                "note_designer": "谱师",
                 "score": st.column_config.NumberColumn("分数", format="%d"),
-                "rank_display": st.column_config.TextColumn("RANK", width=60),
-                "combo_type": st.column_config.TextColumn("FC标", width=80),
+                "combo_type": st.column_config.TextColumn("FullCombo标", width=80),
                 "chain_type": st.column_config.TextColumn("FullChain标", width=100),
                 "ra": st.column_config.NumberColumn("单曲Ra", format="%.2f", width=75),
                 "play_count": st.column_config.NumberColumn("游玩次数", format="%d")

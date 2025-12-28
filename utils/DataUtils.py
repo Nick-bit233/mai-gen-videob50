@@ -200,9 +200,9 @@ def chunithm_fs_status_to_label(source, fs_status: str) -> str:
     if source == "lxns":
         match fs_status:
             case "fullchain2":  # 金 FULL CHAIN
-                return "fs"
+                return "fc"
             case "fullchain":   # 铂 FULL CHAIN
-                return "ac"
+                return "fcr"
             case _:
                 return "none"
     if source == "fish":
@@ -413,11 +413,11 @@ def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tupl
                 continue
 
             # 合并所有别名为单个字符串
-            all_acronyms = ",".join(song.get('searchAcronyms', []))
+            all_aliases = ",".join(song.get('aliases', []))
             # 匹配关键词
             if query.lower() in title.lower() \
             or query.lower() in artist.lower() \
-            or query.lower() in all_acronyms:
+            or query.lower() in all_aliases:
                 
                 sheets = song.get('charts_info', [])
                 for s in sheets:
@@ -449,9 +449,10 @@ def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tupl
             if not title or not artist:
                 continue
             
-            # 匹配关键词（标题、艺术家）# TODO: 支持别名匹配
+            all_aliases = ",".join(song.get('aliases', []))
             if query.lower() in title.lower() \
-            or query.lower() in artist.lower():
+            or query.lower() in artist.lower() \
+            or query.lower() in all_aliases:
                 
                 sheets = song.get('charts_info', [])
                 for s in sheets:
@@ -586,8 +587,8 @@ def fish_to_new_record_format(fish_record: dict, game_type: str = "maimai") -> d
             'chart_data': chart_data,
             'order_in_archive': 0, # Do not modify order here, will be set when inserting to DB
             'achievement': fish_record.get('achievements'),
-            'fc_status': fish_record.get('fc'),
-            'fs_status': fish_record.get('fs'),
+            'fc_status': fish_record.get('fc','none'),  # use string 'none' for null value, consistent with DB format
+            'fs_status': fish_record.get('fs','none'),
             'dx_score': fish_record.get('dxScore', None),
             'dx_rating': fish_record.get('ra', 0),
             'chuni_rating': 0,
@@ -682,8 +683,8 @@ def lxns_to_new_record_format(lxns_record: dict, game_type: str = "maimai") -> d
             'chart_data': chart_data,
             'order_in_archive': 0, # Do not modify order here, will be set when inserting to DB
             'achievement': lxns_record.get('achievements'),
-            'fc_status': lxns_record.get('fc'),
-            'fs_status': lxns_record.get('fs'),
+            'fc_status': lxns_record.get('fc', 'none'),  # use string 'none' for null value, consistent with DB format
+            'fs_status': lxns_record.get('fs', 'none'),
             'dx_score': lxns_record.get('dx_score', None),
             'dx_rating': int(lxns_record.get('dx_rating', 0)),
             'chuni_rating': 0,

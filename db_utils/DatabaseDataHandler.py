@@ -380,7 +380,7 @@ class DatabaseDataHandler:
                     'max_dx_score': record['max_dx_score'],
                     'jacket': jacket_image,
                     'ra': record['dx_rating'],
-                    'playCount': record['play_count'],
+                    'play_count': record['play_count'],
                     'clip_name': record['clip_title_name'] or f"Clip_{record['order_in_archive'] + 1}"
                 }
                 ret_records.append(reformat_data)
@@ -400,37 +400,7 @@ class DatabaseDataHandler:
                     if chart_level_index == level_index:
                         ds_value_cur = get_level_value_from_chart_meta(chart_meta)
                         ds_value_next = get_level_value_from_chart_meta(chart_meta, latest_first=True)
-                
-                # 注意：chunithm暂时不需要获取jacket（曲绘）
-                
-                # 转换combo_type和chain_type格式（从原始格式转换为图片生成器期望的格式）
-                # 落雪API返回的值可能是: null, "fullcombo", "alljustice" 等
-                # TODO: 不要在数据库脚本中进行查分器的格式转换，此逻辑应该在DataUtils中处理
-                fc_status_raw = record.get('fc_status', '')
-                combo_type = ''
-                if fc_status_raw:
-                    fc_status_lower = str(fc_status_raw).lower().strip()
-                    # 精确匹配落雪API的可能值
-                    if fc_status_lower == 'alljustice' or fc_status_lower == 'aj':
-                        combo_type = 'aj'   # All Justice
-                    elif fc_status_lower == 'alljusticeclear' or fc_status_lower == 'ajc':
-                        combo_type = 'ajc'  # All Justice Clear
-                    elif fc_status_lower == 'fullcombo' or fc_status_lower == 'fc':
-                        combo_type = 'fc'   # Full Combo
-                
-                fs_status_raw = record.get('fs_status', '')
-                chain_type = ''
-                if fs_status_raw:
-                    fs_status_lower = str(fs_status_raw).lower().strip()
-                    # 精确匹配落雪API的可能值
-                    if fs_status_lower == 'fullchain' or fs_status_lower == 'fc':
-                        chain_type = 'fc'   # Full Chain
-                    elif fs_status_lower == 'fullchainrainbow' or fs_status_lower == 'fcr':
-                        chain_type = 'fcr'  # Full Chain Rainbow
-                    elif fs_status_lower == 'alljustice' or fs_status_lower == 'aj':
-                        # alljustice 也可以作为 chain_type
-                        chain_type = 'fc'   # 使用 Full Chain 表示
-                
+
                 reformat_data = {
                     'chart_id': record.get('chart_id'),
                     'song_id': song_id,
@@ -441,12 +411,11 @@ class DatabaseDataHandler:
                     'ds_cur': ds_value_cur,
                     'ds_next': ds_value_next,
                     'score': int(record.get('achievement', 0)), # Format as integer score
-                    'combo_type': combo_type,  # 转换后的格式：fc, aj, ajc
-                    'chain_type': chain_type,  # 转换后的格式：fc, fcr
+                    'fc_status': record.get('fc_status', ''),  # 转换后的格式：fc, aj, ajc
+                    'fs_status': record.get('fs_status', ''),  # 转换后的格式：fc, fcr
                     # 注意：chunithm暂时不支持jacket
                     'ra': record.get('chuni_rating', 0.0),
-                    'playCount': record.get('play_count', 0),  # TODO: 统一命名为play_count
-                    'play_count': record.get('play_count', 0),  # 添加play_count字段
+                    'play_count': record.get('play_count', 0), 
                     'clip_name': record.get('clip_title_name') or f"Clip_{record.get('order_in_archive', 0) + 1}"
                 }
                 ret_records.append(reformat_data)
@@ -498,7 +467,7 @@ class DatabaseDataHandler:
                     'max_dx_score': record['max_dx_score'],
                     'jacket': jacket_image,
                     'ra': record['dx_rating'],
-                    'playCount': record['play_count'],
+                    'play_count': record['play_count'],
                     'clip_name': record['clip_title_name'] or f"Clip_{record['order_in_archive'] + 1}"
                 }
                 ret_records.append(reformat_data)
@@ -519,36 +488,6 @@ class DatabaseDataHandler:
                         ds_value_cur = get_level_value_from_chart_meta(chart_meta)
                         ds_value_next = get_level_value_from_chart_meta(chart_meta, latest_first=True)
                 
-                # 注意：chunithm暂时不需要获取jacket（曲绘）
-                
-                # 转换combo_type和chain_type格式（从原始格式转换为图片生成器期望的格式）
-                # 落雪API返回的值可能是: null, "fullcombo", "alljustice" 等
-                # TODO: 不要在数据库脚本中进行查分器的格式转换，此逻辑应该在DataUtils中处理
-                fc_status_raw = record.get('fc_status', '')
-                combo_type = ''
-                if fc_status_raw:
-                    fc_status_lower = str(fc_status_raw).lower().strip()
-                    # 精确匹配落雪API的可能值
-                    if fc_status_lower == 'alljustice' or fc_status_lower == 'aj':
-                        combo_type = 'aj'   # All Justice
-                    elif fc_status_lower == 'alljusticeclear' or fc_status_lower == 'ajc':
-                        combo_type = 'ajc'  # All Justice Clear
-                    elif fc_status_lower == 'fullcombo' or fc_status_lower == 'fc':
-                        combo_type = 'fc'   # Full Combo
-                
-                fs_status_raw = record.get('fs_status', '')
-                chain_type = ''
-                if fs_status_raw:
-                    fs_status_lower = str(fs_status_raw).lower().strip()
-                    # 精确匹配落雪API的可能值
-                    if fs_status_lower == 'fullchain' or fs_status_lower == 'fc':
-                        chain_type = 'fc'   # Full Chain
-                    elif fs_status_lower == 'fullchainrainbow' or fs_status_lower == 'fcr':
-                        chain_type = 'fcr'  # Full Chain Rainbow
-                    elif fs_status_lower == 'alljustice' or fs_status_lower == 'aj':
-                        # alljustice 也可以作为 chain_type
-                        chain_type = 'fc'   # 使用 Full Chain 表示
-                
                 reformat_data = {
                     'chart_id': record.get('chart_id'),
                     'song_id': song_id,
@@ -559,12 +498,11 @@ class DatabaseDataHandler:
                     'ds_cur': ds_value_cur,
                     'ds_next': ds_value_next,
                     'score': int(record.get('achievement', 0)), # Format as integer score
-                    'combo_type': combo_type,  # 转换后的格式：fc, aj, ajc
-                    'chain_type': chain_type,  # 转换后的格式：fc, fcr
+                    'combo_type': record.get('fc_status', 'none'), 
+                    'chain_type': record.get('fs_status', 'none'),
                     # 注意：chunithm暂时不支持jacket
                     'ra': record.get('chuni_rating', 0.0),
-                    'playCount': record.get('play_count', 0),  # TODO: 统一命名为play_count
-                    'play_count': record.get('play_count', 0),  # 添加play_count字段
+                    'play_count': record.get('play_count', 0), 
                     'clip_name': record.get('clip_title_name') or f"Clip_{record.get('order_in_archive', 0) + 1}"
                 }
                 ret_records.append(reformat_data)
