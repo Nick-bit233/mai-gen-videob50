@@ -218,12 +218,14 @@ def confirm_delete_archive(username: str, archive_name: str):
     if st.button("取消"):
         st.rerun()
 
-def handle_new_data(username: str, source: str, raw_file_path: str, params: dict = None, parser: str = "json"):
+def handle_new_data(username: str, source: str, params: dict = None, parser: str = "json"):
     """
     Fetches new data from a source, then creates a new archive in the database.
     This function is a placeholder for the actual data fetching logic.
     """
     st.session_state.data_created_step1 = False
+    # 原始数据缓存路径
+    raw_file_path = f"{get_user_base_dir(username)}/{username}_{source}_raw_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     try:
         # 重构：查分，并创建存档，原始数据缓存于raw_file_path
         if source == "intl":
@@ -245,9 +247,9 @@ def handle_new_data(username: str, source: str, raw_file_path: str, params: dict
             return
         
         # debug: 存储new_archive_data
-        debug_path = f"./b50_datas/debug_new_archive_{source}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        with open(debug_path, "w", encoding="utf-8") as f:
-            json.dump(new_archive_data, f, ensure_ascii=False, indent=4)
+        # debug_path = f"./b50_datas/debug_new_archive_{source}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        # with open(debug_path, "w", encoding="utf-8") as f:
+        #     json.dump(new_archive_data, f, ensure_ascii=False, indent=4)
 
         # 调试信息：检查initial_records
         initial_records = new_archive_data.get('initial_records', [])
@@ -448,9 +450,6 @@ if st.session_state.get('config_saved', False):
     with tab2:
         st.info(f"💡 从外部数据源获取您的分表成绩，并创建一个新的本地存档。")
         st.caption(f"当前用户名: **{username}**")
-
-        # 获得原始数据缓存路径
-        b50_raw_file = f"{user_base_dir}/{st.session_state.archive_name}_raw.json"
         
         # Data from FISH (CN Server)
         with st.expander("🌊 从水鱼查分器获取（国服）", expanded=True):
@@ -462,20 +461,17 @@ if st.session_state.get('config_saved', False):
                     if st.button("📥 获取 B50 数据", key="fish_maimai_b50", use_container_width=True, type="primary"):
                         with st.spinner("正在从水鱼查分器获取B50数据..."):
                             handle_new_data(username, source="fish", 
-                                            raw_file_path=b50_raw_file,
                                             params={"type": "maimai", "query": "best"})
                 with col_fish2:
                     if st.button("⭐ 获取 AP B50 数据", key="fish_maimai_ap", use_container_width=True):
                         with st.spinner("正在从水鱼查分器获取AP B50数据..."):
                             handle_new_data(username, source="fish",
-                                            raw_file_path=b50_raw_file,
                                             params={"type": "maimai", "query": "all", "filter": {"tag": "ap", "top": 50}})
             
             elif G_type == "chunithm":
                 if st.button("📥 获取 B50 数据", key="fish_chunithm_b50", use_container_width=True, type="primary"):
                     with st.spinner("正在从水鱼查分器获取B50数据..."):
                         handle_new_data(username, source="fish", 
-                                        raw_file_path=b50_raw_file,
                                         params={"type": "chunithm", "query": "best"})
                 # TODO: 添加中二仅获取b30的选项
             else:
@@ -544,7 +540,6 @@ if st.session_state.get('config_saved', False):
                         if st.button("📥 获取 B50 数据", key="lxns_maimai_b50", use_container_width=True, type="primary"):
                             with st.spinner("正在从落雪查分器获取B50数据..."):
                                 handle_new_data(username, source="lxns",
-                                                raw_file_path=b50_raw_file,
                                                 params={
                                                     "type": "maimai",
                                                     "query": "best",
@@ -558,7 +553,6 @@ if st.session_state.get('config_saved', False):
                             query_filter = {"tag": "ap", "top": 50} if query_type == "all" else {}
                             with st.spinner("正在从落雪查分器获取AP B50数据..."):
                                 handle_new_data(username, source="lxns",
-                                                raw_file_path=b50_raw_file,
                                                 params={
                                                     "type": "maimai",
                                                     "query": query_type,
@@ -573,7 +567,6 @@ if st.session_state.get('config_saved', False):
                     if st.button("📥 获取 B50 数据", key="lxns_chunithm_b50", use_container_width=True, type="primary"):
                         with st.spinner("正在从落雪查分器获取B50数据..."):
                             handle_new_data(username, source="lxns",
-                                            raw_file_path=b50_raw_file,
                                             params={
                                                 "type": "chunithm",
                                                 "query": "best",
@@ -587,6 +580,7 @@ if st.session_state.get('config_saved', False):
 
         # Data from DX Web (INTL/JP Server)
         with st.expander("从 DX Rating Net 导入（国际服/日服）"):
+            st.warning("⚠️ 国际服/日服数据还未适配到新版本，可能无法正常使用。")
             if G_type == "maimai":
                 st.write("请将maimai DX NET(官网)获取的源代码，或 DX Rating 网站导出的JSON代码粘贴到下方。")
                 data_input = st.text_area("粘贴源代码或JSON", height=200)
@@ -594,9 +588,7 @@ if st.session_state.get('config_saved', False):
                 if st.button("从粘贴内容创建新存档"):
                     if data_input:
                         file_type = "json" if data_input.strip().startswith("[{") else "html"
-                        b50_raw_file = f"{user_base_dir}/b50_raw.{file_type}"
                         handle_new_data(username, source="intl",
-                                        raw_file_path=b50_raw_file,
                                         params={"type": "maimai", "query": "best"}, parser=file_type)
                     else:
                         st.warning("输入框内容为空。")

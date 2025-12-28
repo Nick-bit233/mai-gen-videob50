@@ -763,8 +763,12 @@ def render_all_video_clips(game_type: str, style_config: dict, main_configs: lis
     """ 渲染所有视频片段，并按照clip_title_name输出到指定路径文件 """
     vfile_prefix = 0
 
-    def modify_and_rend_clip(clip, config, prefix, auto_add_transition, trans_time):
-        clip_title_name = remove_invalid_chars(config['clip_title_name'])  # clip_title_name作为输出文件名的一部分，需要进行清洗，去除不合法字符
+    def modify_and_rend_clip(clip, config, prefix, auto_add_transition, trans_time, override_clip_name=None):
+        if override_clip_name:
+            clip_title_name = override_clip_name
+        else:
+            clip_title_name = config.get('clip_title_name', "clip")
+        clip_title_name = remove_invalid_chars(clip_title_name)  # clip_title_name作为输出文件名的一部分，需要进行清洗，去除不合法字符
         output_file = os.path.join(video_output_path, f"{prefix}_{clip_title_name}.mp4")
 
         # 检查文件是否已经存在
@@ -794,19 +798,19 @@ def render_all_video_clips(game_type: str, style_config: dict, main_configs: lis
     if intro_configs:
         for clip_config in intro_configs:
             clip = create_info_segment(clip_config, style_config, video_res)
-            clip = modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time)
+            modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time, override_clip_name="INTRO")
             vfile_prefix += 1
 
     for clip_config in main_configs:
         clip = create_video_segment(game_type, clip_config, style_config, video_res)
-        clip = modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time)
+        modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time)
 
         vfile_prefix += 1
 
     if ending_configs:
         for clip_config in ending_configs:
             clip = create_info_segment(clip_config, style_config, video_res)
-            clip = modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time)
+            modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time, override_clip_name="ENDING")
             vfile_prefix += 1
 
 

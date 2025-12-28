@@ -255,8 +255,7 @@ if not username:
 st.write(f"当前用户名: **{username}**")
 archives = db_handler.get_user_save_list(username, game_type=G_type)
 
-data_name = "B30" if G_type == "chunithm" else "B50"
-with st.expander(f"更换{data_name}存档"):
+with st.expander(f"更换分表存档"):
     if not archives:
         st.warning("未找到任何存档。请先新建或加载存档。")
         st.stop()
@@ -411,8 +410,8 @@ if video_configs:
             if st.button("打开导出视频所在文件夹"):
                 open_file_explorer(absolute_path)
 
-with st.expander("额外设置"):
-    st.write("DEBUG：如果需要检查原始配置，点击下方按钮读取数据库原始信息。")
+with st.expander("[DEBUG区域]其他操作"):
+    st.write("如果需要检查原始配置，点击下方按钮读取数据库原始信息。")
     if st.button("读取当前存档原始信息", key=f"load_full_config_raw"):
         st.json(db_handler.load_archive_complete_config(username, archive_name))
 

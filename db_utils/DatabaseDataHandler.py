@@ -657,7 +657,8 @@ class DatabaseDataHandler:
                 'clip_title_name': record.get('clip_title_name'),
                 'record_tag': format_record_tag(
                     record.get('game_type'), record.get('clip_title_name'), 
-                    record.get('song_id'), record.get('chart_type', -1), record.get('level_index', -1)
+                    record.get('song_id'), record.get('chart_type', -1), record.get('level_index', -1),
+                    record.get('song_name'), record.get('chart_id')
                 )
             }
             ret_configs.append(entry)
@@ -684,29 +685,31 @@ class DatabaseDataHandler:
             start, end = get_valid_time_range(s, e)
             
             # 验证并调整时间范围，确保不超过视频实际长度
-            video_path = record.get('video_path')
-            if video_path and os.path.exists(video_path) and MOVIEPY_AVAILABLE:
-                try:
-                    video_clip = VideoFileClip(video_path)
-                    video_duration = video_clip.duration
-                    video_clip.close()
+            # TODO：读取和验证时间过长，需要优化
+            # print(f"debug: 验证{record.get('clip_title_name', '未知')}的视频时间范围...")
+            # video_path = record.get('video_path')
+            # if video_path and os.path.exists(video_path) and MOVIEPY_AVAILABLE:
+            #     try:
+            #         video_clip = VideoFileClip(video_path)
+            #         video_duration = video_clip.duration
+            #         video_clip.close()
                     
-                    # 如果结束时间超出视频长度，自动调整
-                    if end > video_duration:
-                        print(f"警告: {record.get('clip_title_name', '未知')} 的结束时间 {end:.2f} 超出视频长度 {video_duration:.2f}，自动调整")
-                        end = video_duration
+            #         # 如果结束时间超出视频长度，自动调整
+            #         if end > video_duration:
+            #             print(f"警告: {record.get('clip_title_name', '未知')} 的结束时间 {end:.2f} 超出视频长度 {video_duration:.2f}，自动调整")
+            #             end = video_duration
                     
-                    # 如果开始时间超出视频长度，重置为0
-                    if start >= video_duration:
-                        print(f"警告: {record.get('clip_title_name', '未知')} 的开始时间 {start:.2f} 超出视频长度 {video_duration:.2f}，自动调整为0")
-                        start = 0
-                        end = min(end, video_duration)
+            #         # 如果开始时间超出视频长度，重置为0
+            #         if start >= video_duration:
+            #             print(f"警告: {record.get('clip_title_name', '未知')} 的开始时间 {start:.2f} 超出视频长度 {video_duration:.2f}，自动调整为0")
+            #             start = 0
+            #             end = min(end, video_duration)
                     
-                    # 确保结束时间大于开始时间
-                    if end <= start:
-                        end = min(start + 1, video_duration)
-                except Exception as e:
-                    print(f"警告: 无法读取视频 {video_path} 的长度，跳过时间验证: {e}")
+            #         # 确保结束时间大于开始时间
+            #         if end <= start:
+            #             end = min(start + 1, video_duration)
+            #     except Exception as e:
+            #         print(f"警告: 无法读取视频 {video_path} 的长度，跳过时间验证: {e}")
             
             duration = end - start  # 修复：应该是 end - start，不是 start - end
             entry = {
