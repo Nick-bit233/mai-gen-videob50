@@ -8,6 +8,59 @@ import os
 import json
 from pathlib import Path
 
+def get_user_config_dir():
+    """获取用户配置目录"""
+    config_dir = Path.home() / ".mai-gen-videob50"
+    config_dir.mkdir(exist_ok=True)
+    return config_dir
+
+def save_last_game_type(game_type: str):
+    """
+    保存用户上次使用的游戏类型
+    
+    Args:
+        game_type: 游戏类型 ('maimai' 或 'chunithm')
+    """
+    config_dir = get_user_config_dir()
+    config_file = config_dir / "user_preferences.json"
+    
+    try:
+        # 读取现有配置
+        if config_file.exists():
+            with open(config_file, "r", encoding='utf-8') as f:
+                data = json.load(f)
+        else:
+            data = {}
+        
+        # 更新游戏类型
+        data["last_game_type"] = game_type
+        
+        # 保存配置
+        with open(config_file, "w", encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+    except Exception:
+        pass  # 静默处理保存失败
+
+def load_last_game_type() -> str:
+    """
+    加载用户上次使用的游戏类型
+    
+    Returns:
+        str: 游戏类型，默认为 'maimai'
+    """
+    config_dir = get_user_config_dir()
+    config_file = config_dir / "user_preferences.json"
+    
+    try:
+        if config_file.exists():
+            with open(config_file, "r", encoding='utf-8') as f:
+                data = json.load(f)
+                return data.get("last_game_type", "maimai")
+    except (json.JSONDecodeError, Exception):
+        pass
+    
+    return "maimai"
+
 def should_update_metadata(threshold_hours=24):
     """
     检查是否需要更新乐曲元数据
@@ -19,8 +72,7 @@ def should_update_metadata(threshold_hours=24):
         bool: 是否需要更新
     """
     # 在用户目录下创建配置目录
-    config_dir = Path.home() / ".mai-gen-videob50"
-    config_dir.mkdir(exist_ok=True)
+    config_dir = get_user_config_dir()
     
     config_file = config_dir / "metadata_update.json"
     
@@ -68,6 +120,19 @@ with col_header1:
     st.image("md_res/icon.png", width=200)
 with col_header2:
     st.title("mai-gen-videob50 视频生成器")
+    # 首次加载时，从配置文件恢复上次的游戏类型
+    if 'game_type' not in st.session_state:
+        last_game_type = load_last_game_type()
+        st.session_state.game_type = last_game_type
+        # 根据恢复的游戏类型设置对应主题
+        if last_game_type == "maimai":
+            if 'theme' not in st.session_state:
+                st.session_state.theme = "Circle"
+                change_theme(THEME_COLORS["maimai"]["Circle"])
+        else:
+            if 'theme' not in st.session_state:
+                st.session_state.theme = "Verse"
+                change_theme(THEME_COLORS["chunithm"]["Verse"])
     G_type = st.session_state.get('game_type', 'maimai')
     st.caption(f"当前版本 v1.0 (alpha test) |\
                Created by: [Nickbit](https://github.com/Nick-bit233), [caiccu](https://github.com/CAICCU) |\
@@ -82,7 +147,10 @@ with st.container(border=True):
         switch_btn_text = "🔄 切换到舞萌DX视频生成器"
     
     if st.button(switch_btn_text, use_container_width=True, type="secondary"):
-        st.session_state.game_type = "chunithm" if G_type == "maimai" else "maimai"
+        new_game_type = "chunithm" if G_type == "maimai" else "maimai"
+        st.session_state.game_type = new_game_type
+        # 保存用户的游戏类型选择
+        save_last_game_type(new_game_type)
         # 清空已加载的存档信息
         st.session_state.pop('archive_id', None)
         st.session_state.pop('archive_name', None)

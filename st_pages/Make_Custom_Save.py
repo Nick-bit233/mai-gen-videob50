@@ -770,6 +770,8 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
     tab1, tab2, tab3 = st.tabs(["添加或修改记录", "更改分表排序", "修改存档其他信息"])
 
     with tab1:
+        cur_search_level_index = 3  # 默认搜索MASTER难度
+
         st.markdown("#### 添加新记录")
         with st.expander("添加记录设置", expanded=True):
             st.session_state.generate_setting['clip_prefix'] = st.text_input("抬头标题前缀", 
@@ -777,16 +779,30 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
                                                                              value="Clip")
             st.session_state.generate_setting['auto_index'] = st.checkbox("自动为标题添加后缀序号", value=True)
             st.session_state.generate_setting['auto_all_perfect'] = st.checkbox("自动填充理论值成绩", value=True)
+        
+        lv_col1, lv_col2 = st.columns([3, 1])
+        with lv_col1:
+
+            level_label_options = level_label_lists.get(cur_game_type,
+                                                        ["BASIC", "ADVANCED", "EXPERT", "MASTER", "RE:MASTER"])
+            level_label = st.radio("选择难度（选择和切换后需要点击确定）", level_label_options, index=cur_search_level_index, horizontal=True)
+            level_index = level_label_to_index(cur_game_type, level_label)
+            level_label_tips = st.empty()
+
+        with lv_col2:
+            if st.button("确定"):
+                cur_search_level_index = level_index
+                if level_index >= 4:
+                    extra_tips = f"（注：如果乐曲不存在{level_label}难度，将不会显示在搜索栏中，请切换到其他难度）"
+                else:
+                    extra_tips = ""
+                level_label_tips.write(f"当前搜索的谱面难度: **{level_label}** {extra_tips}")
 
         col1, col2 = st.columns([3, 1])
         with col1:
-            # Search and Add
-            level_label_options = level_label_lists.get(cur_game_type,
-                                                        ["BASIC", "ADVANCED", "EXPERT", "MASTER", "RE:MASTER"])
-            level_label = st.radio("选择难度", level_label_options, index=3, horizontal=True)
-            level_index = level_label_to_index(cur_game_type, level_label)
             # 根据当前游戏类型动态加载歌曲数据
             current_songs_data = get_songs_data(cur_game_type)
+            print(f"Loaded {len(current_songs_data)} songs for game type {cur_game_type}, current level index: {level_index}")
             search_result = st_searchbox(
                 lambda q: search_songs(q, current_songs_data, cur_game_type, level_index),
                 placeholder="输入关键词搜索歌曲 (支持：歌曲名 / 曲师名 / 歌曲别名)",

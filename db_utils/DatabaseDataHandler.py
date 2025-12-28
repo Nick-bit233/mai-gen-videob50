@@ -411,9 +411,8 @@ class DatabaseDataHandler:
                     'ds_cur': ds_value_cur,
                     'ds_next': ds_value_next,
                     'score': int(record.get('achievement', 0)), # Format as integer score
-                    'fc_status': record.get('fc_status', ''),  # 转换后的格式：fc, aj, ajc
-                    'fs_status': record.get('fs_status', ''),  # 转换后的格式：fc, fcr
-                    # 注意：chunithm暂时不支持jacket
+                    'combo_type': record.get('fc_status', 'none'), 
+                    'chain_type': record.get('fs_status', 'none'),
                     'ra': record.get('chuni_rating', 0.0),
                     'play_count': record.get('play_count', 0), 
                     'clip_name': record.get('clip_title_name') or f"Clip_{record.get('order_in_archive', 0) + 1}"
@@ -500,7 +499,6 @@ class DatabaseDataHandler:
                     'score': int(record.get('achievement', 0)), # Format as integer score
                     'combo_type': record.get('fc_status', 'none'), 
                     'chain_type': record.get('fs_status', 'none'),
-                    # 注意：chunithm暂时不支持jacket
                     'ra': record.get('chuni_rating', 0.0),
                     'play_count': record.get('play_count', 0), 
                     'clip_name': record.get('clip_title_name') or f"Clip_{record.get('order_in_archive', 0) + 1}"

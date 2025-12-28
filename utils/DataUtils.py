@@ -432,7 +432,7 @@ def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tupl
                             total_notes = 0
                         chart_data = {
                             'game_type': 'maimai',
-                            'song_id': song.get('id', ''),
+                            'song_id': song.get('title', ''),  # 暂时使用title作为song_id, TODO: 替换为hash id
                             'chart_type': chart_type_str2value(type),
                             'level_index': level_index,
                             'difficulty': str(get_level_value_from_chart_meta(s)),
@@ -463,7 +463,7 @@ def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tupl
                         result_string = f"{title}"
                         chart_data = {
                             'game_type': 'chunithm',
-                            'song_id': song.get('id', ''),
+                            'song_id': song.get('title', ''),
                             'chart_type': 0,  # Chunithm默认是normal (0)
                             'level_index': level_index,
                             'difficulty': str(get_level_value_from_chart_meta(s)),
