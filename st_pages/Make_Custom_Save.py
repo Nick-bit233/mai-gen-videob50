@@ -585,7 +585,7 @@ def update_sortable_items(sort_grid):
                             help="仅在勾选了自动编号的情况下生效",
                             disabled=not st.session_state.generate_setting.get("auto_index", False)):
                     st.session_state.records = sorted_records
-                    # （手动）同步clip name
+                    # 同步clip name
                     for i, record in enumerate(st.session_state.records):
                         record["clip_title_name"] = f"{st.session_state.generate_setting['clip_prefix']}_{i+1}"
                     st.session_state._force_refresh_editor = True
@@ -833,21 +833,6 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
                         st.error(error_text)
                     else:
                         apply_sort_and_save()
-                # col1, col2, col3 = st.columns(3)
-                # with col1:
-                #     if st.button("🎯 按达成率降序排序"):
-                #         st.session_state.records.sort(key=lambda r: r.get('achievement', 0), reverse=True)
-                #         apply_sort_and_save()
-                # with col2:
-                #     if st.button("⭐ 按rating降序排序"):
-                #         ra_key = 'dx_rating' if cur_game_type == 'maimai' else 'chuni_rating'
-                #         st.session_state.records.sort(key=lambda r: r.get(ra_key, 0), reverse=True)
-                #         apply_sort_and_save()
-                # with col3:
-                #     if st.button("🎚️ 按定数降序排序"):
-                #         st.session_state.records.sort(key=lambda r: r.get('chart_data', {}).get('difficulty', 0), reverse=True)
-                #         apply_sort_and_save()
-
             col4, col5 = st.columns(2)
             with col4:
                 if st.button("🔁 反转整个分表排序"):
