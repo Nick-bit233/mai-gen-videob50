@@ -435,11 +435,105 @@ def update_record_grid(grid, external_placeholder):
             st.write("当前没有记录，请添加记录。")
 
 
+def sort_session_records_partially(cur_game_type):
+    """
+    交换分表中Past和New两组记录的顺序。
+    要求：records中必须恰好有两组连续的记录，一组以Past开头，另一组以New开头。
+    返回：True表示成功交换，False表示格式不符合要求。
+    """
+    records = st.session_state.records
+    if not records:
+        return False
+    
+    # 获取前缀类型，不符合格式返回None
+    def get_prefix(name):
+        return "Past" if name.startswith("Past") else ("New" if name.startswith("New") else None)
+    
+    # 检查所有记录的前缀
+    prefixes = [get_prefix(r.get("clip_title_name", "")) for r in records]
+    if None in prefixes:
+        return False
+    
+    # 找到第一个前缀变化的位置
+    split_idx = next((i for i in range(1, len(prefixes)) if prefixes[i] != prefixes[0]), None)
+    
+    # 检查是否恰好分为两组且包含Past和New
+    if split_idx is None or set(prefixes) != {"Past", "New"} or prefixes[split_idx:].count(prefixes[split_idx]) != len(prefixes) - split_idx:
+        return False
+    
+    # 交换两组顺序
+    st.session_state.records = records[split_idx:] + records[:split_idx]
+    return True
+
+
+def sort_session_records_standard(cur_game_type, sort_scope, sort_method, sort_order):
+    """
+    按选项对分表记录进行排序。
+    参数：
+        sort_scope: 0=仅PastBest, 1=仅NewBest, 2=整个分表
+        sort_method: 0=达成率, 1=单曲Rating, 2=定数
+        sort_order: 0=降序, 1=升序
+    返回：True表示成功，False表示格式不符合要求（仅部分排序时）
+    """
+    records = st.session_state.records
+    if not records:
+        return False
+    
+    # 确定排序键
+    def get_sort_key(record):
+        if sort_method == 0:  # 达成率
+            return record.get('achievement', 0)
+        elif sort_method == 1:  # 单曲Rating
+            return record.get('dx_rating' if cur_game_type == 'maimai' else 'chuni_rating', 0)
+        else:  # 定数
+            return record.get('chart_data', {}).get('difficulty', 0)
+    
+    reverse = (sort_order == 0)  # 0=降序
+    
+    # 整个分表排序
+    if sort_scope == 2:
+        st.session_state.records = sorted(records, key=get_sort_key, reverse=reverse)
+        return True
+    
+    # 部分排序：检查格式并找到分组
+    target_prefix = "Past" if sort_scope == 0 else "New"
+    
+    def get_prefix(name):
+        return "Past" if name.startswith("Past") else ("New" if name.startswith("New") else None)
+    
+    prefixes = [get_prefix(r.get("clip_title_name", "")) for r in records]
+    if None in prefixes:
+        return False
+    
+    # 找到目标前缀的连续区间
+    start_idx = end_idx = None
+    for i, p in enumerate(prefixes):
+        if p == target_prefix:
+            if start_idx is None:
+                start_idx = i
+            end_idx = i + 1
+        elif start_idx is not None:
+            # 目标组已结束，检查后续是否还有目标前缀（不连续）
+            if target_prefix in prefixes[i:]:
+                return False
+            break
+    
+    # 检查是否找到至少2条目标记录
+    if start_idx is None or (end_idx - start_idx) < 2:
+        return False
+    
+    # 对目标区间排序
+    target_group = sorted(records[start_idx:end_idx], key=get_sort_key, reverse=reverse)
+    st.session_state.records = records[:start_idx] + target_group + records[end_idx:]
+    return True
+
+
 def update_sortable_items(sort_grid):
 
     with sort_grid.container(border=True):
         st.write("手动排序")
         st.write("拖动下面的列表，以调整分表中记录的展示顺序")
+        st.warning("注意：确认排序修改后请点击“应用排序更改”按钮，否则更改不会生效！")
         # 用于排序显示的记录（字符串）
         display_tags = []
         for i, record in enumerate(st.session_state.records):
@@ -632,7 +726,6 @@ with st.container(border=True):
                     "game_type": updated_game_type,
                     "sub_type": archive_data.get("sub_type", "custom"),
                     "game_version": archive_data.get("game_version", "latest"),
-                    "rating": archive_data.get("rating_mai", 0) if updated_game_type == "maimai" else archive_data.get("rating_chu", 0.0)
                 }
                 st.session_state.archive_name = selected_archive_name
                 st.success(f"已加载存档 **{selected_archive_name}** ，共 {len(st.session_state.records)} 条记录。")
@@ -645,21 +738,10 @@ with st.container(border=True):
 
     with st.container(border=True):
         with st.expander("新建存档选项", expanded=False):
-            st.session_state.archive_meta['sub_type'] = st.radio(
-                "存档子类型",
-                help="旧版本中使用best标记从查分器获取的分表， custom标记自定义创建的分表。此标志现在与分表的排序不再相关，生成视频时，成绩的排序将与此页面显示的顺序一致。",
-                options=["custom", "best"],
-                index=1,
-                horizontal=True
-            )
             st.session_state.archive_meta['game_version'] = st.selectbox(
                 "存档游戏版本（默认与数据库保持最新）",
                 options=["latest"],
                 index=0
-            )
-            st.session_state.archive_meta['rating'] = st.text_input(
-                "存档Rating值（可选）",
-                value=st.session_state.archive_meta.get('rating', 0)
             )
 
         if st.button("新建空白存档"):
@@ -723,37 +805,63 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
         update_record_grid(record_grid, record_count_placeholder)  # 更新记录表格的显示
 
     with tab2:
-        st.warning("注意：确认排序修改后请点击“应用排序更改”按钮，否则更改不会生效！")
+        def apply_sort_and_save():
+            st.session_state._force_refresh_editor = True
+            save_current_archive()
+            st.rerun()
+        text_pastbest = "B35" if cur_game_type == "maimai" else "B30"
+        text_newbest = "B15" if cur_game_type == "maimai" else "N20"
+        error_text = f"""当前分表格式无法应用快速排序，要应用{text_pastbest}/{text_newbest}排序 \
+            需要保留自动生成的标题名称(PastBest/NewBest)，否则请选择对象为整个分表。"""
+        sort_options = [f"仅{text_pastbest}", f"仅{text_newbest}", f"整个分表（可能打乱{text_pastbest}和{text_newbest}分组）"]
+        sort_method_options = ["🎯 达成率", "⭐ 单曲Rating", "🎚️ 定数"]
+        sort_up_options = ["降序", "升序"]
         with st.container(border=True):
             st.write("快速排序")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                if st.button("🎯 按达成率降序排序"):
-                    st.session_state.records.sort(key=lambda r: r.get('achievement', 0), reverse=True)
-                    st.rerun()
-            with col2:
-                if st.button("⭐ 按rating降序排序"):
-                    ra_key = 'dx_rating' if cur_game_type == 'maimai' else 'chuni_rating'
-                    st.session_state.records.sort(key=lambda r: r.get(ra_key, 0), reverse=True)
-                    st.rerun()
-            with col3:
-                if st.button("🎚️ 按定数降序排序"):
-                    st.session_state.records.sort(key=lambda r: r.get('chart_data', {}).get('difficulty', 0), reverse=True)
-                    st.rerun()
+            with st.container(border=True):  
+                sort_option = st.radio("选择排序对象", options=sort_options, index=0, horizontal=True)
+                sort_method = st.radio("排序依据", options=sort_method_options, index=0, horizontal=True)
+                sort_up = st.radio("排序顺序", options=sort_up_options, index=0, horizontal=True)
+                if st.button("应用快速排序"):
+                    success = sort_session_records_standard(
+                        cur_game_type,
+                        sort_options.index(sort_option),
+                        sort_method_options.index(sort_method),
+                        sort_up_options.index(sort_up)
+                    )
+                    if not success:
+                        st.error(error_text)
+                    else:
+                        apply_sort_and_save()
+                # col1, col2, col3 = st.columns(3)
+                # with col1:
+                #     if st.button("🎯 按达成率降序排序"):
+                #         st.session_state.records.sort(key=lambda r: r.get('achievement', 0), reverse=True)
+                #         apply_sort_and_save()
+                # with col2:
+                #     if st.button("⭐ 按rating降序排序"):
+                #         ra_key = 'dx_rating' if cur_game_type == 'maimai' else 'chuni_rating'
+                #         st.session_state.records.sort(key=lambda r: r.get(ra_key, 0), reverse=True)
+                #         apply_sort_and_save()
+                # with col3:
+                #     if st.button("🎚️ 按定数降序排序"):
+                #         st.session_state.records.sort(key=lambda r: r.get('chart_data', {}).get('difficulty', 0), reverse=True)
+                #         apply_sort_and_save()
+
             col4, col5 = st.columns(2)
-            with col5:
-                text = "交换B35/B15顺序" if cur_game_type == "maimai" else "交换B30/N20顺序"
-                if st.button(f"🔃 {text}"):
-                    pass  # TODO：实现交换
             with col4:
                 if st.button("🔁 反转整个分表排序"):
                     st.session_state.records.reverse()
-                    st.rerun()
-            st.divider() # 添加分割线
-            if st.button("应用排序更改", key="apply_sort_changes_auto"):
-                save_current_archive()
-                st.rerun()
-        
+                    apply_sort_and_save()
+            with col5:
+                if st.button(f"🔃 交换{text_pastbest}/{text_newbest}顺序"):
+                    success = sort_session_records_partially(cur_game_type)
+                    if not success:
+                        st.error(error_text)
+                    else:
+                        apply_sort_and_save()
+
+        st.divider() # 添加分割线
         sort_grid = st.container()
         update_sortable_items(sort_grid)
 
@@ -769,10 +877,6 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
             "修改存档游戏版本（默认与数据库保持最新）",
             options=["latest"],
             index=0
-        )
-        st.session_state.archive_meta['rating'] = st.text_input(
-            "修改存档Rating值",
-            value=st.session_state.archive_meta.get('rating', 0)
         )
         if st.button("提交修改"):
             save_current_metadata()
