@@ -134,10 +134,12 @@ with col_header2:
                 st.session_state.theme = "Verse"
                 change_theme(THEME_COLORS["chunithm"]["Verse"])
     G_type = st.session_state.get('game_type', 'maimai')
-    st.caption(f"当前版本 v1.0 (alpha test) |\
-               Created by: [Nickbit](https://github.com/Nick-bit233), [caiccu](https://github.com/CAICCU) |\
-               当前模式: **{get_game_type_text(G_type)}** ")
-    st.warning("⚠️ 您正在使用本工具的Alpha测试版本，可能存在未知问题。")
+    st.caption(f"当前版本 v1.0 |\
+               Created by: [Nickbit](https://github.com/Nick-bit233), \
+               Thanks to: [caiccu](https://github.com/CAICCU), \
+               [MetallicAllex](https://github.com/MetallicAllex), \
+               [YelonNotXTD](https://github.com/YelonNotXTD) ")
+    st.info(f"您正在使用 **{get_game_type_text(G_type)}** 视频生成模式")
 
 # 游戏类型切换
 with st.container(border=True):
@@ -168,26 +170,29 @@ with st.container(border=True):
 # 欢迎信息和使用指南
 st.markdown("### 📖 使用指南")
 with st.container(border=True):
-    data_name = "B30" if G_type == "chunithm" else "B50"
     st.markdown(f"""
-    本工具可以帮助您自动生成{data_name}视频，请按照以下步骤操作：
+    👋 欢迎使用 mai-gen-videob50！本工具旨在帮助您轻松生成{get_game_type_text(G_type)}的分表展示视频，请按照以下步骤操作：
     
-    1. **获取/管理查分器数据** - 从查分器获取您的成绩数据
-    2. **生成成绩图片** - 生成成绩展示图片
-    3. **搜索谱面确认视频** - 自动搜索并匹配谱面视频
-    4. **检查和下载视频** - 确认并下载视频素材
-    5. **编辑视频内容** - 编辑评论和视频片段
-    6. **合成视频** - 生成最终视频
+    1. **获取数据** | 在左侧的**数据管理**页面分组中注册用户名和存档，您可以选择从第三方查分器获取分表，或手动创建自定义分表
+    2. **生成和抓取资源** | 在左侧的**资源生成**页面分组中完成： 1）生成成绩图片，2)搜索视频，3)确认正确的视频并下载（需要联网并建议登录相关平台）
+    3. **编辑评论** | 在左侧的**评论编辑**页面分组中编辑您需要剪辑的内容，也就是每个视频的展示片段和评论文字
+    4. **合成视频** | 全部完成后，前往**合成视频**页面中启动最终的视频渲染过程
     
     详细使用说明请参考：[GitHub](https://github.com/Nick-bit233/mai-gen-videob50)
     """)
 
 # 重要提示
 with st.container(border=True):
-    st.markdown("### ⚠️ 重要提示")
-    st.info("💾 **数据安全**: 本工具的缓存数据均保存在本地，如您在编辑过程中意外退出，可在任意步骤加载已有存档继续编辑。")
-    st.warning("🔄 **页面刷新**: 在使用过程中，请不要随意刷新页面。如果因为误刷新页面导致索引丢失，建议重新加载存档，并回到第一步检查数据完整性。")
-    st.success("💬 **问题反馈**: 使用过程中遇到任何问题，可以前往Github页面发起issue，或加入QQ群：994702414 反馈")
+    st.markdown("### ⚠️ 重要提示（第一次使用请仔细阅读）")
+    st.info("**数据缓存**: 本工具的缓存数据均保存在本地，若您中途退出或意外刷新页面，可在任意步骤加载已有存档继续编辑。", icon="💾")
+    st.warning(""" **生成时间**: 本工具旨在节省搜集素材与编辑视频步骤中的工作量，而未专门对视频渲染速度进行优化
+   
+    - 从零开始到获取完整视频的时间受到多种因素影响（如网络速度、视频长度与分辨率、硬件CPU性能等）
+    - 我们无法估算准确时间，但**渲染步骤至少需要45分钟，缓慢情况下可能花费3-4小时** (渲染期间，可以正常使用您的设备)
+    - 如果您正在使用一台公共或计时设备，请务必注意预留足够的使用时间
+  
+    """, icon="🕐")
+    st.success("**问题反馈**: 使用过程中遇到任何问题，可以前往Github页面发起issue，或加入QQ群：[994702414](https://qm.qq.com/q/ogt02jHEjK) 反馈", icon="💬")
 
 st_init_cache_pathes()
 
@@ -239,18 +244,17 @@ with col_start2:
     if st.button("🎨 自定义视频样式", key="style_button", use_container_width=True):
         st.switch_page("st_pages/Custom_Video_Style_Config.py")
 
-# 数据导入（仅舞萌）
-if G_type == "maimai":
-    with st.expander("📥 从旧版本导入数据", expanded=False):
-        st.info("💡 正在施工中，敬请期待")
-        # st.write("如果您有旧版本的存档数据，可以点击下面的按钮，选择旧版本文件夹导入您的历史数据。")
-        # st.warning("⚠️ 请勿重复导入数据，以免造成冗余损坏。")
-        # if st.button("导入数据", key="import_data_btn"):
-        #     try:
-        #         old_data_migration() # TODO: 未开发完成
-        #         st.success("✅ 数据导入成功！")
-        #     except Exception as e:
-        #         st.error(f"❌ 导入数据时出错: {e}")
+# 旧版数据导入 # TODO: 未开发完成
+# with st.expander("📥 从旧版本导入数据", expanded=False):
+#     st.info("💡 正在施工中，敬请期待")
+#     st.write("如果您有旧版本的存档数据，可以点击下面的按钮，选择旧版本文件夹导入您的历史数据。")
+#     st.warning("⚠️ 请勿重复导入数据，以免造成冗余损坏。")
+#     if st.button("导入数据", key="import_data_btn"):
+#         try:
+#             old_data_migration()
+#             st.success("✅ 数据导入成功！")
+#         except Exception as e:
+#             st.error(f"❌ 导入数据时出错: {e}")
 
 # 外观设置
 st.markdown("### 🎨 外观设置")
@@ -291,7 +295,7 @@ with st.container(border=True):
             with col_meta1:
                 st.caption("乐曲元数据用于识别和匹配歌曲信息，建议定期更新以获取最新曲目")
             with col_meta2:
-                if st.button("🔄 手动更新", key="manual_update_metadata"):
+                if st.button("🔄 手动更新", key="manual_update_metadata", use_container_width=True):
                     with st.spinner("正在更新..."):
                         update_music_metadata()
                     st.success("✅ 乐曲元数据已更新")
