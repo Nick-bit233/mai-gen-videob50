@@ -105,7 +105,7 @@ def edit_context_widget(ex_config_type, username, archive_name):
 # Page layout starts here
 # ==============================================================================
 
-st.header("Step 4-2: 片头/片尾内容编辑")
+st.header("🎬 片头/片尾内容编辑")
 
 st.markdown(f"> 您正在使用 **{get_game_type_text(G_type)}** 视频生成模式。")
 

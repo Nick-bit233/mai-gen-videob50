@@ -82,7 +82,7 @@ page_title = f"Step 1: 生成成绩背景图片"
 
 # 页面头部
 st.header(f"🖼️ 生成成绩背景图片")
-st.markdown(f"**当前模式**: {get_game_type_text(G_type)} 视频生成模式")
+st.markdown(f"> 您正在使用 **{get_game_type_text(G_type)}** 视频生成模式。")
 
 ### Save Archive Management - Start ###
 
@@ -128,8 +128,7 @@ if not archive_id and st.session_state.get('archive_id'):
     archive_name = st.session_state.get('archive_name')
 
 # 根据游戏类型动态设置存档名称
-archive_data_name = "B30" if G_type == "chunithm" else "B50"
-with st.expander(f"🔄 更换{archive_data_name}存档", expanded=False):
+with st.expander(f"🔄 更换分表存档", expanded=False):
     if not archives:
         st.warning("⚠️ 未找到任何存档。请先新建或加载存档。")
         st.stop()

@@ -240,7 +240,7 @@ def update_preview(preview_placeholder, config, current_index):
 # Page layout starts here
 # =============================================================================
 
-st.header("Step 4-1: 视频内容编辑")
+st.header("📝 视频内容编辑")
 
 st.markdown(f"> 您正在使用 **{get_game_type_text(G_type)}** 视频生成模式。")
 

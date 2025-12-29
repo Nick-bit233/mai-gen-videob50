@@ -29,7 +29,7 @@ G_type = st.session_state.get('game_type', 'maimai')
 # ==============================================================================
 
 st.header("🔍 谱面确认视频搜索和抓取")
-st.markdown(f"**当前模式**: {get_game_type_text(G_type)} 视频生成模式")
+st.markdown(f"> 您正在使用 **{get_game_type_text(G_type)}** 视频生成模式。")
 
 ### Savefile Management - Start ###
 username = st.session_state.get("username", None)
@@ -44,8 +44,7 @@ if not username:
 st.write(f"当前用户名: **{username}**")
 archives = db_handler.get_user_save_list(username, game_type=G_type)
 
-data_name = "B30" if G_type == "chunithm" else "B50"
-with st.expander(f"更换{data_name}存档"):
+with st.expander(f"更换分表存档"):
     if not archives:
         st.warning("未找到任何存档。请先新建或加载存档。")
         st.stop()

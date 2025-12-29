@@ -15,7 +15,7 @@ custom_video_style = st.Page("st_pages/Custom_Video_Style_Config.py",
                 title="自定义视频模板",
                 icon=":material/format_paint:")
 
-# 统一的视频生成流程（根据游戏类型自动显示 B30 或 B50）
+
 setup_page = st.Page("st_pages/Setup_Achievements.py",
                 title="获取/管理查分器数据",
                 icon=":material/leaderboard:",
@@ -52,16 +52,20 @@ composite_page = st.Page("st_pages/Composite_Videos.py",
 pg = st.navigation(
     {
         "首页": [homepage, custom_video_style],
-        "视频生成": [
+        "数据管理": [
             setup_page,
             custom_setup_page,
+        ],
+        "资源生成":[
             img_gen_page,
             search_page,
             download_page,
+        ],
+        "评论编辑":[
             edit_comment_page,
-            edit_intro_ending_page,
-            composite_page
-        ]
+            edit_intro_ending_page
+        ],
+        "合成视频": [composite_page],
     }
 )
 

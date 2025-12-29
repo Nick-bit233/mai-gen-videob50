@@ -309,7 +309,7 @@ def update_record_grid(grid, external_placeholder):
                     column_order=["clip_title_name", "chart_info", "achievement", "fc_status", "fs_status", "dx_rating", "dx_score", "play_count"],
                     column_config={
                         "clip_title_name": "抬头标题",
-                        "chart_info": "乐曲信息",
+                        "chart_info": st.column_config.TextColumn("乐曲信息", disabled=True),
                         "achievement": st.column_config.NumberColumn(
                             "达成率",
                             min_value=0.0,
@@ -359,7 +359,7 @@ def update_record_grid(grid, external_placeholder):
                     column_order=["clip_title_name", "chart_info", "achievement", "fc_status", "fs_status", "chuni_rating", "play_count"],
                     column_config={
                         "clip_title_name": "抬头标题",
-                        "chart_info": "乐曲信息",
+                        "chart_info": st.column_config.TextColumn("乐曲信息", disabled=True),
                         "achievement": st.column_config.NumberColumn(
                             "分数",
                             min_value=0,
@@ -646,7 +646,7 @@ def clear_all_records():
 # Start with getting G_type from session state
 G_type = st.session_state.get('game_type', 'maimai')
 
-st.header("编辑自定义分表")
+st.header("📑 编辑自定义分表")
 
 st.markdown(f"> 您正在使用 **{get_game_type_text(G_type)}** 视频生成模式。")
 
