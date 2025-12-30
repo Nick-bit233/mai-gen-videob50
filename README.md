@@ -39,20 +39,20 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 - 用户界面（支持主题换色）
 
-| ![alt text](md_res/page_fes.png) | ![alt text](md_res/page_bud.png) | ![alt text](md_res/page_pri.png) |
+| <img src="md_res/home_maimai_PRI.jpg" width="240" alt="maimai Prism"> | <img src="md_res/home_maimai_CIR.jpg" width="240" alt="maimai Circle"> | <img src="md_res/home_chunithm_VER.jpg" width="240" alt="Chunithm Verse"> |
 |:---:|:---:|:---:|
-| FES | BUD | PRI |
+| maimai Prism | maimai  Circle | Chunithm Verse |
 
-生成视频效果展示：[【舞萌2024/工具发布】还在手搓b50视频？我写了一个自动生成器！](https://www.bilibili.com/video/BV1bJi2YVEiE)
+生成视频效果展示：
+- [【舞萌2024/工具发布】还在手搓b50视频？我写了一个自动生成器！](https://www.bilibili.com/video/BV1bJi2YVEiE)
 
-中二节奏生成效果：[【中二节奏2026】小伙时隔半个月成功抵达虹分，这是他分表发生的变化](https://www.bilibili.com/video/BV1m9yVBfExq)
-
-使用教程视频：[【舞萌2024】新版B50视频生成器来啦！支持一键启动/站内下载/全面升级用户界面~](https://www.bilibili.com/video/BV1G2kBY5Edq)
-
+- [【中二节奏2026】小伙时隔半个月成功抵达虹分，这是他分表发生的变化](https://www.bilibili.com/video/BV1m9yVBfExq)
 
 - 生成视频帧效果
 
-<img src="md_res/image.png" width="600" alt="preview">
+| <img src="md_res/preview_maimai.png" width="400" alt="maimai Prism"> | <img src="md_res/preview_chunithm.jpg" width="400" alt="Chunithm"> |
+|:---:|:---:|
+| maimai  | Chunithm |
 
 
 ## 特性
