@@ -6,7 +6,6 @@ import traceback
 import streamlit as st
 from datetime import datetime
 from utils.PageUtils import read_global_config, write_global_config, get_game_type_text
-from utils.PathUtils import get_data_paths, get_user_versions
 from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
 from utils.WebAgentUtils import search_one_video
 from db_utils.DatabaseDataHandler import get_database_handler
