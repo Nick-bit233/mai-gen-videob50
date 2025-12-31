@@ -291,12 +291,12 @@ def st_search_b50_videoes(dl_instance, placeholder, search_wait_time):
             i = 0
             for chart in chart_list:
                 chart_id = chart['chart_id']
-                song_id = chart['song_id']
+                song_name = chart['song_name']
                 i += 1
-                progress_bar.progress(i / record_len, text=f"正在搜索({i}/{record_len}): {song_id}")
+                progress_bar.progress(i / record_len, text=f"正在搜索({i}/{record_len}): {song_name}")
                 # 如果有，从session state中读取缓存搜索结果
-                if chart_id in st.session_state.search_results:
-                    write_container.write(f"跳过({i}/{record_len}): {song_id} ，已储存有相关视频信息")
+                if chart_id in st.session_state.search_results and len(st.session_state.search_results[chart_id]) > 0:
+                    write_container.write(f"跳过({i}/{record_len}): {song_name} ，已储存有相关视频信息")
                     continue
                 
                 ret_data, ouput_info = search_one_video(dl_instance, chart)

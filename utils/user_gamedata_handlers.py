@@ -199,8 +199,11 @@ def fetch_user_gamedata(raw_file_path, username, params, source="fish") -> dict:
             return None
         
         # 函数计算返回体的错误处理
-        if fish_data.get('error') and 'msg' in fish_data:
-            raise Exception(f"Error: 从水鱼获得B50数据失败，请将以下错误信息报告给开发者。错误信息：{fish_data['msg']}")
+        if fish_data.get('error'): 
+            if "user not exists" in fish_data['error']:
+                raise Exception(f"Error: 从水鱼获得B50数据失败，此用户名不存在。请检查用户名称是否有对应的水鱼账号。")
+            if 'msg' in fish_data:
+                raise Exception(f"Error: 从水鱼获得B50数据失败，请将以下错误信息报告给开发者。错误信息：{fish_data['msg']}")
         
         # 缓存，写入b50_raw_file
         with open(raw_file_path, "w", encoding="utf-8") as f:
@@ -242,6 +245,8 @@ def fetch_user_gamedata(raw_file_path, username, params, source="fish") -> dict:
 
     else:
         raise ValueError("Invalid source for fetching game data")
+    
+    print(response_data)
     
     return generate_archive_data(
         username = username,

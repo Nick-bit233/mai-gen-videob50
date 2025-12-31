@@ -4,11 +4,9 @@ import json
 import traceback
 from datetime import datetime
 from utils.user_gamedata_handlers import fetch_user_gamedata, update_b50_data_int
-from utils.PageUtils import get_db_manager, process_username, get_game_type_text
+from utils.PageUtils import process_username, get_game_type_text
 from db_utils.DatabaseDataHandler import get_database_handler
 from utils.PathUtils import get_user_base_dir
-from utils.lxns_metadata_loader import update_chunithm_metadata_from_lxns
-import glob
 
 # Get a handler for database operations
 db_handler = get_database_handler()
@@ -320,25 +318,24 @@ with st.container(border=True):
                 raw_username, safe_username = process_username(input_username)
                 st.session_state.username = raw_username
                 st.session_state.safe_username = safe_username
-                
+     
                 # Set user in database
                 db_handler.set_current_user(raw_username)
-                
-                st.success(f"✅ 用户名 **{raw_username}** 已设定！")
                 st.session_state.config_saved = True
                 st.rerun()
     
     # 显示当前用户名状态
     if st.session_state.get("username"):
         st.info(f"当前用户名: **{st.session_state.get('username')}**")
+    if st.session_state.get("username") != st.session_state.get("safe_username"):
+        st.warning(f"⚠️ 您的用户名包含特殊字符，在查找文件目录时请使用此名称：**{st.session_state.get('safe_username')}**")
 
 # Only proceed if a username has been set
 if st.session_state.get('config_saved', False):
     username = st.session_state.username
-    safe_username = st.session_state.safe_username
 
     # Create user base directory if not exists
-    user_base_dir = get_user_base_dir(safe_username)
+    user_base_dir = get_user_base_dir(username)
     os.makedirs(user_base_dir, exist_ok=True)
 
     tab1, tab2 = st.tabs(["🗃️ 管理已有存档", "📦 创建新存档"])
