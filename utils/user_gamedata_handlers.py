@@ -246,7 +246,7 @@ def fetch_user_gamedata(raw_file_path, username, params, source="fish") -> dict:
     else:
         raise ValueError("Invalid source for fetching game data")
     
-    print(response_data)
+    # print(response_data)
     
     return generate_archive_data(
         username = username,

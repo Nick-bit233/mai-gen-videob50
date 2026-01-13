@@ -245,6 +245,7 @@ def update_records_count(placeholder):
 
 
 def update_record_grid(grid, external_placeholder):
+    # TODO: 允许手动选择首选定数（按照版本），以及自定义覆盖定数
 
     def recover_edited_records(edited_df, game_type="maimai"):
         # 由于 st.data_editor 会将dict对象序列化，从组件df数据更新时需要反序列化chart_data
@@ -824,6 +825,15 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
 
         record_count_placeholder = st.empty()
         update_records_count(record_count_placeholder)  # 更新记录数量的显示
+
+        rating_compute_options = ["最新", "国服", "自定义"]
+        with st.expander("单曲Rating计算方式（仅供参考，实际以游戏内为准）", expanded=False):
+            rating_compute_method = st.radio(
+                "选择单曲Rating计算方式",
+                options=rating_compute_options,
+                index=0,
+                horizontal=True
+            )
 
         st.markdown("#### 修改当前分表")
         record_grid = st.container()

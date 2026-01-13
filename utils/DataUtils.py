@@ -738,4 +738,4 @@ def get_jacket_image_from_url(image_code: str, source: str = "otoge", game_type:
         return img
     else:
         print(f"Failed to download image from {url}. Status code: {response.status_code}")
-        raise FileNotFoundError
+        raise RuntimeError("图像下载失败，检查URL或网络连接。详细信息：" + response.text)

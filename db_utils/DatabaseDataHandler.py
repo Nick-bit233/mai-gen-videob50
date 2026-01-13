@@ -2,6 +2,7 @@ from typing import Dict, List, Optional, Tuple, Any, Union
 from unittest import case
 from db_utils.DatabaseManager import DatabaseManager
 from utils.DataUtils import get_jacket_image_from_url, query_songs_metadata, format_record_tag, get_valid_time_range, get_level_value_from_chart_meta
+from utils.AssetManager import AssetManager
 from PIL import Image
 import os
 import json
@@ -202,6 +203,7 @@ class DatabaseDataHandler:
         existing_records_map = {rec['chart_id']: rec for rec in existing_records_list}
         
         processed_chart_ids = set()
+        download_tasks = []
 
         with self.db.get_connection() as conn: # Use a single transaction
             for i, record_data in enumerate(new_records_data):
@@ -211,6 +213,12 @@ class DatabaseDataHandler:
                     raise ValueError("Each record must include 'chart_data' field.")
                 chart_id = self.db.get_or_create_chart(chart_data)
                 processed_chart_ids.add(chart_id)
+
+                download_tasks.append({
+                    'game_type': chart_data.get('game_type', 'maimai'),
+                    'title': chart_data.get('song_name'),
+                    'artist': chart_data.get('artist')
+                })
 
                 # print(f"Updating record for chart_id {chart_id} with data: {record_data}")
                 # 2. Check if this chart already has a record in the archive
@@ -240,6 +248,8 @@ class DatabaseDataHandler:
                 (len(new_records_data), archive_id)
             )
             conn.commit()
+
+        AssetManager.start_background_download(download_tasks)
 
         return archive_id
 
@@ -360,11 +370,9 @@ class DatabaseDataHandler:
             for record in records:
                 title = record['song_name']
                 artist = record['artist']
-                # 获取歌曲元数据  TODO:直接从融合数据url下载，设立一个缓存机制，在添加数据库时提前下载图像到本地缓存
-                metadata = query_songs_metadata(game_type, title, artist)
-                image_code = metadata.get('image_code_otoge', None)
-                # 下载封面图片(pillow Image对象) 
-                jacket_image = get_jacket_image_from_url(image_code, source='otoge', game_type='maimai')
+                
+                # Use AssetManager to get image
+                jacket_image = AssetManager.get_jacket_image(game_type, title, artist)
                 reformat_data = {
                     'chart_id': record['chart_id'],
                     'song_id': record['song_id'],
@@ -444,13 +452,9 @@ class DatabaseDataHandler:
             for record in records:
                 title = record['song_name']
                 artist = record['artist']
-                # ====== TODO：合并重复逻辑 ======
-                # 获取歌曲元数据
-                metadata = query_songs_metadata(game_type, title, artist)
-                image_code = metadata.get('image_code_otoge', None)
-                # 下载封面图片(pillow Image对象) 
-                jacket_image = get_jacket_image_from_url(image_code, source='otoge', game_type='maimai')
-                # ====== TODO：合并重复逻辑 ======
+                
+                # Use AssetManager to get image
+                jacket_image = AssetManager.get_jacket_image(game_type, title, artist)
                 reformat_data = {
                     'chart_id': record['chart_id'],
                     'song_id': record['song_id'],

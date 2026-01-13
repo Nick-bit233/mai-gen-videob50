@@ -194,7 +194,9 @@ develop_token.txt
 # streamlit temp resources
 static/thumbnails
 static/user
+static/assets/jackets
 
 # database files
 *.db
+*.bak
 *.sqlite
