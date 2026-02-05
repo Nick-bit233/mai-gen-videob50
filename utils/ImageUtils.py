@@ -310,7 +310,7 @@ class ChuniImageGenerater:
                                          font_path=self.level_font_path,
                                          font_size=60, font_color=(255, 255, 255), h_align="center")
 
-        if int(decimal) >= 6:
+        if int(decimal) >= 5:
             # 绘制加号
             level_number_img = self.TextDraw(level_number_img, '+', (92, 8), 
                                              font_path=self.level_font_path,
