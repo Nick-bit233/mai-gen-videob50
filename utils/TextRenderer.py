@@ -19,40 +19,90 @@ import math
 
 
 # ============================================================================
-# TwitterCDNSource - Pilmoji 的 Twitter CDN emoji 源
+# Emoji 源配置 - 支持国内 CDN + 兜底机制
 # ============================================================================
 
-def _get_twitter_cdn_source():
-    """获取 Twitter CDN 源类（延迟导入 pilmoji）"""
+import logging
+_logger = logging.getLogger(__name__)
+
+# Emoji 缓存：避免重复下载
+_emoji_cache: dict = {}
+
+# 失败的 emoji 记录：避免反复尝试
+_failed_emojis: set = set()
+
+
+def _get_bootcdn_source():
+    """
+    获取 BootCDN 源类（国内加速，延迟导入 pilmoji）
+    
+    BootCDN twemoji 格式：
+    https://cdn.bootcdn.net/ajax/libs/twemoji/16.0.1/72x72/{codepoint}.png
+    """
     from pilmoji.source import BaseSource
     
-    class _TwitterCDNSource(BaseSource):
+    class _BootCDNSource(BaseSource):
         """
-        使用 Twitter CDN 的 emoji 源（用于 Pilmoji）
+        使用 BootCDN 的 twemoji 源（用于 Pilmoji）
         
-        从 https://abs.twimg.com/emoji/v2/72x72/ 下载 emoji 图片
+        从 https://cdn.bootcdn.net/ajax/libs/twemoji/16.0.1/72x72/ 下载 emoji 图片
+        
+        特性：
+        - 国内 CDN 加速
+        - 本地缓存避免重复下载
+        - 网络失败时返回 None（留空处理）
         """
         
-        BASE_URL = 'https://abs.twimg.com/emoji/v2/72x72/'
+        BASE_URL = 'https://cdn.bootcdn.net/ajax/libs/twemoji/16.0.1/72x72/'
         
         def get_emoji(self, emoji: str) -> Optional[BytesIO]:
-            """获取 emoji 图片"""
-            # 将 emoji 转换为 Unicode 码点
+            """获取 emoji 图片，失败时返回 None（留空）"""
+            global _emoji_cache, _failed_emojis
+            
+            # 检查是否已经失败过
+            if emoji in _failed_emojis:
+                return None
+            
+            # 检查缓存（返回新的 BytesIO 副本）
+            if emoji in _emoji_cache:
+                return BytesIO(_emoji_cache[emoji])
+            
+            # 将 emoji 转换为 Unicode 码点（小写）
             codepoint = '-'.join(f'{ord(c):x}' for c in emoji)
             url = f'{self.BASE_URL}{codepoint}.png'
             
             try:
-                req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                with urlopen(req, timeout=15) as response:
-                    return BytesIO(response.read())
-            except (HTTPError, Exception):
+                req = Request(
+                    url, 
+                    headers={
+                        'User-Agent': 'Mozilla/5.0',
+                        'Accept': 'image/png,*/*'
+                    }
+                )
+                with urlopen(req, timeout=10) as response:
+                    data = response.read()
+                    # 缓存原始字节数据（不是 BytesIO）
+                    _emoji_cache[emoji] = data
+                    return BytesIO(data)
+                    
+            except Exception as e:
+                # 记录失败，避免反复尝试
+                _failed_emojis.add(emoji)
+                _logger.warning(f"Failed to fetch emoji '{emoji}' from BootCDN: {e}")
                 return None
         
         def get_discord_emoji(self, id: int) -> None:
             """Discord emoji 不支持"""
             return None
     
-    return _TwitterCDNSource
+    return _BootCDNSource
+
+
+def _clear_emoji_cache():
+    """清除 emoji 缓存（用于测试或内存释放）"""
+    global _emoji_cache, _failed_emojis
+    _emoji_cache.clear()
+    _failed_emojis.clear()
 
 
 # ============================================================================
@@ -348,7 +398,7 @@ class TextRenderer:
                     test_line = current_line + token
                     
                     # 使用 Pilmoji 计算宽度
-                    with Pilmoji(temp_img, source=_get_twitter_cdn_source()()) as pilmoji:
+                    with Pilmoji(temp_img, source=_get_bootcdn_source()()) as pilmoji:
                         bbox = pilmoji.getsize(test_line, font=font)
                         width = bbox[0]
                     
@@ -362,7 +412,7 @@ class TextRenderer:
                             # 单个 token 太长，按字符分割
                             for char in token:
                                 test_line = current_line + char
-                                with Pilmoji(temp_img, source=_get_twitter_cdn_source()()) as pilmoji:
+                                with Pilmoji(temp_img, source=_get_bootcdn_source()()) as pilmoji:
                                     bbox = pilmoji.getsize(test_line, font=font)
                                     width = bbox[0]
                                 
@@ -434,13 +484,16 @@ class TextRenderer:
         # 检查是否包含 emoji
         has_emoji = self._has_emoji(text)
         
-        # 换行处理
+        # 换行处理 - 带兜底机制
+        use_pilmoji = False
         if has_emoji:
             try:
                 from pilmoji import Pilmoji
                 lines = self._wrap_text_for_pilmoji(text, self.font, max_width)
                 use_pilmoji = True
-            except ImportError:
+            except Exception as e:
+                # Pilmoji 任何错误都回退到简单模式
+                _logger.warning(f"Pilmoji failed, fallback to simple mode: {e}")
                 lines = self._wrap_text_simple(text, self.font, max_width)
                 use_pilmoji = False
         else:
@@ -459,7 +512,7 @@ class TextRenderer:
             temp_img = Image.new('RGBA', (1, 1), (0, 0, 0, 0))
             for line in lines:
                 if line:
-                    with Pilmoji(temp_img, source=_get_twitter_cdn_source()()) as pilmoji:
+                    with Pilmoji(temp_img, source=_get_bootcdn_source()()) as pilmoji:
                         w, h = pilmoji.getsize(line, font=self.font)
                         line_widths.append(w)
                         line_heights.append(max(h, base_line_height))
@@ -506,7 +559,7 @@ class TextRenderer:
     def _draw_with_pilmoji(self, image: Image.Image, lines: List[str], 
                            line_widths: List[int], line_heights: List[int], 
                            start_y: float) -> None:
-        """使用 Pilmoji 绘制文本（支持 emoji）"""
+        """使用 Pilmoji 绘制文本（支持 emoji），失败时回退到简单模式"""
         from pilmoji import Pilmoji
         
         content_width = self.layout.width - self.layout.padding[1] - self.layout.padding[3]
@@ -514,38 +567,44 @@ class TextRenderer:
         
         current_y = start_y
         
-        with Pilmoji(image, source=_get_twitter_cdn_source()()) as pilmoji:
-            for i, line in enumerate(lines):
-                if not line:
-                    current_y += line_heights[i] + self.layout.line_spacing
-                    continue
-                
-                line_width = line_widths[i]
-                line_height = line_heights[i]
-                
-                # 水平对齐
-                if self.layout.horizontal_align == "left":
-                    x = self.layout.padding[3]
-                elif self.layout.horizontal_align == "center":
-                    x = self.layout.padding[3] + (content_width - line_width) // 2
-                else:
-                    x = self.layout.width - self.layout.padding[1] - line_width
-                
-                # 垂直对齐
-                y = current_y
-                
-                # 绘制描边（如果启用）
-                if self.style.stroke_color and self.style.stroke_width > 0:
-                    stroke_color = self._parse_color(self.style.stroke_color)
-                    for angle in range(0, 360, 45):
-                        dx = self.style.stroke_width * math.cos(math.radians(angle))
-                        dy = self.style.stroke_width * math.sin(math.radians(angle))
-                        pilmoji.text((x + dx, y + dy), line, fill=stroke_color, font=self.font)
-                
-                # 绘制文字
-                pilmoji.text((x, y), line, fill=color, font=self.font)
-                
-                current_y += line_height + self.layout.line_spacing
+        try:
+            with Pilmoji(image, source=_get_bootcdn_source()()) as pilmoji:
+                for i, line in enumerate(lines):
+                    if not line:
+                        current_y += line_heights[i] + self.layout.line_spacing
+                        continue
+                    
+                    line_width = line_widths[i]
+                    line_height = line_heights[i]
+                    
+                    # 水平对齐
+                    if self.layout.horizontal_align == "left":
+                        x = self.layout.padding[3]
+                    elif self.layout.horizontal_align == "center":
+                        x = self.layout.padding[3] + (content_width - line_width) // 2
+                    else:
+                        x = self.layout.width - self.layout.padding[1] - line_width
+                    
+                    # 垂直对齐
+                    y = current_y
+                    
+                    # 绘制描边（如果启用）
+                    if self.style.stroke_color and self.style.stroke_width > 0:
+                        stroke_color = self._parse_color(self.style.stroke_color)
+                        for angle in range(0, 360, 45):
+                            dx = self.style.stroke_width * math.cos(math.radians(angle))
+                            dy = self.style.stroke_width * math.sin(math.radians(angle))
+                            pilmoji.text((x + dx, y + dy), line, fill=stroke_color, font=self.font)
+                    
+                    # 绘制文字
+                    pilmoji.text((x, y), line, fill=color, font=self.font)
+                    
+                    current_y += line_height + self.layout.line_spacing
+                    
+        except Exception as e:
+            # Pilmoji 绘制失败，回退到简单绘制（emoji 会显示为方框或留空）
+            _logger.warning(f"Pilmoji drawing failed, fallback to simple mode: {e}")
+            self._draw_simple(image, lines, line_widths, line_heights, start_y)
     
     def _draw_simple(self, image: Image.Image, lines: List[str], 
                      line_widths: List[int], line_heights: List[int], 
