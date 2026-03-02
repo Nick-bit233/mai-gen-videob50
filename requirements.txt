@@ -18,4 +18,4 @@ streamlit_searchbox>=0.1.22
 httpx
 opencv-python>=4.8.0
 jieba>=0.42.1
-freetype-py>=2.4.0 
+pilmoji>=2.0.5 
