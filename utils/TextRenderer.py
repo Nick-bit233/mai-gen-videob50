@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw, ImageFont
 import os
 import re
 import unicodedata
+import numpy as np
 
 
 # ============================================================================
@@ -354,6 +355,7 @@ class TextStyle:
     color: str = "#FFFFFF"                 # 文字颜色 (十六进制)
     stroke_color: Optional[str] = None     # 描边颜色 (None 表示无描边)
     stroke_width: int = 2                  # 描边宽度 (像素)
+    emoji_font_path: Optional[str] = None  # Emoji 字体文件路径 (None 表示不单独处理 emoji)
 
     def __post_init__(self):
         """验证样式参数"""
@@ -409,6 +411,9 @@ class TextRenderer:
     # 类级别的分词器实例（延迟初始化）
     _tokenizer: Optional[TextTokenizer] = None
     
+    # 默认 Emoji 字体路径（相对路径）
+    DEFAULT_EMOJI_FONT = "static/assets/fonts/NotoColorEmoji.ttf"
+    
     def __init__(self, style: TextStyle, layout: LayoutConfig):
         """
         初始化渲染器
@@ -420,6 +425,7 @@ class TextRenderer:
         self.style = style
         self.layout = layout
         self._font: Optional[ImageFont.FreeTypeFont] = None
+        self._emoji_font: Optional[ImageFont.FreeTypeFont] = None
         self._original_font_size = style.font_size  # 保存原始字号用于自动缩放
         
         # 初始化分词器
@@ -456,13 +462,294 @@ class TextRenderer:
         except Exception as e:
             raise RuntimeError(f"Failed to load font '{self.style.font_path}': {e}")
     
+    def _load_emoji_font(self, size: Optional[int] = None) -> None:
+        """
+        加载 Emoji 字体文件
+        
+        Args:
+            size: 字体大小，None 时使用 style.font_size
+        """
+        font_size = size if size is not None else self.style.font_size
+        
+        # 确定 emoji 字体路径
+        emoji_font_path = self.style.emoji_font_path
+        if emoji_font_path is None:
+            # 使用默认 emoji 字体
+            emoji_font_path = self.DEFAULT_EMOJI_FONT
+        
+        if not os.path.exists(emoji_font_path):
+            # Emoji 字体不存在，将不单独处理 emoji
+            self._emoji_font = None
+            return
+        
+        try:
+            # Noto Color Emoji 的字号需要调整以匹配主字体
+            # 因为它是位图字体，需要用更大的字号才能达到相同的视觉大小
+            self._emoji_font = ImageFont.truetype(emoji_font_path, font_size)
+        except Exception as e:
+            # 加载失败，不单独处理 emoji
+            self._emoji_font = None
+    
+    @property
+    def emoji_font(self) -> Optional[ImageFont.FreeTypeFont]:
+        """延迟加载 emoji 字体"""
+        if self._emoji_font is None and (self.style.emoji_font_path or os.path.exists(self.DEFAULT_EMOJI_FONT)):
+            self._load_emoji_font()
+        return self._emoji_font
+    
+    def _render_emoji_with_freetype(self, emoji_char: str, font_size: int) -> Optional[Image.Image]:
+        """
+        使用 freetype-py 渲染 emoji 到 PIL Image
+        
+        Args:
+            emoji_char: emoji 字符
+            font_size: 字体大小
+            
+        Returns:
+            PIL Image 对象，如果失败返回 None
+        """
+        try:
+            import freetype
+            
+            # 确定 emoji 字体路径
+            emoji_font_path = self.style.emoji_font_path
+            if emoji_font_path is None:
+                emoji_font_path = self.DEFAULT_EMOJI_FONT
+            
+            if not os.path.exists(emoji_font_path):
+                return None
+            
+            # 加载字体
+            face = freetype.Face(emoji_font_path)
+            face.set_pixel_sizes(0, font_size)
+            
+            # 获取 emoji 的 Unicode 码点
+            char_code = ord(emoji_char[0])
+            
+            # 获取字形索引
+            glyph_index = face.get_char_index(char_code)
+            if glyph_index == 0:
+                # 尝试使用字符本身
+                return None
+            
+            # 加载字形（使用 RENDER 标志来获取位图）
+            face.load_glyph(glyph_index, freetype.FT_LOAD_RENDER | freetype.FT_LOAD_COLOR)
+            
+            # 获取字形位图
+            bitmap = face.glyph.bitmap
+            if bitmap.width == 0 or bitmap.rows == 0:
+                return None
+            
+            # 将位图数据转换为 numpy 数组
+            if bitmap.pixel_mode == freetype.FT_PIXEL_MODE_BGRA:
+                # BGRA 模式（彩色 emoji）
+                buffer = np.array(bitmap.buffer, dtype=np.uint8)
+                buffer = buffer.reshape((bitmap.rows, bitmap.width, 4))
+                # BGRA -> RGBA
+                buffer = buffer[:, :, [2, 1, 0, 3]]
+                img = Image.fromarray(buffer, 'RGBA')
+            else:
+                # 灰度模式
+                buffer = np.array(bitmap.buffer, dtype=np.uint8)
+                buffer = buffer.reshape((bitmap.rows, bitmap.width))
+                img = Image.fromarray(buffer, 'L')
+                # 转换为 RGBA
+                img = img.convert('RGBA')
+                # 将灰度值作为 alpha 通道
+                r, g, b, a = img.split()
+                img = Image.merge('RGBA', (r, g, b, a))
+            
+            return img
+            
+        except Exception as e:
+            return None
+    
     def _set_font_size(self, size: int) -> None:
         """设置字体大小（重新加载字体）"""
         self._load_font(size)
+        # 同时更新 emoji 字体大小
+        if self._emoji_font is not None:
+            self._load_emoji_font(size)
+    
+    @staticmethod
+    def _is_emoji_char(char: str) -> bool:
+        """
+        判断是否为 Emoji 字符
+        
+        Args:
+            char: 单个字符或 Unicode 字符
+            
+        Returns:
+            是否为 Emoji
+        """
+        if not char:
+            return False
+        
+        code = ord(char[0])
+        
+        # Emoji Unicode 范围
+        emoji_ranges = [
+            (0x1F600, 0x1F64F),  # Emoticons (😀-🙏)
+            (0x1F300, 0x1F5FF),  # Misc Symbols and Pictographs (🌀-🗿)
+            (0x1F680, 0x1F6FF),  # Transport and Map (🚀-🛿)
+            (0x1F900, 0x1F9FF),  # Supplemental Symbols and Pictographs (🤀-🧿)
+            (0x1FA00, 0x1FA6F),  # Chess Symbols
+            (0x1FA70, 0x1FAFF),  # Symbols and Pictographs Extended-A
+            (0x2600, 0x26FF),    # Misc symbols (☀-⛿)
+            (0x2700, 0x27BF),    # Dingbats (✀-➿)
+            (0xFE00, 0xFE0F),    # Variation Selectors
+            (0x1F000, 0x1F02F),  # Mahjong Tiles
+            (0x1F0A0, 0x1F0FF),  # Playing Cards
+            (0x231A, 0x231B),    # Watch, Hourglass
+            (0x23E9, 0x23F3),    # Various symbols
+            (0x23F8, 0x23FA),    # Media control
+            (0x25AA, 0x25AB),    # Squares
+            (0x25B6, 0x25B6),    # Play button
+            (0x25C0, 0x25C0),    # Reverse button
+            (0x25FB, 0x25FE),    # Squares
+            (0x2614, 0x2615),    # Umbrella, Hot beverage
+            (0x2648, 0x2653),    # Zodiac
+            (0x267F, 0x267F),    # Wheelchair
+            (0x2693, 0x2693),    # Anchor
+            (0x26A1, 0x26A1),    # High voltage
+            (0x26AA, 0x26AB),    # Circles
+            (0x26BD, 0x26BE),    # Soccer, Baseball
+            (0x26C4, 0x26C5),    # Snowman, Sun
+            (0x26CE, 0x26CE),    # Ophiuchus
+            (0x26D4, 0x26D4),    # No entry
+            (0x26EA, 0x26EA),    # Church
+            (0x26F2, 0x26F3),    # Fountain, Golf
+            (0x26F5, 0x26F5),    # Sailboat
+            (0x26FA, 0x26FA),    # Tent
+            (0x26FD, 0x26FD),    # Fuel pump
+            (0x2702, 0x2702),    # Scissors
+            (0x2705, 0x2705),    # Check mark
+            (0x2708, 0x270D),    # Various
+            (0x270F, 0x270F),    # Pencil
+            (0x2712, 0x2712),    # Black nib
+            (0x2714, 0x2714),    # Heavy check mark
+            (0x2716, 0x2716),    # Heavy multiplication
+            (0x271D, 0x271D),    # Latin cross
+            (0x2721, 0x2721),    # Star of David
+            (0x2728, 0x2728),    # Sparkles
+            (0x2733, 0x2734),    # Eight spoked asterisk
+            (0x2744, 0x2744),    # Snowflake
+            (0x2747, 0x2747),    # Sparkle
+            (0x274C, 0x274C),    # Cross mark
+            (0x274E, 0x274E),    # Cross mark
+            (0x2753, 0x2755),    # Question marks
+            (0x2757, 0x2757),    # Exclamation mark
+            (0x2763, 0x2764),    # Heart exclamation, Heavy heart
+            (0x2795, 0x2797),    # Plus, minus, divide
+            (0x27A1, 0x27A1),    # Black right arrow
+            (0x27B0, 0x27B0),    # Curly loop
+            (0x27BF, 0x27BF),    # Double curly loop
+            (0x2934, 0x2935),    # Arrows
+            (0x2B05, 0x2B07),    # Arrows
+            (0x2B1B, 0x2B1C),    # Squares
+            (0x2B50, 0x2B50),    # Star
+            (0x2B55, 0x2B55),    # Heavy large circle
+            (0x3030, 0x3030),    # Wavy dash
+            (0x303D, 0x303D),    # Part alternation mark
+            (0x3297, 0x3297),    # Circled ideograph congratulation
+            (0x3299, 0x3299),    # Circled ideograph secret
+            (0x200D, 0x200D),    # Zero Width Joiner (用于组合 emoji)
+            (0x20E3, 0x20E3),    # Combining Enclosing Keycap
+            (0x00A9, 0x00A9),    # Copyright
+            (0x00AE, 0x00AE),    # Registered
+            (0x2122, 0x2122),    # Trade Mark
+            (0x2139, 0x2139),    # Information Source
+            (0x2194, 0x2199),    # Arrows
+            (0x21A9, 0x21AA),    # Arrows
+            (0x1F004, 0x1F004),  # Mahjong Red Dragon
+            (0x1F0CF, 0x1F0CF),  # Playing Card Joker
+        ]
+        
+        for start, end in emoji_ranges:
+            if start <= code <= end:
+                return True
+        
+        # 检查是否包含 Emoji 修饰符
+        if 0x1F3FB <= code <= 0x1F3FF:  # Skin tone modifiers
+            return True
+        
+        # 检查是否为 Regional Indicator (国旗)
+        if 0x1F1E6 <= code <= 0x1F1FF:
+            return True
+        
+        return False
+    
+    def _segment_text_by_emoji(self, text: str) -> List[Tuple[str, bool]]:
+        """
+        将文本按 Emoji 分段
+        
+        Args:
+            text: 输入文本
+            
+        Returns:
+            分段列表，每个元素为 (片段文本, 是否为 emoji)
+        """
+        if not text:
+            return []
+        
+        if self.emoji_font is None:
+            # 没有 emoji 字体，不进行分段
+            return [(text, False)]
+        
+        segments = []
+        i = 0
+        
+        while i < len(text):
+            char = text[i]
+            
+            # 检查是否是 emoji
+            if self._is_emoji_char(char):
+                # 收集完整的 emoji（可能包含修饰符）
+                emoji_start = i
+                i += 1
+                
+                # 处理 emoji 序列（如国旗、带肤色修饰符的 emoji）
+                while i < len(text):
+                    next_char = text[i]
+                    next_code = ord(next_char)
+                    
+                    # Zero Width Joiner - 继续收集
+                    if next_code == 0x200D:
+                        i += 1
+                        if i < len(text):
+                            i += 1  # 收集 ZWJ 后的字符
+                        continue
+                    
+                    # Variation Selector - 继续收集
+                    if 0xFE00 <= next_code <= 0xFE0F:
+                        i += 1
+                        continue
+                    
+                    # Skin tone modifier - 继续收集
+                    if 0x1F3FB <= next_code <= 0x1F3FF:
+                        i += 1
+                        continue
+                    
+                    # Regional Indicator (国旗的第二部分)
+                    if 0x1F1E6 <= next_code <= 0x1F1FF and i - emoji_start == 1:
+                        i += 1
+                        continue
+                    
+                    break
+                
+                segments.append((text[emoji_start:i], True))
+            else:
+                # 收集非 emoji 字符
+                text_start = i
+                while i < len(text) and not self._is_emoji_char(text[i]):
+                    i += 1
+                segments.append((text[text_start:i], False))
+        
+        return segments
     
     def render(self, text: str, auto_scale: bool = True) -> Image.Image:
         """
-        渲染文字为 PIL Image 对象
+        渲染文字为 PIL Image 对象（支持 Emoji 混排）
         
         Args:
             text: 要渲染的文字
@@ -475,22 +762,39 @@ class TextRenderer:
             # 空文本返回透明图片
             return Image.new("RGBA", (self.layout.width, 1), (0, 0, 0, 0))
         
+        # 检查是否有 emoji 字体可用
+        has_emoji_font = self.emoji_font is not None
+        
         # 分词和换行处理
-        lines = self._wrap_text(text)
+        if has_emoji_font:
+            lines = self._wrap_text_with_emoji(text)
+        else:
+            lines = self._wrap_text(text)
         
         # 检查是否需要自动缩放
         if auto_scale and self._needs_scaling(lines):
             self._auto_scale_font(text)
-        
-        # 重新计算换行（因为字号可能已变化）
-        lines = self._wrap_text(text)
+            # 重新计算换行
+            if has_emoji_font:
+                lines = self._wrap_text_with_emoji(text)
+            else:
+                lines = self._wrap_text(text)
         
         # 计算所需高度
         content_width = self.layout.width - self.layout.padding[1] - self.layout.padding[3]
         line_heights = []
+        line_widths = []
+        
         for line in lines:
-            bbox = self.font.getbbox(line)
-            line_height = bbox[3] - bbox[1]
+            if isinstance(line, list):
+                # 带 emoji 分段的行
+                line_width, line_height = self._measure_segmented_line(line)
+            else:
+                # 纯文本行
+                bbox = self.font.getbbox(line)
+                line_width = bbox[2] - bbox[0]
+                line_height = bbox[3] - bbox[1]
+            line_widths.append(line_width)
             line_heights.append(line_height)
         
         total_text_height = sum(line_heights) + self.layout.line_spacing * (len(lines) - 1)
@@ -516,11 +820,9 @@ class TextRenderer:
         # 绘制每一行
         for i, line in enumerate(lines):
             line_height = line_heights[i]
+            line_width = line_widths[i]
             
             # 计算水平位置
-            bbox = self.font.getbbox(line)
-            line_width = bbox[2] - bbox[0]
-            
             if self.layout.horizontal_align == "left":
                 x = self.layout.padding[3]
             elif self.layout.horizontal_align == "center":
@@ -528,26 +830,183 @@ class TextRenderer:
             else:  # right
                 x = self.layout.width - self.layout.padding[1] - line_width
             
-            # 垂直居中当前行
             y = current_y
             
-            # 绘制描边（如果启用）
-            if self.style.stroke_color and self.style.stroke_width > 0:
-                self._draw_stroke(draw, line, x, y, self.font, self.style.stroke_color, self.style.stroke_width)
-            
-            # 绘制文字
-            draw.text((x, y), line, font=self.font, fill=self._parse_color(self.style.color))
+            # 绘制该行
+            if isinstance(line, list):
+                # 带 emoji 分段的行 - 分段绘制
+                self._draw_segmented_line(draw, line, x, y, line_height, image)
+            else:
+                # 纯文本行 - 直接绘制
+                # 绘制描边（如果启用）
+                if self.style.stroke_color and self.style.stroke_width > 0:
+                    self._draw_stroke(draw, line, x, y, self.font, self.style.stroke_color, self.style.stroke_width)
+                # 绘制文字
+                draw.text((x, y), line, font=self.font, fill=self._parse_color(self.style.color))
             
             current_y += line_height + self.layout.line_spacing
         
         return image
     
-    def _needs_scaling(self, lines: List[str]) -> bool:
+    def _measure_segmented_line(self, segments: List[Tuple[str, bool]]) -> Tuple[int, int]:
+        """
+        测量带 emoji 分段的行的尺寸
+        
+        Args:
+            segments: 分段列表 [(文本, 是否emoji), ...]
+            
+        Returns:
+            (总宽度, 最大高度)
+        """
+        total_width = 0
+        max_height = 0
+        
+        for text, is_emoji in segments:
+            if is_emoji and self.emoji_font:
+                bbox = self.emoji_font.getbbox(text)
+            else:
+                bbox = self.font.getbbox(text)
+            total_width += bbox[2] - bbox[0]
+            height = bbox[3] - bbox[1]
+            max_height = max(max_height, height)
+        
+        return total_width, max_height
+    
+    def _draw_segmented_line(self, draw: ImageDraw.ImageDraw, segments: List[Tuple[str, bool]], 
+                             x: float, y: float, line_height: int, base_image: Image.Image) -> None:
+        """
+        绘制带 emoji 分段的行
+        
+        Args:
+            draw: ImageDraw 对象
+            segments: 分段列表 [(文本, 是否emoji), ...]
+            x: 起始 X 坐标
+            y: 起始 Y 坐标
+            line_height: 行高度（用于垂直对齐）
+            base_image: 基础图片（用于合成 emoji）
+        """
+        current_x = x
+        
+        for text, is_emoji in segments:
+            if is_emoji:
+                # 使用 freetype-py 渲染 emoji
+                emoji_img = self._render_emoji_with_freetype(text, self.style.font_size)
+                
+                if emoji_img:
+                    # 计算 emoji 尺寸
+                    emoji_width, emoji_height = emoji_img.size
+                    
+                    # 垂直居中对齐
+                    segment_y = y + (line_height - emoji_height) // 2
+                    
+                    # 将 emoji 图片粘贴到基础图片上
+                    if emoji_img.mode == 'RGBA':
+                        base_image.paste(emoji_img, (int(current_x), int(segment_y)), emoji_img)
+                    else:
+                        base_image.paste(emoji_img, (int(current_x), int(segment_y)))
+                    
+                    current_x += emoji_width
+                else:
+                    # freetype 渲染失败，尝试使用 PIL 默认方式
+                    bbox = self.font.getbbox(text)
+                    segment_height = bbox[3] - bbox[1]
+                    segment_y = y + (line_height - segment_height) // 2
+                    draw.text((current_x, segment_y), text, font=self.font, 
+                             fill=self._parse_color(self.style.color))
+                    current_x += bbox[2] - bbox[0]
+            else:
+                # 普通文字
+                bbox = self.font.getbbox(text)
+                segment_height = bbox[3] - bbox[1]
+                # 垂直居中对齐
+                segment_y = y + (line_height - segment_height) // 2
+                
+                # 绘制描边（如果启用）
+                if self.style.stroke_color and self.style.stroke_width > 0:
+                    self._draw_stroke(draw, text, current_x, segment_y, self.font, 
+                                     self.style.stroke_color, self.style.stroke_width)
+                
+                # 绘制文字
+                draw.text((current_x, segment_y), text, font=self.font, 
+                         fill=self._parse_color(self.style.color))
+                current_x += bbox[2] - bbox[0]
+    
+    def _wrap_text_with_emoji(self, text: str) -> List:
+        """
+        智能换行处理（支持 Emoji 混排）
+        
+        Args:
+            text: 原始文本
+            
+        Returns:
+            换行后的行列表，每行是分段列表 [(文本, 是否emoji), ...]
+        """
+        max_width = self.layout.width - self.layout.padding[1] - self.layout.padding[3]
+        
+        # 首先按换行符分段
+        paragraphs = text.split('\n')
+        
+        all_lines = []
+        
+        for para in paragraphs:
+            if not para:
+                all_lines.append([])
+                continue
+            
+            # 对每个段落进行 emoji 分段
+            segments = self._segment_text_by_emoji(para)
+            
+            # 对分段后的文本进行词级别分词（只处理非 emoji 部分）
+            tokenized_segments = []
+            for seg_text, is_emoji in segments:
+                if is_emoji:
+                    tokenized_segments.append((seg_text, True))
+                else:
+                    # 对非 emoji 文本进行词级别分词
+                    tokens = self._tokenizer.tokenize(seg_text)
+                    for token in tokens:
+                        tokenized_segments.append((token, False))
+            
+            # 构建行
+            current_line = []
+            current_line_width = 0
+            
+            for seg_text, is_emoji in tokenized_segments:
+                # 获取该分段宽度
+                if is_emoji and self.emoji_font:
+                    bbox = self.emoji_font.getbbox(seg_text)
+                else:
+                    bbox = self.font.getbbox(seg_text)
+                seg_width = bbox[2] - bbox[0]
+                
+                if current_line_width + seg_width <= max_width:
+                    # 可以放入当前行
+                    current_line.append((seg_text, is_emoji))
+                    current_line_width += seg_width
+                else:
+                    # 放不下
+                    if current_line:
+                        # 输出当前行
+                        all_lines.append(current_line)
+                        current_line = [(seg_text, is_emoji)]
+                        current_line_width = seg_width
+                    else:
+                        # 单个分段就放不下，强制放入（后续会触发自动缩放）
+                        current_line.append((seg_text, is_emoji))
+                        current_line_width = seg_width
+            
+            # 添加最后一行
+            if current_line:
+                all_lines.append(current_line)
+        
+        return all_lines if all_lines else [[]]
+    
+    def _needs_scaling(self, lines: List) -> bool:
         """
         检查是否需要缩放字号
         
         Args:
-            lines: 当前行列表
+            lines: 当前行列表（可能是字符串列表或分段列表）
             
         Returns:
             是否需要缩放
@@ -559,9 +1018,36 @@ class TextRenderer:
         # 检查是否有固定高度限制且超出
         if not self.layout.auto_height:
             content_height = self.layout.height - self.layout.padding[0] - self.layout.padding[2]
-            line_height = self.font.getbbox("测试")[3] - self.font.getbbox("测试")[1]
-            max_possible_lines = (content_height + self.layout.line_spacing) // (line_height + self.layout.line_spacing)
-            if len(lines) > max_possible_lines:
+            
+            # 计算行高
+            if lines and isinstance(lines[0], list):
+                # 分段格式
+                line_heights = []
+                for line in lines:
+                    if line:
+                        _, h = self._measure_segmented_line(line)
+                        line_heights.append(h)
+                    else:
+                        line_heights.append(self.font.getbbox("测试")[3])
+                total_height = sum(line_heights) + self.layout.line_spacing * max(0, len(lines) - 1)
+            else:
+                # 字符串格式
+                line_height = self.font.getbbox("测试")[3] - self.font.getbbox("测试")[1]
+                total_height = len(lines) * line_height + self.layout.line_spacing * max(0, len(lines) - 1)
+            
+            if total_height > content_height:
+                return True
+        
+        # 检查是否有行超出宽度
+        max_width = self.layout.width - self.layout.padding[1] - self.layout.padding[3]
+        for line in lines:
+            if isinstance(line, list):
+                line_width, _ = self._measure_segmented_line(line)
+            else:
+                bbox = self.font.getbbox(line)
+                line_width = bbox[2] - bbox[0]
+            
+            if line_width > max_width:
                 return True
         
         return False
@@ -595,12 +1081,12 @@ class TextRenderer:
         if best_size != self.style.font_size:
             self._set_font_size(best_size)
     
-    def _fits_container(self, lines: List[str]) -> bool:
+    def _fits_container(self, lines: List) -> bool:
         """
         检查行列表是否适合容器
         
         Args:
-            lines: 行列表
+            lines: 行列表（可能是字符串列表或分段列表）
             
         Returns:
             是否适合容器
@@ -612,9 +1098,34 @@ class TextRenderer:
         # 检查高度限制
         if not self.layout.auto_height:
             content_height = self.layout.height - self.layout.padding[0] - self.layout.padding[2]
-            line_height = self.font.getbbox("测试")[3] - self.font.getbbox("测试")[1]
-            total_height = len(lines) * line_height + (len(lines) - 1) * self.layout.line_spacing
+            
+            # 计算总高度
+            if lines and isinstance(lines[0], list):
+                line_heights = []
+                for line in lines:
+                    if line:
+                        _, h = self._measure_segmented_line(line)
+                        line_heights.append(h)
+                    else:
+                        line_heights.append(self.font.getbbox("测试")[3])
+                total_height = sum(line_heights) + self.layout.line_spacing * max(0, len(lines) - 1)
+            else:
+                line_height = self.font.getbbox("测试")[3] - self.font.getbbox("测试")[1]
+                total_height = len(lines) * line_height + self.layout.line_spacing * max(0, len(lines) - 1)
+            
             if total_height > content_height:
+                return False
+        
+        # 检查宽度限制
+        max_width = self.layout.width - self.layout.padding[1] - self.layout.padding[3]
+        for line in lines:
+            if isinstance(line, list):
+                line_width, _ = self._measure_segmented_line(line)
+            else:
+                bbox = self.font.getbbox(line)
+                line_width = bbox[2] - bbox[0]
+            
+            if line_width > max_width:
                 return False
         
         return True

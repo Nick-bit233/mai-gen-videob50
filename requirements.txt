@@ -17,4 +17,5 @@ streamlit_sortables>=0.3.1
 streamlit_searchbox>=0.1.22
 httpx
 opencv-python>=4.8.0
-jieba>=0.42.1 
+jieba>=0.42.1
+freetype-py>=2.4.0 
