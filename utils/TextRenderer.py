@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Tuple, Optional, List, Union
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
+import requests
 from urllib.request import urlopen, Request
 from urllib.error import HTTPError
 import os
@@ -44,13 +45,8 @@ def _get_bootcdn_source():
     class _BootCDNSource(BaseSource):
         """
         使用 BootCDN 的 twemoji 源（用于 Pilmoji）
-        
         从 https://cdn.bootcdn.net/ajax/libs/twemoji/16.0.1/72x72/ 下载 emoji 图片
-        
-        特性：
-        - 国内 CDN 加速
-        - 本地缓存避免重复下载
-        - 网络失败时返回 None（留空处理）
+
         """
         
         BASE_URL = 'https://cdn.bootcdn.net/ajax/libs/twemoji/16.0.1/72x72/'
@@ -86,10 +82,21 @@ def _get_bootcdn_source():
                     return BytesIO(data)
                     
             except Exception as e:
-                # 记录失败，避免反复尝试
-                _failed_emojis.add(emoji)
-                _logger.warning(f"Failed to fetch emoji '{emoji}' from BootCDN: {e}")
-                return None
+                _logger.warning(f"Failed to fetch emoji '{emoji}({codepoint})' from BootCDN: {e}, try fetching with base code...")
+                # 尝试去除code point的后缀重试
+                if '-' in codepoint:
+                    base_codepoint = codepoint.split('-')[0]
+                    response = requests.get(f'{self.BASE_URL}{base_codepoint}.png')
+                    if response.status_code == 200:
+                        _logger.warning(f"Fetched emoji '{emoji}({codepoint})' with base code: {base_codepoint}")
+                        data = response.content
+                        _emoji_cache[emoji] = data
+                        return BytesIO(data)
+                    else:
+                        # 记录失败，避免反复尝试
+                        _failed_emojis.add(emoji)
+                        _logger.warning(f"Failed to fetch emoji '{emoji}({codepoint})' again with base code: {base_codepoint}")
+                    return None
         
         def get_discord_emoji(self, id: int) -> None:
             """Discord emoji 不支持"""
@@ -153,14 +160,6 @@ class TextTokenizer:
                 ("分表", 5, "n"),
                 ("B50", 5, "n"),
                 ("B30", 5, "n"),
-                ("DX Rating", 5, "n"),
-                ("AP", 5, "n"),
-                ("FC", 5, "n"),
-                ("全连", 5, "v"),
-                ("收歌", 5, "v"),
-                ("推分", 5, "v"),
-                ("SSS", 5, "n"),
-                ("SSSplus", 5, "n"),
             ]
             
             for word, freq, tag in gaming_words:
@@ -229,8 +228,12 @@ class TextTokenizer:
                 i += 1
             else:
                 word, length = self._extract_ascii_word(text, i)
-                tokens.append(word)
-                i += length
+                if length > 0:
+                    tokens.append(word)
+                    i += length
+                else:
+                    tokens.append(char)
+                    i += 1
         
         return tokens
     
