@@ -41,7 +41,7 @@ default_static_dir = "./static/assets"
 DEFAULT_CONTENT_TEXT_STYLE_M = {
     "font_size": 28,
     "font_color": "#FFFFFF",
-    "inline_max_chara": 24,
+    "inline_max_chara": 26,
     "enable_stroke": True,
     "stroke_color": "#000000",
     "stroke_width": 2,
@@ -61,7 +61,7 @@ DEFAULT_CONTENT_TEXT_STYLE_C = {
 DEFAULT_INTRO_TEXT_STYLE = {
     "font_size": 44,
     "font_color": "#FFFFFF",
-    "inline_max_chara": 26,
+    "inline_max_chara": 30,
     "enable_stroke": True,
     "stroke_color": "#000000",
     "stroke_width": 2,

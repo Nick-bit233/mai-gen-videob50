@@ -194,16 +194,6 @@ def create_info_segment(clip_config, style_config, resolution):
     intro_text_bg_path = style_config['asset_paths']['intro_text_bg']
     intro_bgm_path = style_config['asset_paths']['intro_bgm']
 
-    text_size = style_config['intro_text_style']['font_size']
-    inline_max_len = style_config['intro_text_style']['inline_max_chara'] * 2
-    interline_size = style_config['intro_text_style']['interline']
-    horizontal_align = style_config['intro_text_style']['horizontal_align']
-    text_color = style_config['intro_text_style']['font_color']
-    enable_stroke = style_config['intro_text_style']['enable_stroke']
-    if enable_stroke:
-        stroke_color = style_config['intro_text_style']['stroke_color']
-        stroke_width = style_config['intro_text_style']['stroke_width']
-
     bg_image = ImageClip(intro_text_bg_path).with_duration(clip_config['duration'])
     bg_image = bg_image.with_effects([vfx.Resize(width=resolution[0])])
 
@@ -214,21 +204,10 @@ def create_info_segment(clip_config, style_config, resolution):
                                       vfx.MultiplyColor(0.75),
                                       vfx.Resize(width=resolution[0])])
 
-    # 创建文字
-    text_list = get_splited_text(clip_config['text'], text_max_bytes=inline_max_len)
-    txt_clip = TextClip(font=font_path, text="\n".join(text_list),
-                        method = "label",
-                        font_size=text_size,
-                        margin=(20, 20),
-                        interline=interline_size,
-                        text_align=horizontal_align,
-                        vertical_align="top",
-                        color=text_color,
-                        stroke_color = None if not enable_stroke else stroke_color,
-                        stroke_width = 0 if not enable_stroke else stroke_width,
-                        duration=clip_config['duration'])
+    # 创建文字图层
+    text_clip, text_pos = edit_info_text_clip(clip_config, resolution, style_config)
     
-    # 水印已移除
+    # 水印（已移除）
     # addtional_text = "【本视频由mai-genVb50视频生成器生成】"
     # addtional_txt_clip = TextClip(font=font_path, text=addtional_text,
     #                     method = "label",
@@ -237,13 +216,12 @@ def create_info_segment(clip_config, style_config, resolution):
     #                     color="white",
     #                     duration=clip_config['duration']
     # )
-    
-    text_pos = (int(0.16 * resolution[0]), int(0.18 * resolution[1]))
     # addtional_text_pos = (int(0.2 * resolution[0]), int(0.88 * resolution[1]))
+
     composite_clip = CompositeVideoClip([
             bg_video.with_position((0, 0)),
             bg_image.with_position((0, 0)),
-            txt_clip.with_position((text_pos[0], text_pos[1])),
+            text_clip.with_position((text_pos[0], text_pos[1])),
             # addtional_txt_clip.with_position((addtional_text_pos[0], addtional_text_pos[1]))  # 水印已移除
         ],
         size=resolution,
@@ -466,6 +444,57 @@ def edit_game_text_clip(game_type, clip_config, resolution, style_config) -> Uni
     text_pos = (int(mul_x * resolution[0]), int(mul_y * resolution[1]))
 
     return txt_clip, text_pos
+
+
+def edit_info_text_clip(clip_config, resolution, style_config) -> Union[ImageClip, tuple]:
+    """
+    专用于开场/结尾信息介绍片段的文字处理函数，返回 (ImageClip, position)
+    
+    该函数与 edit_game_text_clip 类似，但使用开场/结尾特定的样式配置。
+    """
+    # 读取样式配置
+    font_path = style_config['asset_paths']['comment_font']
+    text_size = style_config['intro_text_style']['font_size']
+    inline_max_chara = style_config['intro_text_style']['inline_max_chara']
+    text_area_width = max(400, inline_max_chara * text_size)
+    
+    interline_size = style_config['intro_text_style']['interline']
+    horizontal_align = style_config['intro_text_style']['horizontal_align']
+    text_color = style_config['intro_text_style']['font_color']
+    enable_stroke = style_config['intro_text_style']['enable_stroke']
+    stroke_color = style_config['intro_text_style'].get('stroke_color', None) if enable_stroke else None
+    stroke_width = style_config['intro_text_style'].get('stroke_width', 0) if enable_stroke else 0
+
+    # 使用 TextRenderer 渲染文字为图片
+    style = TextStyle(
+        font_path=font_path,
+        font_size=text_size,
+        color=text_color,
+        stroke_color=stroke_color,
+        stroke_width=stroke_width
+    )
+    
+    layout = LayoutConfig(
+        width=text_area_width,
+        auto_height=True,
+        padding=(10, 10, 10, 10),
+        line_spacing=interline_size * 1.2,
+        horizontal_align=horizontal_align,
+        vertical_align="top"
+    )
+    
+    renderer = TextRenderer(style, layout)
+    
+    # 渲染文字为图片
+    text = clip_config.get('text', '')
+    text_image = renderer.render(text)
+    
+    # 转换为 numpy 数组，然后创建 MoviePy ImageClip
+    text_array = np.array(text_image)
+    txt_clip = ImageClip(text_array).with_duration(clip_config.get('duration', 5))
+    txt_pos = (int(0.16 * resolution[0]), int(0.18 * resolution[1]))
+
+    return txt_clip, txt_pos
 
 
 def create_video_segment(

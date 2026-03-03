@@ -85,7 +85,7 @@ def edit_context_widget(ex_config_type, username, archive_name):
                 st.rerun(scope="fragment")
         
         # 保存按钮
-        if st.button("保存更改", key=f"save_{ex_config_type}"):
+        if st.button("保存更改", type="primary", key=f"save_{ex_config_type}"):
             try:
                 # 更新配置
                 st.session_state[ex_key] = items
@@ -156,7 +156,7 @@ if not archive_id:
 ### Savefile Management - End ###
 
 st.write("添加想要展示的文字内容，每一页最多可以展示约250字")
-st.info("请注意：左右两侧填写完毕后，需要分别点击保存按钮方可生效！")
+st.info("⚠️ 请注意：左右两侧填写完毕后，需要分别点击保存按钮方可生效！")
 
 # 分为两栏，左栏读取intro部分的配置，右栏读取ending部分的配置
 col1, col2 = st.columns(2)

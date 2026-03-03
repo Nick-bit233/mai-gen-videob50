@@ -1,6 +1,8 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import os
 import json
+import pyperclip
 from copy import deepcopy
 from pathlib import Path
 from datetime import datetime
@@ -27,17 +29,19 @@ os.makedirs(os.path.join(user_static_dir, "bg_clips"), exist_ok=True)
 G_config = read_global_config()  # 读取全局配置
 G_type = st.session_state.get('game_type', 'maimai')  # 当前游戏类型
 
-solips = """现在的孩子冲到机厅就是把其他人从机子上赶下来 
-然后投币扫码 上机 选择模式 选区域 
-旅行伙伴 跳过功能票 然后选中solips开始游戏
-然后一个带绝赞的双押划星星 一个双押划星星 再一个双押划星星 
-再一个双押划星星 然后一个双押 接下来一堆8分单点 两个16分扫键 
-几根管子 两个8分接俩12分三角绝赞拍划
-然后划一堆跟空集一样的星星 1181(18)(18) 
-又划一堆跟空集一样的星星 8818 五组双押
-然后16分交互往下打 一颗绝赞
-一堆8分错位 x x xxxx 5号键拍三下往上滑五条星星
-再回来把两条黄星星蹭掉"""
+_kop7 = """kop7th规则怪谈
+1️⃣ 不要在比赛前AP白xx，否则会被天意侵蚀心智❌
+2️⃣ 当你站在右侧机位前时，注意每一条你过去可能忽略的星星🔎🌟
+3️⃣ 预选前三不比预选倒一和lcq强🤷‍♂️🎲
+4️⃣ 注意前三条规则，并将该比赛当成小县城比赛来打，你就可以获得胜利🏆
+5️⃣ 注意那个小胖子👀
+6️⃣ kop决赛最后一首歌开始前手部不要做任何动作，不然你会被空口鉴leak大神光速出警🚨😱
+7️⃣ wonders 🌈✨"""
+_2085 = """
+啊🤪～啊🤪～啊咦😬啊咦😬啊→啊↑啊↓😨啊😰～嗯💥哎哎🤗哎哦哎嗯😋～哦哎🥳爱爱爱爱爱😍
+啊🤪～啊🤪～啊咦😬啊咦😬啊→啊↑啊↓😨啊😰～嗯💥嗯嗯👿滴嘚滴嘚😈唔😱嘟⬅️嘟↖️嘟⬆️嘟↗️嘟➡️嘟↘️嘟⬇️
+"""
+ABS_TEST_LINES = _kop7 if G_type == "maimai" else _2085
 
 if os.path.exists(video_style_config_path):
     with open(video_style_config_path, "r") as f:
@@ -114,6 +118,13 @@ def reset_custom_style_dialog():
 
         st.success("已重置所有自定义样式！")
         st.rerun()
+
+@st.dialog("来点抽象测试文案？")
+def show_test_lines_dialog():
+    st.text(ABS_TEST_LINES)
+    if st.button("好嘞，这就复制"):
+        pyperclip.copy(ABS_TEST_LINES)
+        st.success("已复制到剪贴板！")
 
 
 def update_preview_images(style_config, placeholder, test_string):
@@ -324,7 +335,7 @@ tab1, tab2 = st.tabs(["预设样式", "自定义样式"])
 
 with tab1:
     preset_select_area = st.container(border=False)
-    preset_apply_button = st.button("应用预设")
+    preset_apply_button = st.button("应用预设", type="primary")
 
     default_style_list = DEFAULT_STYLES.get(G_type, "maimai")
     style_options = [t.get("style_name", "Unknown") for t in default_style_list]
@@ -365,7 +376,7 @@ with tab2:
 
         # 添加上传文件的版权声明，用户自己对上传的内容负责
         st.markdown("""
-        **注意**：**您上传素材文件即代表您确认所用资源不违反有关法律法规，本工具的开发者不对任何由您自定义内容产生和传播的视频负责。**""")
+        **⚠️注意**：**您上传素材文件即代表您确认所用资源不违反有关法律法规，本工具的开发者不对任何由您自定义内容产生和传播的视频负责。**""")
         
         current_asset_config = current_style["asset_paths"]
         current_options = current_style["options"]
@@ -437,12 +448,17 @@ with tab2:
 
             st.divider()
             # 预览调整
-            test_str = st.text_area("【测试】样式预览", 
+            test_str = st.text_area("【测试】样式预览",
                                     placeholder="输入任意文本，以预览素材/文本样式调整的效果", 
                                     height=480,
-                                    help=f"需要文案？{solips}",
-                                    key="comment_preview_text")
-            preview_btn = st.button("生成预览图")
+                                    key="comment_preview_text_area")
+            sub_col1, sub_col2 = st.columns([2, 1])
+            with sub_col1:
+                preview_btn = st.button("生成预览图", type="primary")
+            with sub_col2:
+                add_test_lines_btn = st.button("需要文案", icon="❓", type="tertiary")
+                if add_test_lines_btn:
+                    show_test_lines_dialog()
         
         with col2:
             st.write("字体设置")
@@ -512,7 +528,7 @@ with tab2:
             update_preview_images(deepcopy(current_style), preview_image_placeholder, test_str)
 
         st.divider()
-        if st.button("保存自定义样式"):
+        if st.button("保存自定义样式", type="primary"):
             # 保存当前样式配置
             save_style_config(current_style, is_custom_style=True)
 

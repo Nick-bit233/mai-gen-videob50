@@ -109,31 +109,32 @@ def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instanc
             title = escape_markdown_text(video_info['title'])
             st.markdown(f"- 视频标题：{title}")
             st.markdown(f"- 链接：[🔗{id}]({video_info['url']}), 总时长: {video_info['duration']}秒")
-            
+            page_info_empty = st.empty()
             # 只有在视频有分P时才显示分P信息（page_count > 1）
             page_count = video_info.get('page_count', 1)
             if page_count > 1 and 'p_index' in video_info:
                 page_info = dl_instance.get_video_pages(id)
                 p_index = video_info['p_index']
-                st.text(f"此视频具有{page_count}个分p，目前确认的分p序号为【{p_index + 1}】，子标题：【{page_info[p_index]['part']}】")
+                with page_info_empty.container(border=False):
+                    st.text(f"此视频具有{page_count}个分p，目前确认的分p序号为【{p_index + 1}】，子标题：【{page_info[p_index]['part']}】")
 
-                col_config = {
-                    "page": st.column_config.NumberColumn("序号", width="small"),
-                    "part": st.column_config.TextColumn("分P标题", width="large"),
-                    "duration": st.column_config.NumberColumn("时长(s)", width="small"),
-                    "first_frame": st.column_config.ImageColumn("预览图", width="small", help="为了减少对性能的影响，分p数量过多(>5)时，不加载预览图"),
-                }
-                     
-                with st.expander("查看分p信息", expanded=page_count < 5):
-                    if isinstance(page_info, list):
-                        st.dataframe(
-                            page_info, 
-                            column_order=['page', 'part', 'duration', 'first_frame'],
-                            column_config=col_config,
-                            hide_index=True,
-                        )
-                    else:
-                        st.write("没有找到分p信息")
+                    col_config = {
+                        "page": st.column_config.NumberColumn("序号", width="small"),
+                        "part": st.column_config.TextColumn("分P标题", width="large"),
+                        "duration": st.column_config.NumberColumn("时长(s)", width="small"),
+                        "first_frame": st.column_config.ImageColumn("预览图", width="small", help="为了减少对性能的影响，分p数量过多(>5)时，不加载预览图"),
+                    }
+                        
+                    with st.expander("查看分p信息", expanded=page_count < 5):
+                        if isinstance(page_info, list):
+                            st.dataframe(
+                                page_info, 
+                                column_order=['page', 'part', 'duration', 'first_frame'],
+                                column_config=col_config,
+                                hide_index=True,
+                            )
+                        else:
+                            st.write("没有找到分p信息")
                 
     with placeholder.container(border=True):
         song = charts_data[current_index]
@@ -158,9 +159,13 @@ def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instanc
         extra_search_placeholder = st.empty()
 
         if video_info:
+            page_count = video_info.get('page_count', 1)
+            p_index = video_info['p_index'] 
+            if p_index >= page_count:
+                p_index = page_count - 1  # 重置到最大页数范围内
+                video_info['p_index'] = p_index
             update_match_info(match_info_placeholder, video_info=video_info)
-            if has_multiple_pages:
-                p_index = video_info['p_index']   
+            if has_multiple_pages:  
                 if change_video_page_button:
                     change_video_page(song, p_index)
 
@@ -186,7 +191,7 @@ def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instanc
                         label_visibility="visible"
                     )
 
-                    if st.button("【确认】保存此信息", key=f"confirm_selected_match_{c_id}"):
+                    if st.button("【确认】保存此信息", key=f"confirm_selected_match_{c_id}", type="primary"):
                         song['video_info_match'] = to_match_videos[selected_index]
                         # 将meta信息保存到数据库
                         db_handler.update_chart_video_metadata(c_id, song['video_info_match'])
@@ -204,7 +209,7 @@ def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instanc
             
             st.markdown('<p style="color: #08337B;"><b>以上都不对？手动输入谱面确认视频信息<b></p>', unsafe_allow_html=True)
             
-            # 添加辅助函数：从URL中提取视频ID
+            # 辅助函数：从URL中提取视频ID
             def extract_video_id(input_text: str, dl_type: str) -> str:
                 """从URL或直接输入中提取视频ID"""
                 if not input_text:
@@ -270,9 +275,9 @@ def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instanc
                 st.caption(f"💡 提示：也可以直接输入视频ID（YouTube: 11位字符，B站: BV号）")
             with col2:
                 st.markdown(f"[➡点击跳转到搜索页]({search_url})", unsafe_allow_html=True)
-                replace_p_index = st.number_input("分P序号（可选）", 
+                replace_p_number = st.number_input("分P序号（可选）", 
                                             help="如果视频来源是bilibili且有分P，可以选择直接填写分P序号（分p序号可从网页端查询，当谱面确认视频的p数较多时，直接输入序号加载更快），否则请忽略",
-                                            min_value=0, max_value=999, value=0, key=f"replace_p_index_{c_id}")
+                                            min_value=1, max_value=999, value=1, key=f"replace_p_index_{c_id}")
 
             # 搜索手动输入的id
             to_replace_video_info = None
@@ -308,14 +313,19 @@ def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instanc
                     with st.expander("详细错误信息"):
                         st.code(traceback.format_exc())
 
-                # print(to_replace_video_info)
                 if to_replace_video_info:
-                    if replace_p_index > 0:
-                        to_replace_video_info['p_index'] = replace_p_index
+                    to_replace_video_p_index = replace_p_number - 1 # 从1开始计数的用户输入转换为从0开始的索引
+                    to_replace_video_page_count = to_replace_video_info.get('page_count', 1)
+                    if to_replace_video_page_count > 1:  
+                        if to_replace_video_p_index >= to_replace_video_page_count:
+                            st.warning(f"输入的分P序号超出范围，当前视频只有{to_replace_video_page_count}个分P，将自动调整为最大可用分P")
+                            to_replace_video_p_index = to_replace_video_page_count - 1
+                        to_replace_video_info['p_index'] = to_replace_video_p_index
+                    
                     st.success(f"已使用视频{to_replace_video_info['id']}替换匹配信息，详情：")
                     
                     # 构建详情文本，如果有分P信息则显示
-                    p_info = f", p{to_replace_video_info.get('p_index', 0)}" if to_replace_video_info.get('page_count', 1) > 1 else ""
+                    p_info = f", p{to_replace_video_p_index + 1}" if to_replace_video_page_count > 1 else ""
                     st.markdown(f"【{to_replace_video_info['title']}】({to_replace_video_info['duration']}秒{p_info}) \
                                 [🔗{to_replace_video_info['id']}]({to_replace_video_info['url']})")
                     song['video_info_match'] = to_replace_video_info
@@ -417,8 +427,8 @@ if search_result:
         ret_data = search_result.get(key, None)
         if ret_data:  # 如果有，使用缓存的搜索结果
             chart['video_info_list'] = ret_data['video_info_list']
-        if not chart.get('video_info_match', None):  # 如果未从数据库中查找到过往匹配信息，使用默认搜索结果的第一位
-            chart['video_info_match'] = ret_data['video_info_match']
+            if not chart.get('video_info_match', None):  # 如果未从数据库中查找到过往匹配信息，使用默认搜索结果的第一位
+                chart['video_info_match'] = ret_data['video_info_match']
 else:
     st.info("没有缓存的搜索结果，请尝试手动添加匹配视频信息！")
 
@@ -448,9 +458,9 @@ with selector_container:
         on_jump_to_record()
 
 # 上一个和下一个按钮
-col1, col2, _ = st.columns([1, 1, 2])
+col1, _, _, col2 = st.columns([1, 1, 1, 1]) # 调整列宽比例，增加中间空白列
 with col1:
-    if st.button("上一个"):
+    if st.button("上一个", width="stretch"):
         if st.session_state.current_index > 0:
             # 切换到上一个视频片段
             st.session_state.current_index -= 1
@@ -460,7 +470,7 @@ with col1:
         else:
             st.toast("已经是第一个记录！")
 with col2:
-    if st.button("下一个"):
+    if st.button("下一个", width="stretch"):
         if st.session_state.current_index < len(record_ids) - 1:
             # 切换到下一个视频片段
             st.session_state.current_index += 1
@@ -472,7 +482,7 @@ with col2:
 
 download_info_placeholder = st.empty()
 st.session_state.download_completed = False
-if st.button("确认当前配置，开始下载视频", disabled=not dl_instance):
+if st.button("确认当前配置，开始下载视频", disabled=not dl_instance, width="stretch", type="primary"):
     try:
         st_download_video(download_info_placeholder, dl_instance, G_config, to_edit_chart_data)
         st.session_state.download_completed = True  # Reset error flag if successful
