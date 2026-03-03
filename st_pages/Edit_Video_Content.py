@@ -40,6 +40,7 @@ def try_update_default_configs(video_configs, archive_id=None):
 
 # streamlit component functions
 def update_preview(preview_placeholder, config, current_index):
+
     @st.dialog("删除视频确认")
     def delete_video_dialog(c_id, v_path):
         st.warning("确定要删除这个视频吗？此操作不可撤销！")
@@ -59,9 +60,12 @@ def update_preview(preview_placeholder, config, current_index):
         achievement_image_path = item['main_image']
         video_path = item['video']
 
-        # 检查是否存在图片和视频：
-        if not os.path.exists(achievement_image_path):
-            st.error(f"图片文件不存在: {achievement_image_path}，请检查前置步骤是否正常完成！")
+        # 检查是否存在已生成成绩图
+        if not achievement_image_path:
+            st.error(f"❌ 检测到存档成绩图缺失，请尝试重新进行 1.生成成绩图片 步骤！")
+            return
+        elif not os.path.exists(achievement_image_path):
+            st.error(f"❌ 检测到存档成绩图路径不存在: {achievement_image_path}，请尝试重新进行 1.生成成绩图片 步骤！")
             return
 
         # 显示当前视频片段的内容
@@ -83,7 +87,7 @@ def update_preview(preview_placeholder, config, current_index):
             st.image(achievement_image_path, caption="成绩图片")
         with main_col2:
             if not video_path:
-                st.warning("⚠️ 未找到视频路径信息，请检查下载步骤是否正常完成！")
+                st.warning("⚠️ 未找到视频路径信息，请检查步骤2与3是否正常完成！")
             else:
                 # 确保使用绝对路径
                 if not os.path.isabs(video_path):
@@ -91,7 +95,7 @@ def update_preview(preview_placeholder, config, current_index):
                 
                 # 验证文件是否存在
                 if not os.path.exists(video_path):
-                    st.warning(f"⚠️ 视频文件不存在: {video_path}\n请检查下载步骤是否正常完成！")
+                    st.warning(f"⚠️ 视频文件不存在: {video_path}，请检查下载步骤3是否正常完成！")
                 else:
                     try:
                         # 验证文件扩展名
@@ -350,22 +354,22 @@ if video_configs:
             on_jump_to_clip(tags.index(clip_selector))
 
     # 上一个和下一个按钮
-    col1, col2, _ = st.columns([1, 1, 2])
+    col1, _, _, col2 = st.columns([1, 1, 1, 1]) # 调整列宽比例，增加中间空白列
     with col1:
-        if st.button("上一个"):
+        if st.button("上一个", width="stretch"):
             if st.session_state.current_index > 0:
                 on_jump_to_clip(st.session_state.current_index - 1)
             else:
                 st.toast("已经是第一个视频片段！")
     with col2:
-        if st.button("下一个"):
+        if st.button("下一个", width="stretch"):
             if st.session_state.current_index < len(tags) - 1:
                 on_jump_to_clip(st.session_state.current_index + 1)
             else:
                 st.toast("已经是最后一个视频片段！")
     
     # 保存配置按钮
-    if st.button("保存配置"):
+    if st.button("保存配置", type="primary", width="stretch"):
         db_handler.save_video_config(video_configs=video_configs, archive_id=archive_id)
         st.success("配置已保存！")
 

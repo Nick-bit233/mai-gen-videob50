@@ -83,9 +83,9 @@ def _get_bootcdn_source():
                     
             except Exception as e:
                 _logger.warning(f"Failed to fetch emoji '{emoji}({codepoint})' from BootCDN: {e}, try fetching with base code...")
-                # 尝试去除code point的后缀重试
-                if '-' in codepoint:
-                    base_codepoint = codepoint.split('-')[0]
+                # 尝试简化code point中的变体选择符后重试
+                if '-fe0f' in codepoint:
+                    base_codepoint = codepoint.replace('-fe0f', '')
                     response = requests.get(f'{self.BASE_URL}{base_codepoint}.png')
                     if response.status_code == 200:
                         _logger.warning(f"Fetched emoji '{emoji}({codepoint})' with base code: {base_codepoint}")
@@ -330,6 +330,8 @@ class TextRenderer:
         self.layout = layout
         self._font: Optional[ImageFont.FreeTypeFont] = None
         self._original_font_size = style.font_size
+        self.emoji_scale_factor = 0.9
+        self.emoji_position_offset = (-0.4, 0)
         
         if TextRenderer._tokenizer is None:
             TextRenderer._tokenizer = TextTokenizer()
@@ -508,7 +510,7 @@ class TextRenderer:
         line_widths = []
         
         # 获取基础行高
-        sample_bbox = self.font.getbbox("测试Ay")
+        sample_bbox = self.font.getbbox("测试Ay123")
         base_line_height = sample_bbox[3] - sample_bbox[1]
         
         if use_pilmoji:
@@ -532,24 +534,29 @@ class TextRenderer:
                     line_widths.append(0)
                     line_heights.append(base_line_height)
         
-        total_text_height = sum(line_heights) + self.layout.line_spacing * max(0, len(lines) - 1)
+        total_text_height = sum(line_heights) + self.layout.line_spacing * max(0, len(lines))
         
-        # 计算图片高度
+        # 计算图片高度（auto模式下增加10像素余量，避免紧贴）
         if self.layout.auto_height:
-            image_height = total_text_height + self.layout.padding[0] + self.layout.padding[2]
+            image_height = total_text_height + self.layout.padding[0] + self.layout.padding[2] + 10
         else:
             image_height = self.layout.height
-        
+
+        # Ensure integer dimensions for PIL (avoid floats coming from Pilmoji measurements)
+        image_width = int(self.layout.width)
+        image_height = max(1, math.ceil(image_height))
+
         # 创建透明图片
-        image = Image.new("RGBA", (self.layout.width, image_height), (0, 0, 0, 0))
-        
+        image = Image.new("RGBA", (image_width, image_height), (0, 0, 0, 0))
+
         # 计算起始 Y 坐标
         if self.layout.vertical_align == "top":
-            current_y = self.layout.padding[0]
+            current_y = int(self.layout.padding[0])
         elif self.layout.vertical_align == "center":
-            current_y = self.layout.padding[0] + (image_height - self.layout.padding[0] - self.layout.padding[2] - total_text_height) // 2
+            available = image_height - self.layout.padding[0] - self.layout.padding[2] - total_text_height
+            current_y = int(self.layout.padding[0] + max(0, available / 2))
         else:
-            current_y = image_height - self.layout.padding[2] - total_text_height
+            current_y = int(image_height - self.layout.padding[2] - total_text_height)
         
         # 绘制文本
         if use_pilmoji:
@@ -597,10 +604,14 @@ class TextRenderer:
                         for angle in range(0, 360, 45):
                             dx = self.style.stroke_width * math.cos(math.radians(angle))
                             dy = self.style.stroke_width * math.sin(math.radians(angle))
-                            pilmoji.text((x + dx, y + dy), line, fill=stroke_color, font=self.font)
+                            pilmoji.text((x + dx, y + dy), line, fill=stroke_color, font=self.font,
+                                         emoji_scale_factor=self.emoji_scale_factor,
+                                         emoji_position_offset=self.emoji_position_offset)
                     
                     # 绘制文字
-                    pilmoji.text((x, y), line, fill=color, font=self.font)
+                    pilmoji.text((x, y), line, fill=color, font=self.font, 
+                                 emoji_scale_factor=self.emoji_scale_factor,
+                                 emoji_position_offset=self.emoji_position_offset)
                     
                     current_y += line_height + self.layout.line_spacing
                     

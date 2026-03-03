@@ -245,8 +245,7 @@ def update_records_count(placeholder):
 
 
 def update_record_grid(grid, external_placeholder):
-    # TODO: 允许手动选择首选定数（按照版本），以及自定义覆盖定数
-
+    
     def recover_edited_records(edited_df, game_type="maimai"):
         # 由于 st.data_editor 会将dict对象序列化，从组件df数据更新时需要反序列化chart_data
         to_update_records = deepcopy(edited_df)
@@ -272,9 +271,6 @@ def update_record_grid(grid, external_placeholder):
             if game_type == "maimai":
                 # 计算dx_rating
                 r['dx_rating'] = compute_rating(ds=ds, score=r.get('achievement', 0.0))
-                # 如果是理论值成绩，填充dx_score
-                if r.get('achievement', 0) >= 101.0:
-                    r['dx_score'] = chart_data.get('max_dx_score', 0)
             if game_type == "chunithm":
                 # 计算chuni_rating
                 r['chuni_rating'] = compute_chunithm_rating(ds=ds, score=r.get('achievement', 0))
@@ -297,7 +293,6 @@ def update_record_grid(grid, external_placeholder):
                 st.session_state._editor_showing_records = get_showing_records(records_to_show, game_type=game_type)
                 st.session_state._force_refresh_editor = False
             
-            st.write("在此表格中编辑记录")
             st.warning("注意：添加、删除和修改记录内容后，请务必点击'提交存档修改'按钮！未保存修改的情况下刷新页面将导致修改内容丢失！")
             
             # 创建数据编辑器，使用稳定的 key 保持状态
@@ -417,7 +412,7 @@ def update_record_grid(grid, external_placeholder):
                     )
 
             # 确认提交按钮
-            if st.button("提交存档修改"):
+            if st.button("提交存档修改", type="primary"):
                 # 从 st.data_editor 获取最终编辑结果并转换回内部格式
                 if edited_records is not None and len(edited_records) > 0:
                     try:
@@ -771,7 +766,7 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
     tab1, tab2, tab3 = st.tabs(["添加或修改记录", "更改分表排序", "修改存档其他信息"])
 
     with tab1:
-        cur_search_level_index = 3  # 默认搜索MASTER难度
+        st.session_state.cur_search_level_index = 3  # 默认搜索MASTER难度
 
         st.markdown("#### 添加新记录")
         with st.expander("添加记录设置", expanded=True):
@@ -786,18 +781,20 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
 
             level_label_options = level_label_lists.get(cur_game_type,
                                                         ["BASIC", "ADVANCED", "EXPERT", "MASTER", "RE:MASTER"])
-            level_label = st.radio("选择难度（选择和切换后需要点击确定）", level_label_options, index=cur_search_level_index, horizontal=True)
+            level_label = st.radio("选择难度（选择和切换后需要点击确定）", level_label_options, index=st.session_state.cur_search_level_index, horizontal=True)
             level_index = level_label_to_index(cur_game_type, level_label)
             level_label_tips = st.empty()
 
         with lv_col2:
-            if st.button("确定"):
-                cur_search_level_index = level_index
+            extra_tips = ""
+            if st.button("确定", type="primary", width="stretch"):
+                st.session_state.cur_search_level_index = level_index
                 if level_index >= 4:
                     extra_tips = f"（注：如果乐曲不存在{level_label}难度，将不会显示在搜索栏中，请切换到其他难度）"
-                else:
-                    extra_tips = ""
-                level_label_tips.write(f"当前搜索的谱面难度: **{level_label}** {extra_tips}")
+            level_label_tips.markdown(f"> 当前搜索的谱面难度: **{
+                level_label_lists.get(
+                    cur_game_type, ['BASIC', 'ADVANCED', 'EXPERT', 'MASTER', 'RE:MASTER'])[st.session_state.cur_search_level_index]
+                }** {extra_tips}")
 
         col1, col2 = st.columns([3, 1])
         with col1:
@@ -812,7 +809,7 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
         with col2:
             st.write("") # Spacer
             st.write("") # Spacer
-            if st.button("➕ 添加选中歌曲", disabled=not search_result):
+            if st.button("➕ 添加选中歌曲", disabled=not search_result, width="stretch"):
                 print(f"Search result: {search_result}")
                 new_index = len(st.session_state.records) + 1
                 new_record = create_empty_record(search_result, game_type=cur_game_type, index=new_index)
@@ -826,16 +823,29 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
         record_count_placeholder = st.empty()
         update_records_count(record_count_placeholder)  # 更新记录数量的显示
 
-        rating_compute_options = ["最新", "国服", "自定义"]
-        with st.expander("单曲Rating计算方式（仅供参考，实际以游戏内为准）", expanded=False):
-            rating_compute_method = st.radio(
-                "选择单曲Rating计算方式",
+        st.markdown("#### 编辑当前分表")
+
+        rating_compute_options = ["最新", "国服"]
+        metadata_edit_options = ["自动填充", "手动覆写"]
+        if 'rating_compute_method' not in st.session_state:
+            st.session_state.rating_compute_method = rating_compute_options[0]
+        if 'metadata_edit_method' not in st.session_state:
+            st.session_state.metadata_edit_method = metadata_edit_options[0]
+        with st.expander("分表编辑方式选项", expanded=True):
+            st.session_state.metadata_edit_method = st.radio(
+                "选择元数据和成绩数据的填充方式",
+                help="自动填充（默认）：您仅可以修改个人成绩和游玩次数信息，乐曲元数据和rating等均自动计算，适合大多数用户；手动覆写：允许直接编辑所有字段（包括上传曲绘），适合需要完全自定义的情况，不会自动计算也无法保证数据正确性",
+                options=metadata_edit_options,
+                index=0,
+                horizontal=True
+            )
+            st.session_state.rating_compute_method = st.radio(
+                "自动填充时，选择单曲Rating计算方式（仅供参考，实际以游戏内为准）",
                 options=rating_compute_options,
                 index=0,
                 horizontal=True
             )
-
-        st.markdown("#### 修改当前分表")
+        # TODO：允许手动覆写除表格id和raw data以外的所有字段，包括增改chart表格
         record_grid = st.container()
         update_record_grid(record_grid, record_count_placeholder)  # 更新记录表格的显示
 

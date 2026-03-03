@@ -120,10 +120,10 @@ except Exception as e:
     st.stop()
 
 if not main_configs:
-    st.error("未找到主视频配置，请检查4-1步骤是否正常保存！")
+    st.error("❌ 未找到主视频配置，请检查4-1步骤是否正常保存！")
 
 if not intro_configs or not ending_configs:
-    st.error("未找到片头或片尾配置，请检查4-2步骤是否正常保存！")
+    st.error("❌ 未找到片头或片尾配置，请检查4-2步骤是否正常保存！")
 
 def save_video_render_config():
     # 保存配置
@@ -135,7 +135,7 @@ def save_video_render_config():
     write_global_config(G_config)
     st.toast("配置已保存！")
 
-if st.button("开始生成视频"):
+if st.button("开始生成视频", use_container_width=True, type="primary"):
     save_video_render_config()
     video_res = (v_res_width, v_res_height)
 
@@ -190,13 +190,13 @@ if st.button("开始生成视频"):
 abs_path = os.path.abspath(video_output_path)
 if st.button("打开视频输出文件夹"):
     open_file_explorer(abs_path)
-st.markdown(f"> [TIPS] - 如果打开文件夹失败，请在此路径中寻找生成的视频：{abs_path}")
+st.markdown(f">💡 如果打开文件夹失败，请在此路径中寻找生成的视频：{abs_path}")
 
 # 添加分割线
 st.divider()
 
 with st.expander("展开其他视频生成方案"):
-    st.warning("请注意，此区域的功能未经充分测试，不保证生成视频的效果或稳定性，请谨慎使用。")
+    st.warning("⚠️ 请注意，此区域的功能未经充分测试，不保证生成视频的效果或稳定性，请谨慎使用。")
     with st.container(border=True):
         st.write("【快速模式】先生成所有视频片段，再直接拼接为完整视频")
         st.info("本方案会降低视频生成过程中的内存占用，并减少生成时间，但视频片段之间将只有黑屏过渡。")
