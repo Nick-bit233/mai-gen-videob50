@@ -14,6 +14,7 @@ videos/
 
 # Test data and scripts
 tests/
+test_output/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

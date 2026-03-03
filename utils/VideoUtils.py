@@ -7,6 +7,7 @@ from moviepy import VideoFileClip, ImageClip, TextClip, AudioFileClip, Composite
 from moviepy import vfx, afx
 from utils.VisionUtils import find_circle_center, draw_center_marker
 from utils.PageUtils import remove_invalid_chars
+from utils.TextRenderer import TextRenderer, TextStyle, LayoutConfig
 from typing import Union, Tuple
 
 
@@ -405,14 +406,22 @@ def edit_game_video_clip(game_type, clip_config, resolution, auto_center_align=F
     return video_clip, video_pos
 
 
-def edit_game_text_clip(game_type, clip_config, resolution, style_config) -> Union[TextClip, tuple]:
+def edit_game_text_clip(game_type, clip_config, resolution, style_config) -> Union[ImageClip, tuple]:
     """
-    抽象出的文字处理函数，返回 (TextClip, position)
+    抽象出的文字处理函数，返回 (ImageClip, position)
+    
+    使用 TextRenderer 将文字渲染为透明 PNG 图片，然后转换为 MoviePy ImageClip。
+    这比直接使用 MoviePy TextClip 提供更好的排版控制和多语言支持。
     """
     # 读取样式配置
     font_path = style_config['asset_paths']['comment_font']
     text_size = style_config['content_text_style']['font_size']
-    inline_max_len = style_config['content_text_style']['inline_max_chara'] * 2
+    # 计算文本区域的最大宽度（基于字符数限制）
+    inline_max_chara = style_config['content_text_style']['inline_max_chara']
+    # 估算：每个中文字符约等于 text_size 像素宽度，乘以字符数得到大概宽度
+    # 然后加上边距，确保不会太窄
+    text_area_width = max(200, inline_max_chara * text_size)
+    
     interline_size = style_config['content_text_style']['interline']
     horizontal_align = style_config['content_text_style']['horizontal_align']
     text_color = style_config['content_text_style']['font_color']
@@ -420,20 +429,35 @@ def edit_game_text_clip(game_type, clip_config, resolution, style_config) -> Uni
     stroke_color = style_config['content_text_style'].get('stroke_color', None) if enable_stroke else None
     stroke_width = style_config['content_text_style'].get('stroke_width', 0) if enable_stroke else 0
 
-    # 创建文字
-    text_list = get_splited_text(clip_config.get('text', ''), text_max_bytes=inline_max_len)
-    txt_clip = TextClip(font=font_path, text="\n".join(text_list),
-                        method="label",
-                        font_size=text_size,
-                        margin=(20, 20),
-                        interline=interline_size,
-                        text_align=horizontal_align,
-                        vertical_align="top",
-                        color=text_color,
-                        stroke_color=None if not enable_stroke else stroke_color,
-                        stroke_width=0 if not enable_stroke else stroke_width,
-                        duration=clip_config.get('duration', 5))
+    # 使用 TextRenderer 渲染文字为图片
+    style = TextStyle(
+        font_path=font_path,
+        font_size=text_size,
+        color=text_color,
+        stroke_color=stroke_color,
+        stroke_width=stroke_width
+    )
     
+    layout = LayoutConfig(
+        width=text_area_width,
+        auto_height=True,
+        padding=(10, 10, 10, 10),
+        line_spacing=interline_size,
+        horizontal_align=horizontal_align,
+        vertical_align="top"
+    )
+    
+    renderer = TextRenderer(style, layout)
+    
+    # 渲染文字为图片
+    text = clip_config.get('text', '')
+    text_image = renderer.render(text)
+    
+    # 转换为 numpy 数组，然后创建 MoviePy ImageClip
+    text_array = np.array(text_image)
+    txt_clip = ImageClip(text_array).with_duration(clip_config.get('duration', 5))
+    
+    # 计算文字位置
     rel_t_pos_map = {
         "maimai": (0.54, 0.54),
         "chunithm": (0.76, 0.227)
