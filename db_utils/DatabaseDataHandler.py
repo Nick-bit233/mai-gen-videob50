@@ -176,7 +176,8 @@ class DatabaseDataHandler:
             return self.load_archive_metadata(username, archive_name)
         return None
 
-    def update_archive_records(self, username: str, new_records_data: List[Dict], archive_name: str) -> int:
+    def update_archive_records(self, username: str, new_records_data: List[Dict], archive_name: str, 
+                                force_new_chart: bool = False) -> int:
         """
         Smartly updates records in an archive based on new data.
         Input new_records_data format:
@@ -193,6 +194,13 @@ class DatabaseDataHandler:
         - Adds new records.
         - Deletes old records not present in the new data.
         - Preserves configurations for existing charts.
+        
+        Args:
+            username: User name
+            new_records_data: List of record data dicts
+            archive_name: Archive name
+            force_new_chart: If True, always create new chart entries (for manual override mode).
+                           This ensures chart isolation between archives.
         """
         archive_id = self.load_save_archive(username, archive_name)
         if not archive_id:
@@ -211,7 +219,12 @@ class DatabaseDataHandler:
                 chart_data = record_data.get('chart_data')
                 if not chart_data:
                     raise ValueError("Each record must include 'chart_data' field.")
-                chart_id = self.db.get_or_create_chart(chart_data)
+                
+                # Use create_new_chart for manual override mode to ensure isolation
+                if force_new_chart:
+                    chart_id = self.db.create_new_chart(chart_data)
+                else:
+                    chart_id = self.db.get_or_create_chart(chart_data)
                 processed_chart_ids.add(chart_id)
 
                 download_tasks.append({
