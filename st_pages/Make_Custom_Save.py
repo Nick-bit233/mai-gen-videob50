@@ -517,10 +517,12 @@ def render_manual_override_ui(container, external_placeholder):
                     
                     # 保存记录 - 使用 _mo_editing_idx 确定操作目标
                     editing_idx = st.session_state._mo_editing_idx
+                    save_success = False
                     if editing_idx == 0:
                         # 添加新记录
                         complete_data['order_in_archive'] = len(records)
                         st.session_state.records.append(complete_data)
+                        save_success = True
                         st.success(f"✅ 已添加新记录: **{song_name}**")
                     else:
                         # 更新已有记录
@@ -528,6 +530,7 @@ def render_manual_override_ui(container, external_placeholder):
                         if 0 <= idx < len(records):
                             complete_data['order_in_archive'] = records[idx].get('order_in_archive', idx)
                             st.session_state.records[idx] = complete_data
+                            save_success = True
                             st.success(f"✅ 已更新记录: **{song_name}**")
                         else:
                             st.error("❌ 记录索引无效，保存失败")
@@ -536,6 +539,24 @@ def render_manual_override_ui(container, external_placeholder):
                     if uploaded_jacket:
                         # TODO: Phase 2 实现曲绘保存
                         st.info("曲绘上传功能将在 Phase 2 实现")
+                    
+                    # 自动保存到数据库
+                    if save_success:
+                        try:
+                            # 重新排序 order_in_archive
+                            for i, r in enumerate(st.session_state.records):
+                                r['order_in_archive'] = i
+                            
+                            # 手动覆写模式强制创建新 chart
+                            db_handler.update_archive_records(
+                                st.session_state.username,
+                                st.session_state.records,
+                                st.session_state.archive_name,
+                                force_new_chart=True
+                            )
+                            st.toast("💾 更改已同步到数据库！")
+                        except Exception as e:
+                            st.error(f"❌ 数据库保存失败: {e}")
                     
                     # 标记需要刷新
                     st.session_state._force_refresh_editor = True
@@ -551,6 +572,23 @@ def render_manual_override_ui(container, external_placeholder):
                     st.success(f"✅ 已删除记录: **{deleted_name}**")
                     # 重置为新建模式
                     st.session_state._mo_editing_idx = 0
+                    
+                    # 自动保存到数据库
+                    try:
+                        # 重新排序 order_in_archive
+                        for i, r in enumerate(st.session_state.records):
+                            r['order_in_archive'] = i
+                        
+                        db_handler.update_archive_records(
+                            st.session_state.username,
+                            st.session_state.records,
+                            st.session_state.archive_name,
+                            force_new_chart=True
+                        )
+                        st.toast("💾 更改已同步到数据库！")
+                    except Exception as e:
+                        st.error(f"❌ 数据库保存失败: {e}")
+                    
                     st.session_state._force_refresh_editor = True
                     st.rerun()
         
