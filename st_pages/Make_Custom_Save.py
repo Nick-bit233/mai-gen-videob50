@@ -190,10 +190,15 @@ def update_records_to_db():
             # 按照点击保存按钮时的记录顺序更新order_in_archive
             for i, record in enumerate(to_save_records):
                 record['order_in_archive'] = i
+            
+            # 根据编辑模式决定是否强制创建新 chart
+            force_new_chart = st.session_state.get('metadata_edit_method') == "手动覆写"
+            
             db_handler.update_archive_records(
                 st.session_state.username,
                 to_save_records,
-                st.session_state.archive_name
+                st.session_state.archive_name,
+                force_new_chart=force_new_chart
             )
             st.toast("更改已保存到数据库！")
         except Exception as e:
