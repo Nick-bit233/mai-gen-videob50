@@ -191,14 +191,10 @@ def update_records_to_db():
             for i, record in enumerate(to_save_records):
                 record['order_in_archive'] = i
             
-            # 根据编辑模式决定是否强制创建新 chart
-            force_new_chart = st.session_state.get('metadata_edit_method') == "手动覆写"
-            
             db_handler.update_archive_records(
                 st.session_state.username,
                 to_save_records,
-                st.session_state.archive_name,
-                force_new_chart=force_new_chart
+                st.session_state.archive_name
             )
             st.toast("更改已保存到数据库！")
         except Exception as e:
@@ -385,8 +381,8 @@ def render_manual_override_ui(container, external_placeholder):
             col1, col2 = st.columns(2)
             with col1:
                 song_name = st.text_input("曲名 *", value=default_values['song_name'], key=f"mo_song_name{form_key_suffix}")
-                song_id = st.text_input("歌曲ID *", value=default_values['song_id'], key=f"mo_song_id{form_key_suffix}", 
-                                       help="建议格式: song_xxx，用于唯一标识歌曲")
+                # 隐藏 song_id，用户不需要编辑，由系统自动生成
+                song_id = default_values['song_id']
             with col2:
                 artist = st.text_input("曲师 *", value=default_values['artist'], key=f"mo_artist{form_key_suffix}")
                 difficulty = st.text_input("定数 *", value=default_values['difficulty'], key=f"mo_difficulty{form_key_suffix}",
@@ -479,10 +475,33 @@ def render_manual_override_ui(container, external_placeholder):
             
             # 处理表单提交
             if submitted:
+                # 生成/复用 song_id（手动覆写专用）
+                # 后缀格式: _manual_<archive_id>_<record_idx>
+                # 防叠加: 检查原 song_id 是否已有 _manual_ 后缀
+                archive_id = db_handler.load_save_archive(st.session_state.username, st.session_state.archive_name)
+                
+                # 确定当前记录的索引
+                if editing_idx == 0:
+                    # 新建记录：使用当前记录数量作为索引
+                    record_idx = len(records)
+                else:
+                    # 编辑已有记录：使用 order_in_archive
+                    record_idx = editing_idx - 1
+                
+                # 检查原 song_id 是否已有 _manual_ 后缀
+                manual_suffix_pattern = r'_manual_\d+_\d+$'
+                if re.search(manual_suffix_pattern, song_id):
+                    # 已有后缀，复用
+                    final_song_id = song_id
+                else:
+                    # 生成新后缀
+                    base_song_id = song_name or "unknown"
+                    final_song_id = f"{base_song_id}_manual_{archive_id}_{record_idx}"
+                
                 form_data = {
                     'song_name': song_name,
                     'artist': artist,
-                    'song_id': song_id,
+                    'song_id': final_song_id,
                     'chart_type': chart_type,
                     'level_index': level_index,
                     'difficulty': difficulty,
@@ -547,12 +566,10 @@ def render_manual_override_ui(container, external_placeholder):
                             for i, r in enumerate(st.session_state.records):
                                 r['order_in_archive'] = i
                             
-                            # 手动覆写模式强制创建新 chart
                             db_handler.update_archive_records(
                                 st.session_state.username,
                                 st.session_state.records,
-                                st.session_state.archive_name,
-                                force_new_chart=True
+                                st.session_state.archive_name
                             )
                             st.toast("💾 更改已同步到数据库！")
                         except Exception as e:
@@ -582,8 +599,7 @@ def render_manual_override_ui(container, external_placeholder):
                         db_handler.update_archive_records(
                             st.session_state.username,
                             st.session_state.records,
-                            st.session_state.archive_name,
-                            force_new_chart=True
+                            st.session_state.archive_name
                         )
                         st.toast("💾 更改已同步到数据库！")
                     except Exception as e:
