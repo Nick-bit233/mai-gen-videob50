@@ -199,8 +199,10 @@ class DatabaseDataHandler:
             username: User name
             new_records_data: List of record data dicts
             archive_name: Archive name
-            force_new_chart: (Deprecated) Previously used for chart isolation, now always uses get_or_create_chart.
+            force_new_chart: (Ignored) Previously used for chart isolation, now always uses get_or_create_chart.
                            Chart uniqueness is defined by (game_type, song_id, chart_type, level_index).
+                           When user modifies chart_type/level_index, get_or_create_chart will find/create
+                           the corresponding chart, and the record will be re-associated.
         """
         archive_id = self.load_save_archive(username, archive_name)
         if not archive_id:
@@ -221,12 +223,10 @@ class DatabaseDataHandler:
                     raise ValueError("Each record must include 'chart_data' field.")
                 
                 # Always use get_or_create_chart - chart uniqueness is by (game_type, song_id, chart_type, level_index)
-                # Manual override mode updates record data, not chart data
+                # This handles both cases:
+                # - User modified chart_type/level_index: finds/creates the new chart
+                # - User only modified record data: reuses the existing chart
                 chart_id = self.db.get_or_create_chart(chart_data)
-                
-                # If force_new_chart, also update the chart metadata (in case user modified it)
-                if force_new_chart:
-                    self.db.update_chart(chart_id, chart_data)
                 
                 processed_chart_ids.add(chart_id)
 
