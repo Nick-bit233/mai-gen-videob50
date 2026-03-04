@@ -263,6 +263,12 @@ def render_manual_override_ui(container, external_placeholder):
     game_type = st.session_state.archive_meta.get("game_type", "maimai")
     records = st.session_state.records
     
+    # 初始化 session_state 用于存储当前编辑状态
+    if '_mo_editing_idx' not in st.session_state:
+        st.session_state._mo_editing_idx = 0  # 0 = 新建，>0 = 编辑第N条记录
+    if '_mo_form_values' not in st.session_state:
+        st.session_state._mo_form_values = None
+    
     with container:
         # 警告提示
         st.warning("⚠️ 手动覆写模式下，您需要自行保证数据正确性。rating 不会自动计算，除非您勾选自动计算选项。")
@@ -274,17 +280,38 @@ def render_manual_override_ui(container, external_placeholder):
             clip_title = r.get('clip_title_name', f'Record {i+1}')
             record_options.append(f"#{i+1} {song_name} ({clip_title})")
         
-        selected_idx = st.selectbox(
-            "选择要编辑的记录",
-            range(len(record_options)),
-            format_func=lambda x: record_options[x],
-            key="manual_override_record_selector"
-        )
+        col_select, col_load = st.columns([4, 1])
+        with col_select:
+            selected_idx = st.selectbox(
+                "选择要编辑的记录",
+                range(len(record_options)),
+                format_func=lambda x: record_options[x],
+                key="manual_override_record_selector"
+            )
+        with col_load:
+            st.write("")  # 对齐
+            st.write("")
+            if st.button("📥 加载", type="secondary", use_container_width=True):
+                st.session_state._mo_editing_idx = selected_idx
+                st.session_state._mo_form_values = None  # 清除缓存，强制重新加载
+                st.rerun()
+        
+        # 显示当前编辑状态
+        if st.session_state._mo_editing_idx == 0:
+            st.info("📝 当前模式：**新建空白记录**")
+        else:
+            idx = st.session_state._mo_editing_idx - 1
+            if 0 <= idx < len(records):
+                song_name = records[idx].get('chart_data', {}).get('song_name', 'Unknown')
+                st.info(f"✏️ 当前编辑：**#{st.session_state._mo_editing_idx} {song_name}**")
+            else:
+                st.warning("⚠️ 当前编辑的记录不存在，请重新选择")
+                st.session_state._mo_editing_idx = 0
         
         st.divider()
         
-        # 初始化表单默认值
-        if selected_idx == 0:
+        # 根据 _mo_editing_idx 初始化表单默认值
+        if st.session_state._mo_editing_idx == 0:
             # 新建空白记录
             default_values = {
                 'song_name': '',
@@ -306,26 +333,48 @@ def render_manual_override_ui(container, external_placeholder):
             is_new_record = True
         else:
             # 编辑已有记录
-            record = records[selected_idx - 1]
-            chart_data = record.get('chart_data', {})
-            default_values = {
-                'song_name': chart_data.get('song_name', ''),
-                'artist': chart_data.get('artist', ''),
-                'song_id': chart_data.get('song_id', ''),
-                'chart_type': chart_data.get('chart_type', 0),
-                'level_index': chart_data.get('level_index', 3),
-                'difficulty': str(chart_data.get('difficulty', '0')),
-                'max_dx_score': str(chart_data.get('max_dx_score', '0')),
-                'clip_title_name': record.get('clip_title_name', ''),
-                'achievement': str(record.get('achievement', '0')),
-                'fc_status': record.get('fc_status', 'none'),
-                'fs_status': record.get('fs_status', 'none'),
-                'dx_score': str(record.get('dx_score', '0')),
-                'dx_rating': str(record.get('dx_rating', '0')),
-                'chuni_rating': str(record.get('chuni_rating', '0')),
-                'play_count': str(record.get('play_count', '0')),
-            }
-            is_new_record = False
+            idx = st.session_state._mo_editing_idx - 1
+            if 0 <= idx < len(records):
+                record = records[idx]
+                chart_data = record.get('chart_data', {})
+                default_values = {
+                    'song_name': chart_data.get('song_name', ''),
+                    'artist': chart_data.get('artist', ''),
+                    'song_id': chart_data.get('song_id', ''),
+                    'chart_type': chart_data.get('chart_type', 0),
+                    'level_index': chart_data.get('level_index', 3),
+                    'difficulty': str(chart_data.get('difficulty', '0')),
+                    'max_dx_score': str(chart_data.get('max_dx_score', '0')),
+                    'clip_title_name': record.get('clip_title_name', ''),
+                    'achievement': str(record.get('achievement', '0')),
+                    'fc_status': record.get('fc_status', 'none'),
+                    'fs_status': record.get('fs_status', 'none'),
+                    'dx_score': str(record.get('dx_score', '0')),
+                    'dx_rating': str(record.get('dx_rating', '0')),
+                    'chuni_rating': str(record.get('chuni_rating', '0')),
+                    'play_count': str(record.get('play_count', '0')),
+                }
+                is_new_record = False
+            else:
+                # 记录不存在，回退到新建模式
+                default_values = {
+                    'song_name': '',
+                    'artist': '',
+                    'song_id': '',
+                    'chart_type': 0,
+                    'level_index': 3,
+                    'difficulty': '0',
+                    'max_dx_score': '0',
+                    'clip_title_name': f'Clip_{len(records)+1}',
+                    'achievement': '0',
+                    'fc_status': 'none',
+                    'fs_status': 'none',
+                    'dx_score': '0',
+                    'dx_rating': '0',
+                    'chuni_rating': '0',
+                    'play_count': '0',
+                }
+                is_new_record = True
         
         # 表单
         with st.form("manual_override_form", clear_on_submit=False):
@@ -404,14 +453,16 @@ def render_manual_override_ui(container, external_placeholder):
             st.divider()
             st.markdown("### 曲绘设置")
             
-            use_custom_jacket = st.radio("曲绘来源", ["使用默认云端曲绘", "上传自定义曲绘"], 
-                                        key="mo_jacket_source", horizontal=True)
+            st.caption("💡 **提示**：如果不上传自定义曲绘，系统将根据曲名和曲师从云端数据库获取默认曲绘。请确保您填写的曲名和曲师在数据库中能索引到。")
             
-            uploaded_jacket = None
-            if use_custom_jacket == "上传自定义曲绘":
-                uploaded_jacket = st.file_uploader("选择图片", type=["png", "jpg", "jpeg", "webp"], key="mo_jacket_upload")
-                if uploaded_jacket:
-                    st.image(uploaded_jacket, width=150, caption="预览")
+            uploaded_jacket = st.file_uploader(
+                "上传自定义曲绘（可选）", 
+                type=["png", "jpg", "jpeg", "webp"], 
+                key="mo_jacket_upload",
+                help="支持 PNG、JPG、JPEG、WEBP 格式。留空则使用云端默认曲绘。"
+            )
+            if uploaded_jacket:
+                st.image(uploaded_jacket, width=150, caption="自定义曲绘预览")
             
             # 提交按钮
             col_submit, col_delete = st.columns([3, 1])
@@ -461,17 +512,22 @@ def render_manual_override_ui(container, external_placeholder):
                         except (ValueError, TypeError):
                             pass
                     
-                    # 保存记录
-                    if is_new_record:
+                    # 保存记录 - 使用 _mo_editing_idx 确定操作目标
+                    editing_idx = st.session_state._mo_editing_idx
+                    if editing_idx == 0:
                         # 添加新记录
                         complete_data['order_in_archive'] = len(records)
                         st.session_state.records.append(complete_data)
-                        st.success(f"已添加新记录: {song_name}")
+                        st.success(f"✅ 已添加新记录: **{song_name}**")
                     else:
                         # 更新已有记录
-                        complete_data['order_in_archive'] = records[selected_idx - 1].get('order_in_archive', selected_idx - 1)
-                        st.session_state.records[selected_idx - 1] = complete_data
-                        st.success(f"已更新记录: {song_name}")
+                        idx = editing_idx - 1
+                        if 0 <= idx < len(records):
+                            complete_data['order_in_archive'] = records[idx].get('order_in_archive', idx)
+                            st.session_state.records[idx] = complete_data
+                            st.success(f"✅ 已更新记录: **{song_name}**")
+                        else:
+                            st.error("❌ 记录索引无效，保存失败")
                     
                     # 处理曲绘上传（如果有）
                     if uploaded_jacket:
@@ -483,12 +539,17 @@ def render_manual_override_ui(container, external_placeholder):
                     st.rerun()
             
             if delete_clicked and not is_new_record:
-                # 删除记录
-                deleted_name = records[selected_idx - 1].get('chart_data', {}).get('song_name', 'Unknown')
-                st.session_state.records.pop(selected_idx - 1)
-                st.success(f"已删除记录: {deleted_name}")
-                st.session_state._force_refresh_editor = True
-                st.rerun()
+                # 删除记录 - 使用 _mo_editing_idx
+                editing_idx = st.session_state._mo_editing_idx
+                idx = editing_idx - 1
+                if 0 <= idx < len(records):
+                    deleted_name = records[idx].get('chart_data', {}).get('song_name', 'Unknown')
+                    st.session_state.records.pop(idx)
+                    st.success(f"✅ 已删除记录: **{deleted_name}**")
+                    # 重置为新建模式
+                    st.session_state._mo_editing_idx = 0
+                    st.session_state._force_refresh_editor = True
+                    st.rerun()
         
         st.divider()
         
