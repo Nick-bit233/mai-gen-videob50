@@ -376,17 +376,20 @@ def render_manual_override_ui(container, external_placeholder):
                 }
                 is_new_record = True
         
-        # 表单
+        # 表单 - 使用动态 key 确保切换记录时控件会重新创建
+        editing_idx = st.session_state._mo_editing_idx
+        form_key_suffix = f"_{editing_idx}"  # 动态 key 后缀
+        
         with st.form("manual_override_form", clear_on_submit=False):
             st.markdown("### 基础信息（必填）")
             col1, col2 = st.columns(2)
             with col1:
-                song_name = st.text_input("曲名 *", value=default_values['song_name'], key="mo_song_name")
-                song_id = st.text_input("歌曲ID *", value=default_values['song_id'], key="mo_song_id", 
+                song_name = st.text_input("曲名 *", value=default_values['song_name'], key=f"mo_song_name{form_key_suffix}")
+                song_id = st.text_input("歌曲ID *", value=default_values['song_id'], key=f"mo_song_id{form_key_suffix}", 
                                        help="建议格式: song_xxx，用于唯一标识歌曲")
             with col2:
-                artist = st.text_input("曲师 *", value=default_values['artist'], key="mo_artist")
-                difficulty = st.text_input("定数 *", value=default_values['difficulty'], key="mo_difficulty",
+                artist = st.text_input("曲师 *", value=default_values['artist'], key=f"mo_artist{form_key_suffix}")
+                difficulty = st.text_input("定数 *", value=default_values['difficulty'], key=f"mo_difficulty{form_key_suffix}",
                                           help="如 14.9, 15.0 等")
             
             col3, col4 = st.columns(2)
@@ -394,19 +397,19 @@ def render_manual_override_ui(container, external_placeholder):
                 chart_type_options = get_chart_type_options(game_type)
                 chart_type_labels = list(chart_type_options.keys())
                 chart_type_default_idx = list(chart_type_options.values()).index(default_values['chart_type']) if default_values['chart_type'] in chart_type_options.values() else 0
-                chart_type = st.selectbox("谱面类型", chart_type_labels, index=chart_type_default_idx, key="mo_chart_type")
+                chart_type = st.selectbox("谱面类型", chart_type_labels, index=chart_type_default_idx, key=f"mo_chart_type{form_key_suffix}")
                 chart_type = chart_type_options[chart_type]  # 转换为数值
             
             with col4:
                 level_index_options = get_level_index_options(game_type)
                 level_index_labels = list(level_index_options.keys())
                 level_index_default_idx = list(level_index_options.values()).index(default_values['level_index']) if default_values['level_index'] in level_index_options.values() else 3
-                level_index = st.selectbox("难度", level_index_labels, index=level_index_default_idx, key="mo_level_index")
+                level_index = st.selectbox("难度", level_index_labels, index=level_index_default_idx, key=f"mo_level_index{form_key_suffix}")
                 level_index = level_index_options[level_index]  # 转换为数值
             
             # maimai 特有字段
             if game_type == 'maimai':
-                max_dx_score = st.text_input("最大DX分", value=default_values['max_dx_score'], key="mo_max_dx_score")
+                max_dx_score = st.text_input("最大DX分", value=default_values['max_dx_score'], key=f"mo_max_dx_score{form_key_suffix}")
             else:
                 max_dx_score = '0'
             
@@ -415,37 +418,37 @@ def render_manual_override_ui(container, external_placeholder):
             
             col5, col6, col7 = st.columns(3)
             with col5:
-                clip_title_name = st.text_input("抬头标题", value=default_values['clip_title_name'], key="mo_clip_title")
-                achievement = st.text_input("达成率/分数", value=default_values['achievement'], key="mo_achievement",
+                clip_title_name = st.text_input("抬头标题", value=default_values['clip_title_name'], key=f"mo_clip_title{form_key_suffix}")
+                achievement = st.text_input("达成率/分数", value=default_values['achievement'], key=f"mo_achievement{form_key_suffix}",
                                           help="maimai: 0-101, chunithm: 0-1010000")
             
             with col6:
                 fc_status_options = get_fc_status_options(game_type)
                 fc_status = st.selectbox("FC标", fc_status_options, 
                                         index=fc_status_options.index(default_values['fc_status']) if default_values['fc_status'] in fc_status_options else 0,
-                                        key="mo_fc_status")
-                play_count = st.text_input("游玩次数", value=default_values['play_count'], key="mo_play_count")
+                                        key=f"mo_fc_status{form_key_suffix}")
+                play_count = st.text_input("游玩次数", value=default_values['play_count'], key=f"mo_play_count{form_key_suffix}")
             
             with col7:
                 fs_status_options = get_fs_status_options(game_type)
                 fs_status = st.selectbox("FS/Sync标", fs_status_options,
                                         index=fs_status_options.index(default_values['fs_status']) if default_values['fs_status'] in fs_status_options else 0,
-                                        key="mo_fs_status")
+                                        key=f"mo_fs_status{form_key_suffix}")
                 
                 if game_type == 'maimai':
-                    dx_score = st.text_input("DX分数", value=default_values['dx_score'], key="mo_dx_score")
+                    dx_score = st.text_input("DX分数", value=default_values['dx_score'], key=f"mo_dx_score{form_key_suffix}")
                 else:
                     dx_score = '0'
             
             # Rating 选项
-            auto_calc_rating = st.checkbox("自动计算Rating", value=True, key="mo_auto_calc_rating",
+            auto_calc_rating = st.checkbox("自动计算Rating", value=True, key=f"mo_auto_calc_rating{form_key_suffix}",
                                           help="勾选时根据达成率和定数自动计算；不勾选时可以手动输入")
             
             if not auto_calc_rating:
                 if game_type == 'maimai':
-                    dx_rating = st.text_input("单曲Rating (maimai)", value=default_values['dx_rating'], key="mo_dx_rating")
+                    dx_rating = st.text_input("单曲Rating (maimai)", value=default_values['dx_rating'], key=f"mo_dx_rating{form_key_suffix}")
                 else:
-                    chuni_rating = st.text_input("单曲Rating (chunithm)", value=default_values['chuni_rating'], key="mo_chuni_rating")
+                    chuni_rating = st.text_input("单曲Rating (chunithm)", value=default_values['chuni_rating'], key=f"mo_chuni_rating{form_key_suffix}")
             else:
                 dx_rating = '0'
                 chuni_rating = '0'
@@ -458,7 +461,7 @@ def render_manual_override_ui(container, external_placeholder):
             uploaded_jacket = st.file_uploader(
                 "上传自定义曲绘（可选）", 
                 type=["png", "jpg", "jpeg", "webp"], 
-                key="mo_jacket_upload",
+                key=f"mo_jacket_upload{form_key_suffix}",
                 help="支持 PNG、JPG、JPEG、WEBP 格式。留空则使用云端默认曲绘。"
             )
             if uploaded_jacket:
