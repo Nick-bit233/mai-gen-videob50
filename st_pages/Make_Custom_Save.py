@@ -10,6 +10,12 @@ from utils.PageUtils import get_db_manager, process_username, get_game_type_text
 from db_utils.DatabaseDataHandler import get_database_handler
 from utils.DataUtils import load_metadata, search_songs, level_label_to_index, chart_type_value2str
 from utils.dxnet_extension import compute_chunithm_rating, compute_rating
+from utils.ChartUtils import (
+    get_chart_type_options, get_level_index_options,
+    get_fc_status_options, get_fs_status_options,
+    validate_and_convert_chart_data, validate_and_convert_record_data,
+    validate_complete_record_form
+)
 
 # 检查streamlit扩展组件安装情况
 try:
@@ -244,8 +250,270 @@ def update_records_count(placeholder):
     placeholder.write(f"当前记录数量: {len(st.session_state.records)}")
 
 
+def render_manual_override_ui(container, external_placeholder):
+    """
+    手动覆写模式 UI
+    允许用户编辑所有 chart 和 record 字段，支持曲绘上传
+    """
+    game_type = st.session_state.archive_meta.get("game_type", "maimai")
+    records = st.session_state.records
+    
+    with container:
+        # 警告提示
+        st.warning("⚠️ 手动覆写模式下，您需要自行保证数据正确性。rating 不会自动计算，除非您勾选自动计算选项。")
+        
+        # 记录选择器
+        record_options = ["➕ 新建空白记录"]
+        for i, r in enumerate(records):
+            song_name = r.get('chart_data', {}).get('song_name', 'Unknown')
+            clip_title = r.get('clip_title_name', f'Record {i+1}')
+            record_options.append(f"#{i+1} {song_name} ({clip_title})")
+        
+        selected_idx = st.selectbox(
+            "选择要编辑的记录",
+            range(len(record_options)),
+            format_func=lambda x: record_options[x],
+            key="manual_override_record_selector"
+        )
+        
+        st.divider()
+        
+        # 初始化表单默认值
+        if selected_idx == 0:
+            # 新建空白记录
+            default_values = {
+                'song_name': '',
+                'artist': '',
+                'song_id': '',
+                'chart_type': 0,
+                'level_index': 3,
+                'difficulty': '0',
+                'max_dx_score': '0',
+                'clip_title_name': f'Clip_{len(records)+1}',
+                'achievement': '0',
+                'fc_status': 'none',
+                'fs_status': 'none',
+                'dx_score': '0',
+                'dx_rating': '0',
+                'chuni_rating': '0',
+                'play_count': '0',
+            }
+            is_new_record = True
+        else:
+            # 编辑已有记录
+            record = records[selected_idx - 1]
+            chart_data = record.get('chart_data', {})
+            default_values = {
+                'song_name': chart_data.get('song_name', ''),
+                'artist': chart_data.get('artist', ''),
+                'song_id': chart_data.get('song_id', ''),
+                'chart_type': chart_data.get('chart_type', 0),
+                'level_index': chart_data.get('level_index', 3),
+                'difficulty': str(chart_data.get('difficulty', '0')),
+                'max_dx_score': str(chart_data.get('max_dx_score', '0')),
+                'clip_title_name': record.get('clip_title_name', ''),
+                'achievement': str(record.get('achievement', '0')),
+                'fc_status': record.get('fc_status', 'none'),
+                'fs_status': record.get('fs_status', 'none'),
+                'dx_score': str(record.get('dx_score', '0')),
+                'dx_rating': str(record.get('dx_rating', '0')),
+                'chuni_rating': str(record.get('chuni_rating', '0')),
+                'play_count': str(record.get('play_count', '0')),
+            }
+            is_new_record = False
+        
+        # 表单
+        with st.form("manual_override_form", clear_on_submit=False):
+            st.markdown("### 基础信息（必填）")
+            col1, col2 = st.columns(2)
+            with col1:
+                song_name = st.text_input("曲名 *", value=default_values['song_name'], key="mo_song_name")
+                song_id = st.text_input("歌曲ID *", value=default_values['song_id'], key="mo_song_id", 
+                                       help="建议格式: song_xxx，用于唯一标识歌曲")
+            with col2:
+                artist = st.text_input("曲师 *", value=default_values['artist'], key="mo_artist")
+                difficulty = st.text_input("定数 *", value=default_values['difficulty'], key="mo_difficulty",
+                                          help="如 14.9, 15.0 等")
+            
+            col3, col4 = st.columns(2)
+            with col3:
+                chart_type_options = get_chart_type_options(game_type)
+                chart_type_labels = list(chart_type_options.keys())
+                chart_type_default_idx = list(chart_type_options.values()).index(default_values['chart_type']) if default_values['chart_type'] in chart_type_options.values() else 0
+                chart_type = st.selectbox("谱面类型", chart_type_labels, index=chart_type_default_idx, key="mo_chart_type")
+                chart_type = chart_type_options[chart_type]  # 转换为数值
+            
+            with col4:
+                level_index_options = get_level_index_options(game_type)
+                level_index_labels = list(level_index_options.keys())
+                level_index_default_idx = list(level_index_options.values()).index(default_values['level_index']) if default_values['level_index'] in level_index_options.values() else 3
+                level_index = st.selectbox("难度", level_index_labels, index=level_index_default_idx, key="mo_level_index")
+                level_index = level_index_options[level_index]  # 转换为数值
+            
+            # maimai 特有字段
+            if game_type == 'maimai':
+                max_dx_score = st.text_input("最大DX分", value=default_values['max_dx_score'], key="mo_max_dx_score")
+            else:
+                max_dx_score = '0'
+            
+            st.divider()
+            st.markdown("### 成绩数据")
+            
+            col5, col6, col7 = st.columns(3)
+            with col5:
+                clip_title_name = st.text_input("抬头标题", value=default_values['clip_title_name'], key="mo_clip_title")
+                achievement = st.text_input("达成率/分数", value=default_values['achievement'], key="mo_achievement",
+                                          help="maimai: 0-101, chunithm: 0-1010000")
+            
+            with col6:
+                fc_status_options = get_fc_status_options(game_type)
+                fc_status = st.selectbox("FC标", fc_status_options, 
+                                        index=fc_status_options.index(default_values['fc_status']) if default_values['fc_status'] in fc_status_options else 0,
+                                        key="mo_fc_status")
+                play_count = st.text_input("游玩次数", value=default_values['play_count'], key="mo_play_count")
+            
+            with col7:
+                fs_status_options = get_fs_status_options(game_type)
+                fs_status = st.selectbox("FS/Sync标", fs_status_options,
+                                        index=fs_status_options.index(default_values['fs_status']) if default_values['fs_status'] in fs_status_options else 0,
+                                        key="mo_fs_status")
+                
+                if game_type == 'maimai':
+                    dx_score = st.text_input("DX分数", value=default_values['dx_score'], key="mo_dx_score")
+                else:
+                    dx_score = '0'
+            
+            # Rating 选项
+            auto_calc_rating = st.checkbox("自动计算Rating", value=True, key="mo_auto_calc_rating",
+                                          help="勾选时根据达成率和定数自动计算；不勾选时可以手动输入")
+            
+            if not auto_calc_rating:
+                if game_type == 'maimai':
+                    dx_rating = st.text_input("单曲Rating (maimai)", value=default_values['dx_rating'], key="mo_dx_rating")
+                else:
+                    chuni_rating = st.text_input("单曲Rating (chunithm)", value=default_values['chuni_rating'], key="mo_chuni_rating")
+            else:
+                dx_rating = '0'
+                chuni_rating = '0'
+            
+            st.divider()
+            st.markdown("### 曲绘设置")
+            
+            use_custom_jacket = st.radio("曲绘来源", ["使用默认云端曲绘", "上传自定义曲绘"], 
+                                        key="mo_jacket_source", horizontal=True)
+            
+            uploaded_jacket = None
+            if use_custom_jacket == "上传自定义曲绘":
+                uploaded_jacket = st.file_uploader("选择图片", type=["png", "jpg", "jpeg", "webp"], key="mo_jacket_upload")
+                if uploaded_jacket:
+                    st.image(uploaded_jacket, width=150, caption="预览")
+            
+            # 提交按钮
+            col_submit, col_delete = st.columns([3, 1])
+            with col_submit:
+                submitted = st.form_submit_button("保存此记录", type="primary")
+            with col_delete:
+                if not is_new_record:
+                    delete_clicked = st.form_submit_button("删除此记录", type="secondary")
+                else:
+                    delete_clicked = False
+            
+            # 处理表单提交
+            if submitted:
+                form_data = {
+                    'song_name': song_name,
+                    'artist': artist,
+                    'song_id': song_id,
+                    'chart_type': chart_type,
+                    'level_index': level_index,
+                    'difficulty': difficulty,
+                    'max_dx_score': max_dx_score,
+                    'clip_title_name': clip_title_name,
+                    'achievement': achievement,
+                    'fc_status': fc_status,
+                    'fs_status': fs_status,
+                    'dx_score': dx_score,
+                    'dx_rating': dx_rating if not auto_calc_rating else '0',
+                    'chuni_rating': chuni_rating if not auto_calc_rating else '0',
+                    'play_count': play_count,
+                }
+                
+                # 验证和转换数据
+                complete_data, errors = validate_complete_record_form(form_data, game_type, auto_calc_rating)
+                
+                if errors:
+                    for error in errors:
+                        st.error(error)
+                else:
+                    # 计算 rating（如果需要）
+                    if auto_calc_rating:
+                        try:
+                            ds = float(complete_data['chart_data'].get('difficulty', 0))
+                            if game_type == 'maimai':
+                                complete_data['dx_rating'] = compute_rating(ds=ds, score=complete_data.get('achievement', 0))
+                            else:
+                                complete_data['chuni_rating'] = compute_chunithm_rating(ds=ds, score=complete_data.get('achievement', 0))
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    # 保存记录
+                    if is_new_record:
+                        # 添加新记录
+                        complete_data['order_in_archive'] = len(records)
+                        st.session_state.records.append(complete_data)
+                        st.success(f"已添加新记录: {song_name}")
+                    else:
+                        # 更新已有记录
+                        complete_data['order_in_archive'] = records[selected_idx - 1].get('order_in_archive', selected_idx - 1)
+                        st.session_state.records[selected_idx - 1] = complete_data
+                        st.success(f"已更新记录: {song_name}")
+                    
+                    # 处理曲绘上传（如果有）
+                    if uploaded_jacket:
+                        # TODO: Phase 2 实现曲绘保存
+                        st.info("曲绘上传功能将在 Phase 2 实现")
+                    
+                    # 标记需要刷新
+                    st.session_state._force_refresh_editor = True
+                    st.rerun()
+            
+            if delete_clicked and not is_new_record:
+                # 删除记录
+                deleted_name = records[selected_idx - 1].get('chart_data', {}).get('song_name', 'Unknown')
+                st.session_state.records.pop(selected_idx - 1)
+                st.success(f"已删除记录: {deleted_name}")
+                st.session_state._force_refresh_editor = True
+                st.rerun()
+        
+        st.divider()
+        
+        # 记录预览列表
+        st.markdown("### 当前记录列表（预览）")
+        if records:
+            preview_data = []
+            for i, r in enumerate(records):
+                chart_data = r.get('chart_data', {})
+                preview_data.append({
+                    '#': i + 1,
+                    '曲名': chart_data.get('song_name', 'N/A'),
+                    '难度': chart_data.get('difficulty', 'N/A'),
+                    '达成率': r.get('achievement', 0),
+                    'Ra': r.get('dx_rating' if game_type == 'maimai' else 'chuni_rating', 0),
+                    '抬头': r.get('clip_title_name', 'N/A'),
+                })
+            st.dataframe(preview_data, use_container_width=True, hide_index=True)
+        else:
+            st.info("暂无记录，请添加新记录")
+
+
 def update_record_grid(grid, external_placeholder):
     
+    # 根据编辑模式选择渲染方式
+    if st.session_state.get('metadata_edit_method') == "手动覆写":
+        render_manual_override_ui(grid, external_placeholder)
+        return
+    
+    # 以下是自动填充模式的原有逻辑
     def recover_edited_records(edited_df, game_type="maimai"):
         # 由于 st.data_editor 会将dict对象序列化，从组件df数据更新时需要反序列化chart_data
         to_update_records = deepcopy(edited_df)
