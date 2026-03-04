@@ -16,6 +16,7 @@ from utils.ChartUtils import (
     validate_and_convert_chart_data, validate_and_convert_record_data,
     validate_complete_record_form
 )
+from utils.ImageUtils import process_custom_jacket
 
 # 检查streamlit扩展组件安装情况
 try:
@@ -555,9 +556,34 @@ def render_manual_override_ui(container, external_placeholder):
                             st.error("❌ 记录索引无效，保存失败")
                     
                     # 处理曲绘上传（如果有）
+                    custom_jacket_path = None
                     if uploaded_jacket:
-                        # TODO: Phase 2 实现曲绘保存
-                        st.info("曲绘上传功能将在 Phase 2 实现")
+                        try:
+                            # 获取 archive_id 和 chart_id
+                            archive_id = db_handler.load_save_archive(st.session_state.username, st.session_state.archive_name)
+                            
+                            # 获取刚保存的 chart_id（通过 song_id 查找）
+                            chart_data = complete_data.get('chart_data', {})
+                            chart_id = db_handler.db.get_chart_id_by_data(chart_data)
+                            
+                            if chart_id:
+                                # 处理并保存曲绘
+                                success, result = process_custom_jacket(uploaded_jacket)
+                                if success:
+                                    custom_jacket_path = result
+                                    # 更新 configurations 表的 background_image_path
+                                    db_handler.db.set_configuration(
+                                        archive_id, 
+                                        chart_id, 
+                                        {'background_image_path': custom_jacket_path}
+                                    )
+                                    st.success(f"✅ 曲绘已保存: {os.path.basename(custom_jacket_path)}")
+                                else:
+                                    st.warning(f"⚠️ 曲绘处理失败: {result}")
+                            else:
+                                st.warning("⚠️ 无法获取 chart_id，曲绘未保存")
+                        except Exception as e:
+                            st.warning(f"⚠️ 曲绘保存出错: {e}")
                     
                     # 自动保存到数据库
                     if save_success:
