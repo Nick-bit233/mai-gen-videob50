@@ -266,6 +266,11 @@ def render_manual_override_ui(container, external_placeholder):
     if '_mo_form_values' not in st.session_state:
         st.session_state._mo_form_values = None
     
+    # 边界检查：如果编辑索引超出范围，重置为新建模式
+    if st.session_state._mo_editing_idx > len(records):
+        st.session_state._mo_editing_idx = 0
+        st.session_state._mo_form_values = None
+    
     with container:
         # 警告提示
         st.warning("⚠️ 手动覆写模式下，您需要自行保证数据正确性。rating 不会自动计算，除非您勾选自动计算选项。")
@@ -277,7 +282,7 @@ def render_manual_override_ui(container, external_placeholder):
             clip_title = r.get('clip_title_name', f'Record {i+1}')
             record_options.append(f"#{i+1} {song_name} ({clip_title})")
         
-        col_select, col_load = st.columns([4, 1])
+        col_select, col_load, col_reset = st.columns([3, 1, 1])
         with col_select:
             selected_idx = st.selectbox(
                 "选择要编辑的记录",
@@ -291,6 +296,16 @@ def render_manual_override_ui(container, external_placeholder):
             if st.button("📥 加载", type="secondary", use_container_width=True):
                 st.session_state._mo_editing_idx = selected_idx
                 st.session_state._mo_form_values = None  # 清除缓存，强制重新加载
+                st.session_state._mo_pending_delete = None  # 清除待删除状态
+                st.rerun()
+        with col_reset:
+            st.write("")  # 对齐
+            st.write("")
+            if st.button("🔄 重置", type="secondary", use_container_width=True,
+                        help="清空表单，回到新建空白记录模式"):
+                st.session_state._mo_editing_idx = 0
+                st.session_state._mo_form_values = None
+                st.session_state._mo_pending_delete = None
                 st.rerun()
         
         # 显示当前编辑状态
@@ -381,32 +396,37 @@ def render_manual_override_ui(container, external_placeholder):
             st.markdown("### 基础信息（必填）")
             col1, col2 = st.columns(2)
             with col1:
-                song_name = st.text_input("曲名 *", value=default_values['song_name'], key=f"mo_song_name{form_key_suffix}")
+                song_name = st.text_input("曲名 *", value=default_values['song_name'], key=f"mo_song_name{form_key_suffix}",
+                                         help="必填。用于匹配云端曲绘和视频标题")
                 # 隐藏 song_id，用户不需要编辑，由系统自动生成
                 song_id = default_values['song_id']
             with col2:
-                artist = st.text_input("曲师 *", value=default_values['artist'], key=f"mo_artist{form_key_suffix}")
+                artist = st.text_input("曲师 *", value=default_values['artist'], key=f"mo_artist{form_key_suffix}",
+                                      help="必填。用于匹配云端曲绘")
                 difficulty = st.text_input("定数 *", value=default_values['difficulty'], key=f"mo_difficulty{form_key_suffix}",
-                                          help="如 14.9, 15.0 等")
+                                          help="必填。如 14.9, 15.0 等，用于计算 Rating")
             
             col3, col4 = st.columns(2)
             with col3:
                 chart_type_options = get_chart_type_options(game_type)
                 chart_type_labels = list(chart_type_options.keys())
                 chart_type_default_idx = list(chart_type_options.values()).index(default_values['chart_type']) if default_values['chart_type'] in chart_type_options.values() else 0
-                chart_type = st.selectbox("谱面类型", chart_type_labels, index=chart_type_default_idx, key=f"mo_chart_type{form_key_suffix}")
+                chart_type = st.selectbox("谱面类型", chart_type_labels, index=chart_type_default_idx, key=f"mo_chart_type{form_key_suffix}",
+                                         help="maimai: Standard/Deluxe 标准谱/dx谱")
                 chart_type = chart_type_options[chart_type]  # 转换为数值
             
             with col4:
                 level_index_options = get_level_index_options(game_type)
                 level_index_labels = list(level_index_options.keys())
                 level_index_default_idx = list(level_index_options.values()).index(default_values['level_index']) if default_values['level_index'] in level_index_options.values() else 3
-                level_index = st.selectbox("难度", level_index_labels, index=level_index_default_idx, key=f"mo_level_index{form_key_suffix}")
+                level_index = st.selectbox("难度", level_index_labels, index=level_index_default_idx, key=f"mo_level_index{form_key_suffix}",
+                                          help="BASIC < ADVANCED < EXPERT < MASTER < RE:MASTER/ULTIMA")
                 level_index = level_index_options[level_index]  # 转换为数值
             
             # maimai 特有字段
             if game_type == 'maimai':
-                max_dx_score = st.text_input("最大DX分", value=default_values['max_dx_score'], key=f"mo_max_dx_score{form_key_suffix}")
+                max_dx_score = st.text_input("最大DX分", value=default_values['max_dx_score'], key=f"mo_max_dx_score{form_key_suffix}",
+                                            help="仅 maimai 需要。该谱面的理论 DX 分数，用于计算 DX 达成率")
             else:
                 max_dx_score = '0'
             
@@ -415,25 +435,30 @@ def render_manual_override_ui(container, external_placeholder):
             
             col5, col6, col7 = st.columns(3)
             with col5:
-                clip_title_name = st.text_input("抬头标题", value=default_values['clip_title_name'], key=f"mo_clip_title{form_key_suffix}")
+                clip_title_name = st.text_input("抬头标题", value=default_values['clip_title_name'], key=f"mo_clip_title{form_key_suffix}",
+                                               help="视频片段的标题，将显示在视频画面上")
                 achievement = st.text_input("达成率/分数", value=default_values['achievement'], key=f"mo_achievement{form_key_suffix}",
-                                          help="maimai: 0-101, chunithm: 0-1010000")
+                                          help="maimai: 0-101.0000, chunithm: 0-1010000")
             
             with col6:
                 fc_status_options = get_fc_status_options(game_type)
                 fc_status = st.selectbox("FC标", fc_status_options, 
                                         index=fc_status_options.index(default_values['fc_status']) if default_values['fc_status'] in fc_status_options else 0,
-                                        key=f"mo_fc_status{form_key_suffix}")
-                play_count = st.text_input("游玩次数", value=default_values['play_count'], key=f"mo_play_count{form_key_suffix}")
+                                        key=f"mo_fc_status{form_key_suffix}",
+                                        help="maimai: none/fc/fcp/ap/app, chunithm: none/fc/aj/ajc")
+                play_count = st.text_input("游玩次数", value=default_values['play_count'], key=f"mo_play_count{form_key_suffix}",
+                                          help="该谱面的总游玩次数")
             
             with col7:
                 fs_status_options = get_fs_status_options(game_type)
                 fs_status = st.selectbox("FS/Sync标", fs_status_options,
                                         index=fs_status_options.index(default_values['fs_status']) if default_values['fs_status'] in fs_status_options else 0,
-                                        key=f"mo_fs_status{form_key_suffix}")
+                                        key=f"mo_fs_status{form_key_suffix}",
+                                        help="maimai: none/sync/fs/fsp/fsd/fsdp, chunithm: none/fc/fcr")
                 
                 if game_type == 'maimai':
-                    dx_score = st.text_input("DX分数", value=default_values['dx_score'], key=f"mo_dx_score{form_key_suffix}")
+                    dx_score = st.text_input("DX分数", value=default_values['dx_score'], key=f"mo_dx_score{form_key_suffix}",
+                                            help="本次游玩获得的 DX 分数")
                 else:
                     dx_score = '0'
             
@@ -521,8 +546,10 @@ def render_manual_override_ui(container, external_placeholder):
                 complete_data, errors = validate_complete_record_form(form_data, game_type, auto_calc_rating)
                 
                 if errors:
+                    # 汇总显示所有错误
+                    st.error(f"❌ 表单验证失败，请检查以下 {len(errors)} 个问题：")
                     for error in errors:
-                        st.error(error)
+                        st.warning(f"• {error}")
                 else:
                     # 计算 rating（如果需要）
                     if auto_calc_rating:
@@ -611,33 +638,47 @@ def render_manual_override_ui(container, external_placeholder):
                     st.rerun()
             
             if delete_clicked and not is_new_record:
-                # 删除记录 - 使用 _mo_editing_idx
-                editing_idx = st.session_state._mo_editing_idx
-                idx = editing_idx - 1
-                if 0 <= idx < len(records):
-                    deleted_name = records[idx].get('chart_data', {}).get('song_name', 'Unknown')
-                    st.session_state.records.pop(idx)
-                    st.success(f"✅ 已删除记录: **{deleted_name}**")
-                    # 重置为新建模式
-                    st.session_state._mo_editing_idx = 0
-                    
-                    # 自动保存到数据库
-                    try:
-                        # 重新排序 order_in_archive
-                        for i, r in enumerate(st.session_state.records):
-                            r['order_in_archive'] = i
-                        
-                        db_handler.update_archive_records(
-                            st.session_state.username,
-                            st.session_state.records,
-                            st.session_state.archive_name
-                        )
-                        st.toast("💾 更改已同步到数据库！")
-                    except Exception as e:
-                        st.error(f"❌ 数据库保存失败: {e}")
-                    
-                    st.session_state._force_refresh_editor = True
-                    st.rerun()
+                # 标记待删除，等待确认
+                st.session_state._mo_pending_delete = st.session_state._mo_editing_idx
+        
+        # 删除确认对话框（表单外部）
+        if st.session_state.get('_mo_pending_delete'):
+            idx = st.session_state._mo_pending_delete - 1
+            if 0 <= idx < len(records):
+                deleted_name = records[idx].get('chart_data', {}).get('song_name', 'Unknown')
+                clip_title = records[idx].get('clip_title_name', f'Record {idx+1}')
+                
+                with st.container(border=True):
+                    st.warning(f"⚠️ 确定要删除记录 **#{st.session_state._mo_pending_delete} {deleted_name}** ({clip_title}) 吗？")
+                    col_confirm, col_cancel = st.columns(2)
+                    with col_confirm:
+                        if st.button("✅ 确认删除", type="primary", key="confirm_delete_record"):
+                            # 执行删除
+                            st.session_state.records.pop(idx)
+                            st.toast(f"✅ 已删除记录: **{deleted_name}**")
+                            # 重置状态
+                            st.session_state._mo_editing_idx = 0
+                            st.session_state._mo_pending_delete = None
+                            
+                            # 自动保存到数据库
+                            try:
+                                for i, r in enumerate(st.session_state.records):
+                                    r['order_in_archive'] = i
+                                db_handler.update_archive_records(
+                                    st.session_state.username,
+                                    st.session_state.records,
+                                    st.session_state.archive_name
+                                )
+                                st.toast("💾 更改已同步到数据库！")
+                            except Exception as e:
+                                st.error(f"❌ 数据库保存失败: {e}")
+                            
+                            st.session_state._force_refresh_editor = True
+                            st.rerun()
+                    with col_cancel:
+                        if st.button("❌ 取消", key="cancel_delete_record"):
+                            st.session_state._mo_pending_delete = None
+                            st.rerun()
         
         st.divider()
         
