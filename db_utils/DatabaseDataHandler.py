@@ -377,18 +377,22 @@ class DatabaseDataHandler:
             for record in records:
                 title = record['song_name']
                 artist = record['artist']
+                chart_id = record['chart_id']
                 
-                # Use AssetManager to get image
-                jacket_image = AssetManager.get_jacket_image(game_type, title, artist)
+                # Use AssetManager to get image - 优先使用自定义曲绘
+                jacket_image = AssetManager.get_jacket_image(
+                    game_type, title, artist, 
+                    archive_id=archive_id, chart_id=chart_id
+                )
                 reformat_data = {
-                    'chart_id': record['chart_id'],
+                    'chart_id': chart_id,
                     'song_id': record['song_id'],
                     'title': title,
                     'artist': artist,
                     'type': record['chart_type'],
                     'level_index': record['level_index'],
                     'ds': float(record['difficulty']),
-                    'achievements': f"{record['achievement']:.4f}", # Format as string with 4 decimal places
+                    'achievements': f"{record['achievement']:.4f}",
                     'fc': record['fc_status'],
                     'fs': record['fs_status'],
                     'dxScore': record['dx_score'],
@@ -459,9 +463,13 @@ class DatabaseDataHandler:
             for record in records:
                 title = record['song_name']
                 artist = record['artist']
+                chart_id = record['chart_id']
                 
-                # Use AssetManager to get image
-                jacket_image = AssetManager.get_jacket_image(game_type, title, artist)
+                # Use AssetManager to get image - 优先使用自定义曲绘
+                jacket_image = AssetManager.get_jacket_image(
+                    game_type, title, artist, 
+                    archive_id=archive_id, chart_id=chart_id
+                )
                 reformat_data = {
                     'chart_id': record['chart_id'],
                     'song_id': record['song_id'],

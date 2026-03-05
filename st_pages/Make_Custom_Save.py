@@ -559,23 +559,28 @@ def render_manual_override_ui(container, external_placeholder):
                     custom_jacket_path = None
                     if uploaded_jacket:
                         try:
-                            # 获取 archive_id 和 chart_id
+                            # 获取 archive_id
                             archive_id = db_handler.load_save_archive(st.session_state.username, st.session_state.archive_name)
                             
-                            # 获取刚保存的 chart_id（通过 song_id 查找）
+                            # 获取刚保存的 chart_id（使用 get_or_create_chart）
                             chart_data = complete_data.get('chart_data', {})
-                            chart_id = db_handler.db.get_chart_id_by_data(chart_data)
+                            chart_id = db_handler.db.get_or_create_chart(chart_data)
                             
                             if chart_id:
                                 # 处理并保存曲绘
                                 success, result = process_custom_jacket(uploaded_jacket)
                                 if success:
                                     custom_jacket_path = result
-                                    # 更新 configurations 表的 background_image_path
-                                    db_handler.db.set_configuration(
-                                        archive_id, 
-                                        chart_id, 
-                                        {'background_image_path': custom_jacket_path}
+                                    # 保存到 assets 表（asset_type='custom_jacket'）
+                                    db_handler.db.add_asset(
+                                        asset_type='custom_jacket',
+                                        file_path=custom_jacket_path,
+                                        archive_id=archive_id,
+                                        metadata={
+                                            'chart_id': chart_id,
+                                            'song_name': song_name,
+                                            'artist': artist
+                                        }
                                     )
                                     st.success(f"✅ 曲绘已保存: {os.path.basename(custom_jacket_path)}")
                                 else:
