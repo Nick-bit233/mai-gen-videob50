@@ -138,11 +138,12 @@ class AssetManager:
                 try:
                     return Image.open(path)
                 except Exception:
-                    pass
+                    return None
         
         # If image missing, trigger download and return placeholder
+        # TODO: 阻塞式等待下载完成后再返回图片，或者实现一个回调机制通知图片已准备好
         if metadata:
             AssetManager.start_background_download([{'game_type': game_type, 'title': title, 'artist': artist}])
         
-        # Return 400x400 black placeholder
-        return Image.new('RGB', (400, 400), (0, 0, 0))
+        # Return none for using placeholder
+        return None
