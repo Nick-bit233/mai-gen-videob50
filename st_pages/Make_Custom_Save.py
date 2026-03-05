@@ -17,6 +17,7 @@ from utils.ChartUtils import (
     validate_complete_record_form
 )
 from utils.ImageUtils import process_custom_jacket
+from utils.AssetManager import AssetManager
 
 # 检查streamlit扩展组件安装情况
 try:
@@ -682,21 +683,76 @@ def render_manual_override_ui(container, external_placeholder):
         
         st.divider()
         
-        # 记录预览列表
+        # 记录预览列表（带曲绘）
         st.markdown("### 当前记录列表（预览）")
         if records:
-            preview_data = []
-            for i, r in enumerate(records):
+            # 获取 archive_id 用于查询自定义曲绘
+            archive_id = db_handler.load_save_archive(st.session_state.username, st.session_state.archive_name)
+            
+            # 触发后台下载所有曲绘
+            chart_info_list = []
+            for r in records:
                 chart_data = r.get('chart_data', {})
-                preview_data.append({
-                    '#': i + 1,
-                    '曲名': chart_data.get('song_name', 'N/A'),
-                    '难度': chart_data.get('difficulty', 'N/A'),
-                    '达成率': r.get('achievement', 0),
-                    'Ra': r.get('dx_rating' if game_type == 'maimai' else 'chuni_rating', 0),
-                    '抬头': r.get('clip_title_name', 'N/A'),
+                chart_info_list.append({
+                    'game_type': game_type,
+                    'title': chart_data.get('song_name', ''),
+                    'artist': chart_data.get('artist', '')
                 })
-            st.dataframe(preview_data, use_container_width=True, hide_index=True)
+            AssetManager.start_background_download(chart_info_list)
+            
+            # 显示卡片式预览列表
+            cols_per_row = 4
+            for row_start in range(0, len(records), cols_per_row):
+                cols = st.columns(cols_per_row)
+                for col_idx, record_idx in enumerate(range(row_start, min(row_start + cols_per_row, len(records)))):
+                    with cols[col_idx]:
+                        record = records[record_idx]
+                        chart_data = record.get('chart_data', {})
+                        
+                        # 获取 chart_id
+                        chart_id = db_handler.db.get_or_create_chart(chart_data)
+                        
+                        # 获取曲绘
+                        jacket_img = AssetManager.get_jacket_image(
+                            game_type=game_type,
+                            title=chart_data.get('song_name', ''),
+                            artist=chart_data.get('artist', ''),
+                            archive_id=archive_id,
+                            chart_id=chart_id
+                        )
+                        
+                        # 显示曲绘或占位符
+                        if jacket_img:
+                            st.image(jacket_img, use_container_width=True)
+                        else:
+                            # 占位符：灰色方块 + 加载图标
+                            st.markdown(
+                                f'<div style="width:100%;aspect-ratio:1;background:#2a2a2a;'
+                                f'display:flex;align-items:center;justify-content:center;'
+                                f'border-radius:8px;color:#666;font-size:24px;">🎵</div>',
+                                unsafe_allow_html=True
+                            )
+                        
+                        # 显示记录信息
+                        song_name = chart_data.get('song_name', 'N/A')
+                        difficulty = chart_data.get('difficulty', 'N/A')
+                        achievement = record.get('achievement', 0)
+                        rating = record.get('dx_rating' if game_type == 'maimai' else 'chuni_rating', 0)
+                        clip_title = record.get('clip_title_name', 'N/A')
+                        
+                        # 格式化达成率
+                        if game_type == 'maimai':
+                            achievement_str = f"{achievement:.4f}%"
+                        else:
+                            achievement_str = f"{int(achievement):,}"
+                        
+                        st.caption(f"**#{record_idx + 1}** {song_name[:15]}{'...' if len(song_name) > 15 else ''}")
+                        st.caption(f"📖 {difficulty} | {achievement_str} | Ra.{rating}")
+                        st.caption(f"📝 {clip_title}")
+            
+            # 显示统计信息
+            st.divider()
+            st.markdown(f"**共 {len(records)} 条记录** | 💡 曲绘将在后台自动下载，刷新页面可查看最新状态")
         else:
             st.info("暂无记录，请添加新记录")
 
