@@ -413,13 +413,16 @@ class DatabaseDataHandler:
                 # 获取歌曲元数据
                 metadata = query_songs_metadata(game_type, title, artist)
                 chart_info = metadata.get('charts_info', [])
-                # 获取定数信息
+                # 获取定数信息（从元数据）
                 for chart_meta in chart_info:
                     chart_level_index = chart_meta.get('difficulty', -1)
                     if chart_level_index == level_index:
                         ds_value_cur = get_level_value_from_chart_meta(chart_meta)
                         ds_value_next = get_level_value_from_chart_meta(chart_meta, latest_first=True)
-
+                # 如果定数信息不存在，尝试使用record中的difficulty字段（可能来自用户自定义的数据）
+                if not ds_value_cur:
+                    ds_custom = float(record.get('difficulty', 0.0))
+                    ds_value_refomated = ds_custom if ds_custom else 0.0
                 reformat_data = {
                     'chart_id': record.get('chart_id'),
                     'song_id': song_id,
@@ -427,7 +430,7 @@ class DatabaseDataHandler:
                     'artist': artist,
                     'type': record.get('chart_type', 0),
                     'level_index': level_index,
-                    'ds_cur': ds_value_cur,
+                    'ds_cur': ds_value_refomated,
                     'ds_next': ds_value_next,
                     'score': int(record.get('achievement', 0)), # Format as integer score
                     'combo_type': record.get('fc_status', 'none'), 

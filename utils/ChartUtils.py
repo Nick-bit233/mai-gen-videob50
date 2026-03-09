@@ -19,7 +19,7 @@ import re
 MAIMAI_CHART_TYPE_OPTIONS = {
     "Standard (标准)": 0,
     "Deluxe (DX)": 1,
-    "Utage (宴场)": 2,
+    "Utage (宴会场)": 2,
 }
 
 # chunithm 谱面类型
