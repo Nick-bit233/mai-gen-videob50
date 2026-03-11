@@ -949,7 +949,7 @@ def render_records_preview(records, game_type):
                                 artist=chart_data.get('artist', ''),
                                 archive_id=archive_id,
                                 chart_id=chart_id
-                            ) if cur_game_type == "maimai" else None
+                            ) if game_type == "maimai" else None
                             
                             # 显示曲绘或占位符
                             if jacket_img:
