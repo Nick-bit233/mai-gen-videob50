@@ -6,7 +6,7 @@ import traceback
 import streamlit as st
 from datetime import datetime
 from utils.PageUtils import read_global_config, write_global_config, get_game_type_text
-from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader, streamlit_login_bilibili
+from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader, streamlit_login_bilibili, load_credential
 from utils.WebAgentUtils import search_one_video
 from db_utils.DatabaseDataHandler import get_database_handler
 
@@ -121,6 +121,49 @@ with extra_setting_container:
             value=_no_credential,
             help="不登录可能导致无法下载高分辨率视频或受到风控"
         )
+        
+        # 登录状态管理
+        if 'bilibili_logged_in' not in st.session_state:
+            # 检查是否有缓存的凭证
+            cached_cred = load_credential("./cred_datas/bilibili_cred.pkl")
+            st.session_state.bilibili_logged_in = cached_cred is not None
+        
+        if not no_credential:
+            st.markdown("---")
+            if st.session_state.bilibili_logged_in:
+                st.success("✅ 已登录 Bilibili 账号")
+                if st.button("退出登录", key="bilibili_logout"):
+                    # 删除凭证文件
+                    cred_path = "./cred_datas/bilibili_cred.pkl"
+                    if os.path.exists(cred_path):
+                        os.remove(cred_path)
+                    st.session_state.bilibili_logged_in = False
+                    st.rerun()
+            else:
+                st.warning("⚠️ 尚未登录 Bilibili 账号")
+                if st.button("🔐 登录 Bilibili", key="bilibili_login_btn", type="primary"):
+                    st.session_state.bilibili_show_qr = True
+                    st.rerun()
+                
+                # 显示二维码登录流程
+                if st.session_state.get('bilibili_show_qr', False):
+                    success, credential, message = streamlit_login_bilibili("./cred_datas/bilibili_cred.pkl")
+                    
+                    if success:
+                        st.session_state.bilibili_logged_in = True
+                        st.session_state.bilibili_show_qr = False
+                        st.success(f"✅ {message}")
+                        st.rerun()
+                    elif credential is None and ("等待" in message or "扫描" in message or "确认" in message):
+                        # 需要继续轮询
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        # 出错或超时
+                        if "过期" in message or "失败" in message:
+                            st.session_state.bilibili_show_qr = False
+                            st.error(f"❌ {message}")
+                            st.info("请重新点击登录按钮")
     elif downloader == "youtube":
         _use_youtube_api = G_config.get('USE_YOUTUBE_API', False)
         _youtube_api_key = G_config.get('YOUTUBE_API_KEY', '')
@@ -231,6 +274,7 @@ with col_save2:
         st.rerun()
 
 def st_init_downloader():
+    """初始化下载器实例（不处理登录逻辑）"""
     global downloader, no_credential, use_oauth, use_custom_po_token, use_auto_po_token, po_token, visitor_data, use_youtube_api, youtube_api_key
 
     if downloader == "youtube":
@@ -262,37 +306,17 @@ def st_init_downloader():
 
     elif downloader == "bilibili":
         st.toast("正在初始化Bilibili下载器...")
-        
-        # 先尝试加载缓存的凭证
         dl_instance = BilibiliDownloader(
             proxy=proxy_address if use_proxy else None,
             no_credential=no_credential,
             credential_path="./cred_datas/bilibili_cred.pkl",
             search_max_results=search_max_results,
-            skip_login=True  # 跳过自动登录，由我们手动处理
+            skip_login=True  # 登录已在上层处理
         )
-        
-        if not no_credential and not dl_instance.credential:
-            # 需要登录，使用 Streamlit 登录流程
-            st.info("🔐 需要登录 Bilibili 账号，请扫描下方二维码...")
-            
-            success, credential, message = streamlit_login_bilibili("./cred_datas/bilibili_cred.pkl")
-            
-            if success:
-                dl_instance.set_credential(credential)
-                st.success(f"✅ {message}")
-                st.rerun()  # 刷新页面以清除登录状态
-            elif credential is None and "等待" in message:
-                # 需要继续轮询，使用 time.sleep + rerun
-                time.sleep(1)
-                st.rerun()
-            else:
-                st.error(f"❌ {message}")
-                return None
         
         bilibili_username = dl_instance.get_credential_username()
         if bilibili_username:
-            st.toast(f"登录成功，当前登录账号为：{bilibili_username}")
+            st.toast(f"登录账号：{bilibili_username}")
     else:
         st.error(f"未配置正确的下载器，请重新确定上方配置！")
         return None
@@ -339,6 +363,12 @@ if st.session_state.get('config_saved_step2', False):
     # 初始化搜索完成状态
     if 'search_completed' not in st.session_state:
         st.session_state.search_completed = False
+    
+    # 检查是否可以开始搜索（Bilibili 需要登录，或选择不使用账号）
+    can_search = True
+    if downloader == "bilibili" and not no_credential:
+        if not st.session_state.get('bilibili_logged_in', False):
+            can_search = False
 
     st.markdown("### 🔍 开始搜索")
     
@@ -348,18 +378,28 @@ if st.session_state.get('config_saved_step2', False):
         
         若您不想等待，或反复遇到这样的情况，请考虑使用手动输入谱面视频的BV号的方法：点击下方按钮跳过自动搜索，进入下一个页面进行操作。
         """)
-        if st.button("⏭️ 仅登录下载器，跳过自动搜索", use_container_width=True, type="secondary"):
+        
+        skip_btn_disabled = not can_search
+        if st.button("⏭️ 仅登录下载器，跳过自动搜索", use_container_width=True, type="secondary", disabled=skip_btn_disabled):
             dl_instance = st_init_downloader()
             # 缓存downloader对象
             st.session_state.downloader = dl_instance
             st.switch_page("st_pages/Confirm_Videos.py")
 
     st.divider()
+    
+    # 显示登录提示（如果需要）
+    if not can_search:
+        st.warning("⚠️ 请先在上方配置区域登录 Bilibili 账号，或勾选「不使用B站账号登录」")
+    
     col_search1, col_search2 = st.columns([3, 1])
     with col_search1:
-        st.write("点击右侧按钮开始自动搜索谱面确认视频")
+        if can_search:
+            st.write("点击右侧按钮开始自动搜索谱面确认视频")
+        else:
+            st.write("⚠️ 需要先登录才能搜索")
     with col_search2:
-        if st.button("🚀 开始搜索", use_container_width=True, type="primary"):
+        if st.button("🚀 开始搜索", use_container_width=True, type="primary", disabled=not can_search):
             try:
                 dl_instance = st_init_downloader()
                 # 缓存downloader对象
@@ -396,7 +436,8 @@ if st.session_state.get('config_saved_step2', False):
             st.info("ℹ️ 请先完成搜索或跳过搜索")
     with col_next2:
         search_completed = st.session_state.get('search_completed', False)
-        if st.button("➡️ 前往下一步", disabled=not search_completed, use_container_width=True, type="primary"):
+        next_btn_disabled = not (search_completed and can_search)
+        if st.button("➡️ 前往下一步", disabled=next_btn_disabled, use_container_width=True, type="primary"):
             st.switch_page("st_pages/Confirm_Videos.py")
 else:
     st.warning("⚠️ 请先保存配置！")  # 如果未保存配置，给出提示
