@@ -91,12 +91,19 @@ def convert_duration_to_seconds(duration: str) -> int:
 
 def load_credential(credential_path):
     if not os.path.isfile(credential_path):
-        print("#####【未找到bilibili登录凭证，请在弹出的窗口中扫码登录】")
-        return None
+        print("#####【未找到bilibili登录凭证，请先扫码登录】")
+        return None, None
     else:
         # 读取凭证文件
         with open(credential_path, 'rb') as f:
-            loaded_data = pickle.load(f)
+            try:
+                loaded_data = pickle.load(f)
+            except Exception as e:
+                # 凭证二进制文件损坏或格式错误，删除凭证并提示重新登录
+                if os.path.isfile(credential_path):
+                    os.remove(credential_path)
+                print(f"#####【读取bilibili登录凭证失败: {str(e)}，请重新扫码登录】")
+                return None, None
         
         try:
             # 创建 Credential 实例
@@ -109,14 +116,14 @@ def load_credential(credential_path):
             )
         except:
             traceback.print_exc()
-            print("#####【bilibili登录凭证无效，请在弹出的窗口中重新扫码登录】")
-            return False
+            print("#####【bilibili登录凭证无效，请重新扫码登录】")
+            return None, None
         
         # 验证凭证的有效性
         is_valid = sync(credential.check_valid())
         if not is_valid:
-            print("#####【bilibili登录凭证无效，请在弹出的窗口中重新扫码登录】")
-            return None
+            print("#####【bilibili登录凭证已失效，请重新扫码登录】")
+            return None, None
         try:
             need_refresh = sync(credential.check_refresh())
             if need_refresh:
@@ -124,11 +131,12 @@ def load_credential(credential_path):
                 sync(credential.refresh())
         except:
             traceback.print_exc()
-            print("#####【刷新bilibili登录凭据失败，请在弹出的窗口中重新扫码登录】")
-            return None
+            print("#####【刷新bilibili登录凭据失败，请重新扫码登录】")
+            return None, None
         
-        print(f"#####【缓存登录bilibili成功，登录账号为：{sync(user.get_self_info(credential))['name']}】")
-        return credential
+        username = sync(user.get_self_info(credential))['name']
+        print(f"#####【缓存登录bilibili成功，登录账号为：{username}】")
+        return credential, username
 
 async def download_url_from_bili(url: str, out: str, info: str):
     async with httpx.AsyncClient(headers=HEADERS) as sess:
@@ -673,7 +681,6 @@ def streamlit_login_bilibili(credential_path="cred_datas/bilibili_cred.pkl"):
     3. 登录成功后保存凭证
     """
     import streamlit as st
-    from PIL import Image
     
     # 创建登录会话
     if 'bilibili_login_session' not in st.session_state:
@@ -691,7 +698,7 @@ def streamlit_login_bilibili(credential_path="cred_datas/bilibili_cred.pkl"):
             qr_image = session.generate_qrcode()
             st.session_state.bilibili_qr_image = qr_image
         except Exception as e:
-            return (False, None, f"生成二维码失败: {str(e)}")
+            return (False, None, f"生成二维码失败: {str(e)}", None)
     
     # 显示二维码图片
     qr_placeholder.image(st.session_state.bilibili_qr_image, caption="使用哔哩哔哩客户端扫描此二维码")
@@ -713,7 +720,7 @@ def streamlit_login_bilibili(credential_path="cred_datas/bilibili_cred.pkl"):
             del st.session_state.bilibili_login_session
             if 'bilibili_qr_image' in st.session_state:
                 del st.session_state.bilibili_qr_image
-            return (False, None, f"凭证验证失败: {str(e)}")
+            return (False, None, f"凭证验证失败: {str(e)}", None)
         
         # 获取用户名
         username = sync(user.get_self_info(credential))['name']
@@ -728,19 +735,18 @@ def streamlit_login_bilibili(credential_path="cred_datas/bilibili_cred.pkl"):
         if 'bilibili_qr_image' in st.session_state:
             del st.session_state.bilibili_qr_image
         
-        return (True, credential, f"登录成功！账号：{username}")
+        return (True, credential, f"登录成功！", username)
     
     elif state == 'timeout':
         # 清理过期的二维码
         if 'bilibili_qr_image' in st.session_state:
             del st.session_state.bilibili_qr_image
         del st.session_state.bilibili_login_session
-        return (False, None, "二维码已过期，请刷新页面重试")
+        return (False, None, "二维码已过期，请刷新页面重试", None)
     
     else:
         # 等待中，返回 None 表示需要继续轮询
-        return (False, None, message)
-
+        return (False, None, message, None)
 
 class BilibiliDownloader(Downloader):
     def __init__(self, proxy=None, no_credential=False, credential_path="cred_datas/bilibili_cred.pkl", search_max_results=3, skip_login=False):
@@ -752,7 +758,7 @@ class BilibiliDownloader(Downloader):
             self.credential = None
             return
         
-        self.credential = load_credential(credential_path)
+        self.credential, self.username = load_credential(credential_path)
         if self.credential:
             return
         

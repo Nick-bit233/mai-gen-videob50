@@ -121,42 +121,48 @@ with extra_setting_container:
             value=_no_credential,
             help="不登录可能导致无法下载高分辨率视频或受到风控"
         )
-        
+
         # 登录状态管理
-        if 'bilibili_logged_in' not in st.session_state:
+        if 'bilibili_logged_in' not in st.session_state or 'bilibili_username' not in st.session_state:
             # 检查是否有缓存的凭证
-            cached_cred = load_credential("./cred_datas/bilibili_cred.pkl")
-            st.session_state.bilibili_logged_in = cached_cred is not None
+            cached_cred, cached_username = load_credential("./cred_datas/bilibili_cred.pkl")
+            if cached_cred:
+                st.session_state.bilibili_logged_in = True
+                st.session_state.bilibili_username = cached_username
+            else:
+                st.session_state.bilibili_logged_in = False
+                st.session_state.bilibili_username = None
         
         if not no_credential:
             st.markdown("---")
-            if st.session_state.bilibili_logged_in:
-                st.success("✅ 已登录 Bilibili 账号")
+            if st.session_state.bilibili_logged_in and st.session_state.bilibili_username:
+                st.success(f"✅ 已成功登录 Bilibili ，账号: {st.session_state.bilibili_username}")
                 if st.button("退出登录", key="bilibili_logout"):
                     # 删除凭证文件
                     cred_path = "./cred_datas/bilibili_cred.pkl"
                     if os.path.exists(cred_path):
                         os.remove(cred_path)
                     st.session_state.bilibili_logged_in = False
+                    st.session_state.bilibili_username = None
                     st.rerun()
             else:
                 st.warning("⚠️ 尚未登录 Bilibili 账号")
-                if st.button("🔐 登录 Bilibili", key="bilibili_login_btn", type="primary"):
+                if st.button("🔐 登录 Bilibili", key="bilibili_login_btn", type="primary", use_container_width=True):
                     st.session_state.bilibili_show_qr = True
                     st.rerun()
                 
                 # 显示二维码登录流程
                 if st.session_state.get('bilibili_show_qr', False):
-                    success, credential, message = streamlit_login_bilibili("./cred_datas/bilibili_cred.pkl")
+                    success, credential, message, username = streamlit_login_bilibili("./cred_datas/bilibili_cred.pkl")
                     
                     if success:
                         st.session_state.bilibili_logged_in = True
                         st.session_state.bilibili_show_qr = False
-                        st.success(f"✅ {message}")
+                        st.session_state.bilibili_username = username
                         st.rerun()
                     elif credential is None and ("等待" in message or "扫描" in message or "确认" in message):
                         # 需要继续轮询
-                        time.sleep(1)
+                        time.sleep(2)
                         st.rerun()
                     else:
                         # 出错或超时
@@ -370,61 +376,56 @@ if st.session_state.get('config_saved_step2', False):
         if not st.session_state.get('bilibili_logged_in', False):
             can_search = False
 
-    st.markdown("### 🔍 开始搜索")
-    
-    with st.container(border=True):
-        st.warning("""
-        ⚠️ **提示**: 如果您遇到自动搜索失败，或大多数谱面的默认搜索结果完全不正确的情况，多半与第三方查询接口有关，可能需要更换网络环境，或等待一段时间后重试。
-        
-        若您不想等待，或反复遇到这样的情况，请考虑使用手动输入谱面视频的BV号的方法：点击下方按钮跳过自动搜索，进入下一个页面进行操作。
-        """)
-        
-        skip_btn_disabled = not can_search
-        if st.button("⏭️ 仅登录下载器，跳过自动搜索", use_container_width=True, type="secondary", disabled=skip_btn_disabled):
-            dl_instance = st_init_downloader()
-            # 缓存downloader对象
-            st.session_state.downloader = dl_instance
-            st.switch_page("st_pages/Confirm_Videos.py")
-
-    st.divider()
+    st.markdown("### 🔍 启动自动搜索")
     
     # 显示登录提示（如果需要）
     if not can_search:
-        st.warning("⚠️ 请先在上方配置区域登录 Bilibili 账号，或勾选「不使用B站账号登录」")
+        st.warning("⚠️ 需要先登录才能搜索，请在上方配置区域登录 Bilibili 账号，或勾选「不使用B站账号登录」")
     
-    col_search1, col_search2 = st.columns([3, 1])
+    col_search1, col_search2 = st.columns([1, 2])
     with col_search1:
-        if can_search:
-            st.write("点击右侧按钮开始自动搜索谱面确认视频")
-        else:
-            st.write("⚠️ 需要先登录才能搜索")
+        with st.container(border=True):
+            st.info("点击下方按钮开始自动搜索，搜索过程中请勿关闭或刷新页面。")
+            if st.button("🚀 开始搜索", use_container_width=True, type="primary", disabled=not can_search):
+                try:
+                    dl_instance = st_init_downloader()
+                    # 缓存downloader对象
+                    st.session_state.downloader = dl_instance
+                    st_search_b50_videoes(dl_instance, info_placeholder, search_wait_time)
+                    st.session_state.search_completed = True  # Reset error flag if successful
+                    st.success("✅ 搜索完成！请点击下一步按钮检查搜索到的视频信息，以及下载视频。")
+                    # print(st.session_state.search_results)  # debug：打印搜索结果
+                except Exception as e:
+                    st.session_state.search_completed = False
+                    error_msg = str(e)
+                    if "400" in error_msg or "Bad Request" in error_msg:
+                        st.error(f"❌ 搜索过程中出现错误: HTTP Error 400: Bad Request,请尝试重新搜索")
+                        st.warning("""
+                        **可能的解决方案：**
+                        1. **更新 pytubefix 库**：在终端运行 `pip install --upgrade pytubefix`
+                        2. **配置认证**：在搜索配置中启用 OAuth 或 PO Token 认证
+                        3. **使用代理**：如果网络受限，尝试配置代理服务器
+                        4. **手动输入**：点击"跳过自动搜索"按钮，手动输入视频ID
+                        5. **检查网络**：确保可以正常访问 YouTube
+                        """)
+                    else:
+                        st.error(f"❌ 搜索过程中出现错误: {error_msg}, 请尝试重新搜索")
+                    with st.expander("详细错误信息"):
+                        st.code(traceback.format_exc())
     with col_search2:
-        if st.button("🚀 开始搜索", use_container_width=True, type="primary", disabled=not can_search):
-            try:
+        with st.container(border=True):
+            st.warning("""
+            ⚠️ **提示**: 自动搜索并非100%准确率，如果遇到失败，或多数谱面的默认搜索结果完全不正确的情况，请尝试更换网络环境，或等待一段时间后重试。
+            
+            - 若您不想等待，或反复出现失败，请考虑点击下方按钮跳过自动搜索，在下一个页面，您可以通过输入视频BV号手动搜索。
+            """)
+            
+            skip_btn_disabled = not can_search
+            if st.button("⏭️ 仅登录下载器，跳过自动搜索", use_container_width=True, type="secondary", disabled=skip_btn_disabled):
                 dl_instance = st_init_downloader()
                 # 缓存downloader对象
                 st.session_state.downloader = dl_instance
-                st_search_b50_videoes(dl_instance, info_placeholder, search_wait_time)
-                st.session_state.search_completed = True  # Reset error flag if successful
-                st.success("✅ 搜索完成！请点击下一步按钮检查搜索到的视频信息，以及下载视频。")
-                # print(st.session_state.search_results)  # debug：打印搜索结果
-            except Exception as e:
-                st.session_state.search_completed = False
-                error_msg = str(e)
-                if "400" in error_msg or "Bad Request" in error_msg:
-                    st.error(f"❌ 搜索过程中出现错误: HTTP Error 400: Bad Request,请尝试重新搜索")
-                    st.warning("""
-                    **可能的解决方案：**
-                    1. **更新 pytubefix 库**：在终端运行 `pip install --upgrade pytubefix`
-                    2. **配置认证**：在搜索配置中启用 OAuth 或 PO Token 认证
-                    3. **使用代理**：如果网络受限，尝试配置代理服务器
-                    4. **手动输入**：点击"跳过自动搜索"按钮，手动输入视频ID
-                    5. **检查网络**：确保可以正常访问 YouTube
-                    """)
-                else:
-                    st.error(f"❌ 搜索过程中出现错误: {error_msg}, 请尝试重新搜索")
-                with st.expander("详细错误信息"):
-                    st.code(traceback.format_exc())
+                st.switch_page("st_pages/Confirm_Videos.py")
     
     st.divider()
     st.markdown("### ➡️ 下一步")
