@@ -616,11 +616,16 @@ class BilibiliQrCodeLoginSession:
     
     def generate_qrcode(self):
         """生成二维码，返回 PIL Image 对象"""
+        import io
+        from PIL import Image
+        
         async def _generate():
             self._qr_login = login_v2.QrCodeLogin(platform=login_v2.QrCodeLoginChannel.WEB)
             await self._qr_login.generate_qrcode()
             self._generated = True
-            return self._qr_login.get_qrcode_picture().get_image()
+            # Picture.content 是 PNG 字节数据
+            pic = self._qr_login.get_qrcode_picture()
+            return Image.open(io.BytesIO(pic.content))
         return sync(_generate())
     
     def check_state(self):
