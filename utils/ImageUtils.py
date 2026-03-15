@@ -1,9 +1,97 @@
 import json
 import os.path
 import traceback
+import io
 
 from utils.PageUtils import load_music_metadata
 from PIL import Image, ImageDraw, ImageFont
+
+
+# =============================================================================
+# 曲绘处理函数
+# =============================================================================
+
+def process_custom_jacket(uploaded_file, save_dir: str = "static/assets/custom_jackets") -> tuple:
+    """
+    处理用户上传的自定义曲绘
+    
+    Args:
+        uploaded_file: Streamlit UploadedFile 对象
+        save_dir: 保存目录路径
+    
+    Returns:
+        tuple: (success: bool, result: str)
+            - success=True 时，result 为保存的文件路径
+            - success=False 时，result 为错误信息
+    """
+    try:
+        # 确保保存目录存在
+        os.makedirs(save_dir, exist_ok=True)
+        
+        # 读取图片
+        img = Image.open(uploaded_file)
+        
+        # 转换为 RGBA
+        if img.mode != 'RGBA':
+            img = img.convert('RGBA')
+        
+        # 检查比例并裁剪为正方形
+        width, height = img.size
+        if width != height:
+            # 裁剪为正方形（取中心）
+            size = min(width, height)
+            left = (width - size) // 2
+            top = (height - size) // 2
+            img = img.crop((left, top, left + size, top + size))
+        
+        # 缩放到 400x400
+        img = img.resize((400, 400), Image.LANCZOS)
+        
+        # 生成唯一文件名（使用原始文件名 + 时间戳）
+        import time
+        original_name = os.path.splitext(uploaded_file.name)[0]
+        timestamp = int(time.time() * 1000)
+        filename = f"{original_name}_{timestamp}.png"
+        # 清理文件名中的特殊字符
+        filename = "".join(c for c in filename if c.isalnum() or c in ('_', '-', '.'))
+        
+        save_path = os.path.join(save_dir, filename)
+        img.save(save_path, "PNG")
+        
+        return True, save_path
+        
+    except Exception as e:
+        return False, str(e)
+
+
+def get_jacket_preview(uploaded_file, max_size: int = 150) -> Image.Image:
+    """
+    从上传的文件生成预览图
+    
+    Args:
+        uploaded_file: Streamlit UploadedFile 对象
+        max_size: 预览图最大尺寸
+    
+    Returns:
+        PIL.Image.Image: 预览图
+    """
+    try:
+        img = Image.open(uploaded_file)
+        if img.mode != 'RGBA':
+            img = img.convert('RGBA')
+        
+        # 保持比例缩放
+        width, height = img.size
+        if width > height:
+            new_width = max_size
+            new_height = int(height * max_size / width)
+        else:
+            new_height = max_size
+            new_width = int(width * max_size / height)
+        
+        return img.resize((new_width, new_height), Image.LANCZOS)
+    except Exception:
+        return None
 
 # 重构note：成绩图生成模块不再主动获取外部资源（如下载封面、获取谱面详细信息等），而是依赖传入数据
 # 以此减少模块间耦合，简化调用流程，由调用方负责准备所需数据

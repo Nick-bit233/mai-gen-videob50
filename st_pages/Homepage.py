@@ -134,7 +134,7 @@ with col_header2:
                 st.session_state.theme = "Verse"
                 change_theme(THEME_COLORS["chunithm"]["Verse"])
     G_type = st.session_state.get('game_type', 'maimai')
-    st.caption(f"当前版本 v1.0 |\
+    st.caption(f"当前版本 v1.1 |\
                Created by: [Nickbit](https://github.com/Nick-bit233), \
                Thanks to: [caiccu](https://github.com/CAICCU), \
                [MetallicAllex](https://github.com/MetallicAllex), \

@@ -257,6 +257,34 @@ class DatabaseManager:
             conn.commit()
             return cursor.lastrowid
 
+    def create_new_chart(self, chart_data: Dict) -> int:
+        """
+        Force create a new chart entry without checking for existing ones.
+        Used for manual override mode to ensure chart isolation between archives.
+        
+        Unlike get_or_create_chart(), this always creates a new entry,
+        even if a chart with the same unique keys already exists.
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Define all possible fields for a chart
+            unique_keys = ['game_type', 'song_id', 'chart_type', 'level_index']
+            all_fields = unique_keys + ['difficulty', 'song_name', 'artist', 'max_dx_score', 'video_path', 'video_metadata']
+            
+            # Prepare for insertion
+            columns = [field for field in all_fields if field in chart_data and chart_data[field] is not None]
+            placeholders = ', '.join(['?'] * len(columns))
+            values = [chart_data.get(col) for col in columns]
+            
+            cursor.execute(f'''
+                INSERT INTO charts ({', '.join(columns)})
+                VALUES ({placeholders})
+            ''', values)
+            
+            conn.commit()
+            return cursor.lastrowid
+
     def get_chart(self, chart_id: int) -> Optional[Dict]:
         """Retrieve chart metadata by chart_id"""
         with self.get_connection() as conn:
