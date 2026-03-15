@@ -105,8 +105,17 @@ if errorlevel 1 (
     exit /b 1
 )
 
-:: 6. 安装项目依赖
-echo [6/7] Installing dependencies from requirements.txt...
+:: 6. 先安装 setuptools 和 wheel（Python Embedded 没有自带）
+echo [6/8] Installing setuptools and wheel...
+python.exe -m pip install setuptools wheel --no-warn-script-location
+if errorlevel 1 (
+    echo [ERROR] Failed to install setuptools/wheel!
+    pause
+    exit /b 1
+)
+
+:: 7. 安装项目依赖
+echo [7/8] Installing dependencies from requirements.txt...
 echo       This may take several minutes...
 python.exe -m pip install -r ..\..\requirements.txt --no-warn-script-location
 if errorlevel 1 (
@@ -120,9 +129,9 @@ echo.
 echo Installed packages:
 for /f %%i in ('python.exe -m pip list --format=freeze ^| find /c /v ""') do echo       Total: %%i packages
 
-:: 7. 清理临时文件
+:: 8. 清理临时文件
 echo.
-echo [7/7] Cleaning up...
+echo [8/8] Cleaning up and packaging...
 del get-pip.py 2>nul
 
 :: 8. 打包
