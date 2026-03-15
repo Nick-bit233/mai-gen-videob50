@@ -345,5 +345,9 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 - [bilibili-api](https://github.com/Nemo2011/bilibili-api)
 
+# Credits
+
+- This repository fetches Unicode-defined emoji from [twemoji](https://github.com/jdecked/twemoji?tab=readme-ov-file)
+
 ---
 
