@@ -6,7 +6,7 @@ import traceback
 import streamlit as st
 from datetime import datetime
 from utils.PageUtils import read_global_config, write_global_config, get_game_type_text
-from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
+from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader, streamlit_login_bilibili
 from utils.WebAgentUtils import search_one_video
 from db_utils.DatabaseDataHandler import get_database_handler
 
@@ -262,14 +262,34 @@ def st_init_downloader():
 
     elif downloader == "bilibili":
         st.toast("正在初始化Bilibili下载器...")
-        if not no_credential:
-            st.toast("正在尝试登录B站...如果弹出二维码窗口，请使用bilibili客户端扫描进行登录")
+        
+        # 先尝试加载缓存的凭证
         dl_instance = BilibiliDownloader(
             proxy=proxy_address if use_proxy else None,
             no_credential=no_credential,
             credential_path="./cred_datas/bilibili_cred.pkl",
-            search_max_results=search_max_results
+            search_max_results=search_max_results,
+            skip_login=True  # 跳过自动登录，由我们手动处理
         )
+        
+        if not no_credential and not dl_instance.credential:
+            # 需要登录，使用 Streamlit 登录流程
+            st.info("🔐 需要登录 Bilibili 账号，请扫描下方二维码...")
+            
+            success, credential, message = streamlit_login_bilibili("./cred_datas/bilibili_cred.pkl")
+            
+            if success:
+                dl_instance.set_credential(credential)
+                st.success(f"✅ {message}")
+                st.rerun()  # 刷新页面以清除登录状态
+            elif credential is None and "等待" in message:
+                # 需要继续轮询，使用 time.sleep + rerun
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error(f"❌ {message}")
+                return None
+        
         bilibili_username = dl_instance.get_credential_username()
         if bilibili_username:
             st.toast(f"登录成功，当前登录账号为：{bilibili_username}")

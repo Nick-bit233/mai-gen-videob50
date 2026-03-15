@@ -1,5 +1,5 @@
 from pytubefix import YouTube, Search
-from bilibili_api import login, user, search, video, Credential, sync, HEADERS
+from bilibili_api import login_v2, user, search, video, Credential, sync, HEADERS
 from utils.PageUtils import download_temp_image_to_static
 from typing import Tuple, Optional
 from abc import ABC, abstractmethod
@@ -600,10 +600,148 @@ class PurePytubefixDownloader(Downloader):
             traceback.print_exc()
             return None
 
+class BilibiliQrCodeLoginSession:
+    """
+    Bilibili 二维码登录会话，用于 Streamlit 等异步环境
+    
+    使用方式：
+    1. 调用 generate_qrcode() 获取二维码图片
+    2. 在 UI 中显示二维码
+    3. 循环调用 check_state() 检查登录状态
+    4. 登录成功后调用 get_credential() 获取凭证
+    """
+    def __init__(self):
+        self._qr_login = None
+        self._generated = False
+    
+    def generate_qrcode(self):
+        """生成二维码，返回 PIL Image 对象"""
+        async def _generate():
+            self._qr_login = login_v2.QrCodeLogin(platform=login_v2.QrCodeLoginChannel.WEB)
+            await self._qr_login.generate_qrcode()
+            self._generated = True
+            return self._qr_login.get_qrcode_picture().get_image()
+        return sync(_generate())
+    
+    def check_state(self):
+        """
+        检查登录状态
+        返回: (state, message)
+            state: 'waiting' | 'scanned' | 'confirmed' | 'success' | 'timeout'
+        """
+        if not self._generated or not self._qr_login:
+            return ('error', '请先生成二维码')
+        
+        # 检查是否已经完成
+        if self._qr_login.has_done():
+            return ('success', '登录成功！')
+        
+        state = sync(self._qr_login.check_state())
+        
+        if state == login_v2.QrCodeLoginEvents.DONE:
+            return ('success', '登录成功！')
+        elif state == login_v2.QrCodeLoginEvents.TIMEOUT:
+            return ('timeout', '二维码已过期，请刷新重试')
+        elif state == login_v2.QrCodeLoginEvents.SCAN:
+            return ('scanned', '已扫描，请在手机上确认登录')
+        elif state == login_v2.QrCodeLoginEvents.CONF:
+            return ('confirmed', '已确认，正在登录...')
+        else:
+            return ('waiting', '等待扫码...')
+    
+    def get_credential(self):
+        """获取登录凭证，仅在登录成功后有效"""
+        if not self._qr_login or not self._qr_login.has_done():
+            return None
+        return self._qr_login.get_credential()
+
+
+def streamlit_login_bilibili(credential_path="cred_datas/bilibili_cred.pkl"):
+    """
+    在 Streamlit 中进行 Bilibili 登录
+    
+    返回: (success: bool, credential: Credential|None, message: str)
+    
+    注意：此函数应该在 Streamlit 页面中调用，它会：
+    1. 显示二维码
+    2. 轮询检查登录状态
+    3. 登录成功后保存凭证
+    """
+    import streamlit as st
+    from PIL import Image
+    
+    # 创建登录会话
+    if 'bilibili_login_session' not in st.session_state:
+        st.session_state.bilibili_login_session = BilibiliQrCodeLoginSession()
+    
+    session = st.session_state.bilibili_login_session
+    
+    # 显示二维码
+    qr_placeholder = st.empty()
+    status_placeholder = st.empty()
+    
+    # 生成二维码
+    if 'bilibili_qr_image' not in st.session_state:
+        try:
+            qr_image = session.generate_qrcode()
+            st.session_state.bilibili_qr_image = qr_image
+        except Exception as e:
+            return (False, None, f"生成二维码失败: {str(e)}")
+    
+    # 显示二维码图片
+    qr_placeholder.image(st.session_state.bilibili_qr_image, caption="使用哔哩哔哩客户端扫描此二维码")
+    
+    # 检查登录状态
+    state, message = session.check_state()
+    status_placeholder.info(f"📱 {message}")
+    
+    if state == 'success':
+        # 登录成功
+        credential = session.get_credential()
+        
+        # 验证凭证
+        try:
+            credential.raise_for_no_bili_jct()
+            credential.raise_for_no_sessdata()
+        except Exception as e:
+            # 清理会话
+            del st.session_state.bilibili_login_session
+            if 'bilibili_qr_image' in st.session_state:
+                del st.session_state.bilibili_qr_image
+            return (False, None, f"凭证验证失败: {str(e)}")
+        
+        # 获取用户名
+        username = sync(user.get_self_info(credential))['name']
+        
+        # 保存凭证
+        os.makedirs(os.path.dirname(credential_path), exist_ok=True)
+        with open(credential_path, 'wb') as f:
+            pickle.dump(credential, f)
+        
+        # 清理会话
+        del st.session_state.bilibili_login_session
+        if 'bilibili_qr_image' in st.session_state:
+            del st.session_state.bilibili_qr_image
+        
+        return (True, credential, f"登录成功！账号：{username}")
+    
+    elif state == 'timeout':
+        # 清理过期的二维码
+        if 'bilibili_qr_image' in st.session_state:
+            del st.session_state.bilibili_qr_image
+        del st.session_state.bilibili_login_session
+        return (False, None, "二维码已过期，请刷新页面重试")
+    
+    else:
+        # 等待中，返回 None 表示需要继续轮询
+        return (False, None, message)
+
+
 class BilibiliDownloader(Downloader):
-    def __init__(self, proxy=None, no_credential=False, credential_path="cred_datas/bilibili_cred.pkl", search_max_results=3):
+    def __init__(self, proxy=None, no_credential=False, credential_path="cred_datas/bilibili_cred.pkl", search_max_results=3, skip_login=False):
         self.proxy = proxy
         self.search_max_results = search_max_results
+        self.credential_path = credential_path
         
         if no_credential:
             self.credential = None
@@ -613,8 +751,14 @@ class BilibiliDownloader(Downloader):
         if self.credential:
             return
         
+        # 如果跳过登录（用于 Streamlit 等异步环境），则不自动登录
+        if skip_login:
+            self.credential = None
+            return
+        
+        # 原有的自动登录逻辑（使用终端打印二维码）
         for attempt in range(MAX_LOGIN_RETRIES):
-            log_succ = self.log_in(credential_path)
+            log_succ = self._login_terminal(credential_path)
             if log_succ:
                 break  # 登录成功，退出循环
             print(f"正在尝试第 {attempt + 1} 次重新登录...")
@@ -624,21 +768,64 @@ class BilibiliDownloader(Downloader):
             return None
         return sync(user.get_self_info(self.credential))['name']
 
-    def log_in(self, credential_path):
-        # credential = login.login_with_qrcode_term() # 在终端打印二维码登录
-        credential = login.login_with_qrcode() # 使用tkinter GUI显示二维码登录
-        try:
-            credential.raise_for_no_bili_jct() # 判断是否成功
-            credential.raise_for_no_sessdata() # 判断是否成功
-        except:
-            print("#####【登录失败，请重试】")
+    def _login_terminal(self, credential_path):
+        """
+        使用终端打印二维码的方式登录（fallback 方案）
+        """
+        import qrcode_terminal
+        
+        async def _login():
+            qr = login_v2.QrCodeLogin(platform=login_v2.QrCodeLoginChannel.WEB)
+            await qr.generate_qrcode()
+            
+            # 获取二维码链接并在终端打印
+            qr_url = qr.get_qrcode_url()
+            print("\n请使用哔哩哔哩客户端扫描以下二维码登录：")
+            qrcode_terminal.qrcode(qr_url)
+            print("\n或访问以下链接扫码：")
+            print(qr_url)
+            
+            # 轮询检查登录状态
+            while True:
+                if qr.has_done():
+                    return qr.get_credential()
+                
+                state = await qr.check_state()
+                
+                if state == login_v2.QrCodeLoginEvents.DONE:
+                    return qr.get_credential()
+                elif state == login_v2.QrCodeLoginEvents.TIMEOUT:
+                    print("\n二维码已过期")
+                    return None
+                elif state == login_v2.QrCodeLoginEvents.SCAN:
+                    print("\r已扫描，请在手机上确认登录...", end="", flush=True)
+                elif state == login_v2.QrCodeLoginEvents.CONF:
+                    print("\r已确认，正在登录...", end="", flush=True)
+                
+                await asyncio.sleep(1)
+        
+        credential = sync(_login())
+        
+        if credential is None:
+            print("\n#####【登录失败，请重试】")
             return False
-        print(f"#####【登录bilibili成功，登录账号为：{sync(user.get_self_info(credential))['name']}】")
+        
+        try:
+            credential.raise_for_no_bili_jct()
+            credential.raise_for_no_sessdata()
+        except:
+            print("\n#####【登录失败，请重试】")
+            return False
+        
+        print(f"\n#####【登录bilibili成功，登录账号为：{sync(user.get_self_info(credential))['name']}】")
         self.credential = credential
-        # 缓存凭证
         with open(credential_path, 'wb') as f:
             pickle.dump(credential, f)
         return True
+    
+    def set_credential(self, credential):
+        """设置凭证（用于 Streamlit 登录后手动设置）"""
+        self.credential = credential
     
     def search_video(self, keyword): 
         # 并发搜索50个视频可能被风控，使用同步方法逐个搜索
