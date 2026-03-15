@@ -7,9 +7,9 @@ setlocal enabledelayedexpansion
 :: ============================================
 
 set VERSION=v1.1
-set PYTHON_VERSION=3.12.8
+set PYTHON_VERSION=3.12.10
 set PYTHON_EMBED=python-%PYTHON_VERSION%-embed-amd64
-set RUNTIME_DIR=runtime_%VERSION%
+set RUNTIME_DIR=..\tests\runtime_%VERSION%
 
 echo.
 echo ============================================
