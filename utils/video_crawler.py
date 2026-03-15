@@ -167,15 +167,17 @@ async def bilibili_download(bvid, credential, output_name, output_path, high_res
                                                no_dolby_video=True, no_dolby_audio=True, no_hdr=True)
 
     output_file = os.path.join(output_path, f"{output_name}.mp4")
-    if detecter.check_flv_stream() == True:
-        # FLV 流下载
-        await download_url_from_bili(streams[0].url, "flv_temp.flv", "FLV 音视频")
+    
+    # 新版 API 使用 check_flv_mp4_stream() 替代 check_flv_stream()
+    if detecter.check_flv_mp4_stream():
+        # FLV/MP4 流下载（音视频合并）
+        await download_url_from_bili(streams[0].url, "flv_temp.flv", "FLV/MP4 音视频")
         os.system(f'{FFMPEG_PATH} -y -i flv_temp.flv {output_file} {REDIRECT}')
         # 删除临时文件
         os.remove("flv_temp.flv")
         print(f"下载完成，存储为: {output_name}.mp4")
     else:
-        # MP4 流下载
+        # DASH 流下载（音视频分离）
         await download_url_from_bili(streams[0].url, "video_temp.m4s", "视频流")
         await download_url_from_bili(streams[1].url, "audio_temp.m4s", "音频流")
         print(f"下载完成，正在合并视频和音频")
