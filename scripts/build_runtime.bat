@@ -71,17 +71,27 @@ if "%PTH_FILE%"=="" (
 )
 
 echo       Found: %PTH_FILE%
-echo       Adding pip paths...
+echo       Modifying to enable pip...
 
-:: 备份原文件并添加新内容
-copy %PTH_FILE% %PTH_FILE%.bak >nul
+:: 修改 ._pth 文件：保留原内容，取消 import site 注释，添加 Lib 路径
 (
-    echo %PYTHON_VERSION%
+    for /f "usebackq delims=" %%a in ("%PTH_FILE%") do (
+        set "line=%%a"
+        if "!line!"=="#import site" (
+            echo import site
+        ) else if "!line!"=="# import site" (
+            echo import site
+        ) else (
+            echo !line!
+        )
+    )
     echo Lib
     echo Lib\site-packages
-    echo.
-    echo import site
-) > %PTH_FILE%
+) > %PTH_FILE%.new
+move /y %PTH_FILE%.new %PTH_FILE% >nul
+
+echo       Done. New %PTH_FILE% content:
+type %PTH_FILE%
 
 :: 5. 下载并安装 pip
 echo [5/7] Installing pip...
@@ -114,7 +124,6 @@ for /f %%i in ('python.exe -m pip list --format=freeze ^| find /c /v ""') do ech
 echo.
 echo [7/7] Cleaning up...
 del get-pip.py 2>nul
-del %PTH_FILE%.bak 2>nul
 
 :: 8. 打包
 echo       Creating archive...
