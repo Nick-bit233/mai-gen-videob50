@@ -4,6 +4,7 @@ import traceback
 import io
 
 from utils.PageUtils import load_music_metadata
+from utils.ChartUtils import try_parse_difficulty
 from PIL import Image, ImageDraw, ImageFont
 
 
@@ -103,42 +104,66 @@ class MaiImageGenerater:
         self.font_path = self.asset_paths.get("ui_font", "static/assets/fonts/FOT_NewRodin_Pro_EB.otf")
 
 
-    def DsLoader(self, level: int = 0, Ds: float = 0.0):
-        if Ds >= 20 or Ds < 1:
-            raise Exception("定数无效")
+    def DsLoader(self, level: int = 0, Ds=0.0):
+        """
+        加载定数显示图片
+        
+        Args:
+            level: 难度等级 (0-4)，用于选择数字颜色
+            Ds: 定数值，可以是 float 或字符串（如 14.9, "?", "暂无"）
+        
+        Returns:
+            PIL.Image: 定数显示图片
+        """
+        # 尝试解析为数字
+        ds_val = try_parse_difficulty(Ds)
+        
+        if ds_val is not None:
+            # 数字定数，使用原有的数字图片渲染逻辑
+            if ds_val >= 20 or ds_val < 1:
+                raise Exception("定数无效")
 
-        __ds = str(Ds)
+            __ds = str(ds_val)
 
-        # 根据小数点拆分字符串
-        if '.' in __ds:
-            IntegerPart, DecimalPart = __ds.split('.')
+            # 根据小数点拆分字符串
+            if '.' in __ds:
+                IntegerPart, DecimalPart = __ds.split('.')
+            else:
+                IntegerPart, DecimalPart = __ds, '0'
+            Background = Image.new('RGBA', (180, 120), (0, 0, 0, 0))
+            Background.convert("RGBA")
+
+            # 加载数字
+            if len(IntegerPart) == 1:
+                with Image.open(f'{self.image_root_path}/Numbers/{str(level)}/{IntegerPart}.png') as Number:
+                    Background.paste(Number, (48, 60), Number)
+            else:
+                with Image.open(f'{self.image_root_path}/Numbers/{str(level)}/1.png') as FirstNumber:
+                    Background.paste(FirstNumber, (18, 60), FirstNumber)
+                with Image.open(f'{self.image_root_path}/Numbers/{str(level)}/{IntegerPart[1]}.png') as SecondNumber:
+                    Background.paste(SecondNumber, (48, 60), SecondNumber)
+            if len(DecimalPart) == 1:
+                with Image.open(f'{self.image_root_path}/Numbers/{str(level)}/{DecimalPart}.png') as Number:
+                    Number = Number.resize((32, 40), Image.LANCZOS)
+                    Background.paste(Number, (100, 79), Number)
+            else:
+                raise Exception("定数无效")
+
+            # 加载加号
+            if int(DecimalPart) >= 6:
+                with Image.open(f"{self.image_root_path}/Numbers/{str(level)}/plus.png") as PlusMark:
+                    Background.paste(PlusMark, (75, 50), PlusMark)
+
+            return Background
         else:
-            IntegerPart, DecimalPart = __ds, '0'
-        Background = Image.new('RGBA', (180, 120), (0, 0, 0, 0))
-        Background.convert("RGBA")
-
-        # 加载数字
-        if len(IntegerPart) == 1:
-            with Image.open(f'{self.image_root_path}/Numbers/{str(level)}/{IntegerPart}.png') as Number:
-                Background.paste(Number, (48, 60), Number)
-        else:
-            with Image.open(f'{self.image_root_path}/Numbers/{str(level)}/1.png') as FirstNumber:
-                Background.paste(FirstNumber, (18, 60), FirstNumber)
-            with Image.open(f'{self.image_root_path}/Numbers/{str(level)}/{IntegerPart[1]}.png') as SecondNumber:
-                Background.paste(SecondNumber, (48, 60), SecondNumber)
-        if len(DecimalPart) == 1:
-            with Image.open(f'{self.image_root_path}/Numbers/{str(level)}/{DecimalPart}.png') as Number:
-                Number = Number.resize((32, 40), Image.LANCZOS)
-                Background.paste(Number, (100, 79), Number)
-        else:
-            raise Exception("定数无效")
-
-        # 加载加号
-        if int(DecimalPart) >= 6:
-            with Image.open(f"{self.image_root_path}/Numbers/{str(level)}/plus.png") as PlusMark:
-                Background.paste(PlusMark, (75, 50), PlusMark)
-
-        return Background
+            # 非数字定数，使用文字渲染
+            ds_str = str(Ds) if Ds else "?"
+            Background = Image.new('RGBA', (180, 120), (0, 0, 0, 0))
+            
+            # 使用 TextDraw 渲染文字
+            Background = self.TextDraw(Background, ds_str, (90, 60))
+            
+            return Background
 
     def TypeLoader(self, Type: int = 0):
         _type = Type  # 0 for SD, 1 for DX
@@ -382,29 +407,62 @@ class ChuniImageGenerater:
         with Image.open(f"{self.image_root_path}/Frames/{level_index}.png") as _frame:
             return _frame.copy()
 
-    def LevelLoader(self, ds_cur: float, ds_next: float = 0.0):
-        # TODO: FLAG依据判断以哪个版本的定数为准
-        ds = ds_cur if ds_cur > 1 else ds_next
-        # 根据小数点拆分字符串
-        __ds = str(ds)
-        if '.' in __ds:
-            level, decimal = __ds.split('.')
-        else:
-            level, decimal = __ds, '0'
-        level_number_img = Image.new('RGBA', (108, 88), (0, 0, 0, 0))
+    def LevelLoader(self, ds_cur, ds_next=None):
+        """
+        加载等级显示图片
+        
+        Args:
+            ds_cur: 当前版本定数，可以是 float 或字符串
+            ds_next: 下一版本定数，可以是 float 或字符串（可选）
+        
+        Returns:
+            PIL.Image: 等级显示图片
+        """
+        # 处理 ds_next 为 None 的情况
+        if ds_next is None:
+            ds_next = 0.0
+        
+        # 尝试解析为数字
+        ds_cur_val = try_parse_difficulty(ds_cur)
+        ds_next_val = try_parse_difficulty(ds_next)
+        
+        # 如果当前版本定数无法解析，尝试使用下一版本
+        ds = ds_cur_val if ds_cur_val is not None and ds_cur_val > 1 else ds_next_val
+        
+        if ds is not None:
+            # 数字定数，使用数字渲染逻辑
+            # 根据小数点拆分字符串
+            __ds = str(ds)
+            if '.' in __ds:
+                level, decimal = __ds.split('.')
+            else:
+                level, decimal = __ds, '0'
+            level_number_img = Image.new('RGBA', (108, 88), (0, 0, 0, 0))
 
-        # 绘制数字
-        level_number_img = self.TextDraw(level_number_img, level, (54, 46), 
-                                         font_path=self.level_font_path,
-                                         font_size=60, font_color=(255, 255, 255), h_align="center")
-
-        if int(decimal) >= 5:
-            # 绘制加号
-            level_number_img = self.TextDraw(level_number_img, '+', (92, 8), 
+            # 绘制数字
+            level_number_img = self.TextDraw(level_number_img, level, (54, 46), 
                                              font_path=self.level_font_path,
-                                             font_size=42, font_color=(255, 255, 255), h_align="center")
+                                             font_size=60, font_color=(255, 255, 255), h_align="center")
 
-        return level_number_img
+            if int(decimal) >= 5:
+                # 绘制加号
+                level_number_img = self.TextDraw(level_number_img, '+', (92, 8), 
+                                                 font_path=self.level_font_path,
+                                                 font_size=42, font_color=(255, 255, 255), h_align="center")
+
+            return level_number_img
+        else:
+            # 非数字定数，使用文字渲染
+            # 优先显示当前版本定数字符串
+            ds_str = str(ds_cur) if ds_cur else "?"
+            
+            # 限制显示长度，过长的字符串缩小字体
+            level_number_img = Image.new('RGBA', (108, 88), (0, 0, 0, 0))
+            font_size = 60 if len(ds_str) <= 3 else 40
+            level_number_img = self.TextDraw(level_number_img, ds_str, (54, 46), 
+                                             font_path=self.level_font_path,
+                                             font_size=font_size, font_color=(255, 255, 255), h_align="center")
+            return level_number_img
         
     def ScoreLoader(self, score: int = 0):
         if score < 0 or score > 1010000:

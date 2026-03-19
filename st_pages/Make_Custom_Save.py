@@ -118,10 +118,9 @@ def create_empty_record(chart_data, index, game_type="maimai"):
             }
     
     # 自动填充理论值成绩
-    try:
-        ds = float(chart_data.get('difficulty', 0))
-    except (ValueError, TypeError):
-        ds = 0.0
+    # 注意：difficulty 现在可以是字符串（如 "14.9", "?", "暂无"）
+    # compute_rating 和 compute_chunithm_rating 会自动处理非数字情况
+    ds = chart_data.get('difficulty', 0)
 
     match game_type:
         case "maimai":
@@ -555,14 +554,12 @@ def render_manual_override_ui(container, external_placeholder):
                 else:
                     # 计算 rating（如果需要）
                     if auto_calc_rating:
-                        try:
-                            ds = float(complete_data['chart_data'].get('difficulty', 0))
-                            if game_type == 'maimai':
-                                complete_data['dx_rating'] = compute_rating(ds=ds, score=complete_data.get('achievement', 0))
-                            else:
-                                complete_data['chuni_rating'] = compute_chunithm_rating(ds=ds, score=complete_data.get('achievement', 0))
-                        except (ValueError, TypeError):
-                            pass
+                        # 注意：difficulty 现在可以是字符串，compute_rating 会自动处理
+                        ds = complete_data['chart_data'].get('difficulty', 0)
+                        if game_type == 'maimai':
+                            complete_data['dx_rating'] = compute_rating(ds=ds, score=complete_data.get('achievement', 0))
+                        else:
+                            complete_data['chuni_rating'] = compute_chunithm_rating(ds=ds, score=complete_data.get('achievement', 0))
                     
                     # 保存记录 - 使用 _mo_editing_idx 确定操作目标
                     editing_idx = st.session_state._mo_editing_idx
@@ -703,17 +700,14 @@ def update_record_grid(grid, external_placeholder):
                     return "Invalid chart data occurs when trying to save edited records."
 
             # 自动计算和填充成绩相关信息
-            difficulty_val = chart_data.get('difficulty')
-            try:
-                ds = float(difficulty_val)
-            except (ValueError, TypeError):
-                ds = 0.0
+            # 注意：difficulty 现在可以是字符串，compute_rating 会自动处理
+            difficulty_val = chart_data.get('difficulty', 0)
             if game_type == "maimai":
                 # 计算dx_rating
-                r['dx_rating'] = compute_rating(ds=ds, score=r.get('achievement', 0.0))
+                r['dx_rating'] = compute_rating(ds=difficulty_val, score=r.get('achievement', 0.0))
             if game_type == "chunithm":
                 # 计算chuni_rating
-                r['chuni_rating'] = compute_chunithm_rating(ds=ds, score=r.get('achievement', 0))
+                r['chuni_rating'] = compute_chunithm_rating(ds=difficulty_val, score=r.get('achievement', 0))
             
             # 确保play_count字段被保留（deepcopy应该已经保留了，但这里明确确保）
             if 'play_count' not in r and 'playCount' in r:
