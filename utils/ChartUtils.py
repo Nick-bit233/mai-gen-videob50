@@ -112,27 +112,39 @@ def validate_required_field(value: Any, field_name: str) -> List[str]:
     return errors
 
 
-def try_parse_difficulty(difficulty_str: str) -> Optional[float]:
+def try_parse_difficulty(difficulty) -> Optional[float]:
     """
-    尝试将定数字符串解析为浮点数
+    尝试将定数解析为浮点数
     
     Args:
-        difficulty_str: 定数字符串，如 "14.9", "15.0", "?", "暂无"
+        difficulty: 定数值，可以是 float、int 或字符串（如 "14.9", "15.0", "?", "暂无"）
     
     Returns:
         解析成功返回浮点数，失败返回 None
     """
-    if not difficulty_str or not difficulty_str.strip():
+    if difficulty is None:
         return None
     
-    try:
-        val = float(difficulty_str.strip())
-        # 验证范围
-        if val < 0 or val > 20:
+    # 已经是数值类型
+    if isinstance(difficulty, (int, float)):
+        if difficulty < 0 or difficulty > 20:
             return None
-        return val
-    except (ValueError, TypeError):
-        return None
+        return float(difficulty)
+    
+    # 字符串解析
+    if isinstance(difficulty, str):
+        if not difficulty.strip():
+            return None
+        try:
+            val = float(difficulty.strip())
+            # 验证范围
+            if val < 0 or val > 20:
+                return None
+            return val
+        except (ValueError, TypeError):
+            return None
+    
+    return None
 
 
 def convert_and_validate_difficulty(difficulty_str: str) -> Tuple[Optional[str], List[str]]:
