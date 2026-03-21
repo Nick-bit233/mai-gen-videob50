@@ -750,10 +750,10 @@ def update_record_grid(grid, external_placeholder):
                     st.session_state.cur_search_level_index = level_index
                     if level_index >= 4:
                         extra_tips = f"（注：如果乐曲不存在{level_label}难度，将不会显示在搜索栏中，请切换到其他难度）"
-                level_label_tips.markdown(f"> 当前搜索的谱面难度: **{
-                    level_label_lists.get(
-                        cur_game_type, ['BASIC', 'ADVANCED', 'EXPERT', 'MASTER', 'RE:MASTER'])[st.session_state.cur_search_level_index]
-                    }** {extra_tips}"
+                current_level_label =  level_label_lists.get(
+                        cur_game_type, ['BASIC', 'ADVANCED', 'EXPERT', 'MASTER', 'RE:MASTER']) [st.session_state.cur_search_level_index]
+                level_label_tips.markdown(
+                    f"> 当前搜索的谱面难度: **{ current_level_label }** {extra_tips}"
                 )
 
             col1, col2 = st.columns([3, 1])
