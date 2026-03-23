@@ -1,9 +1,7 @@
 from typing import Dict, List, Optional, Tuple, Any, Union
-from unittest import case
 from db_utils.DatabaseManager import DatabaseManager
-from utils.DataUtils import get_jacket_image_from_url, query_songs_metadata, format_record_tag, get_valid_time_range, get_level_value_from_chart_meta
+from utils.DataUtils import query_songs_metadata, format_record_tag, get_valid_time_range, get_level_value_from_chart_meta
 from utils.AssetManager import AssetManager
-from PIL import Image
 import os
 import json
 from datetime import datetime
@@ -391,7 +389,7 @@ class DatabaseDataHandler:
                     'artist': artist,
                     'type': record['chart_type'],
                     'level_index': record['level_index'],
-                    'ds': float(record['difficulty']),
+                    'ds': record['difficulty'],  # 支持字符串定数
                     'achievements': f"{record['achievement']:.4f}",
                     'fc': record['fc_status'],
                     'fs': record['fs_status'],
@@ -414,15 +412,17 @@ class DatabaseDataHandler:
                 metadata = query_songs_metadata(game_type, title, artist)
                 chart_info = metadata.get('charts_info', [])
                 # 获取定数信息（从元数据）
+                ds_value_cur = None
+                ds_value_next = None
                 for chart_meta in chart_info:
                     chart_level_index = chart_meta.get('difficulty', -1)
                     if chart_level_index == level_index:
                         ds_value_cur = get_level_value_from_chart_meta(chart_meta)
                         ds_value_next = get_level_value_from_chart_meta(chart_meta, latest_first=True)
                 # 如果定数信息不存在，尝试使用record中的difficulty字段（可能来自用户自定义的数据）
-                if not ds_value_cur:
-                    ds_custom = float(record.get('difficulty', 0.0))
-                    ds_value_refomated = ds_custom if ds_custom else 0.0
+                if ds_value_cur is None:
+                    ds_value_cur = record.get('difficulty', "--")
+                ds_value_refomated = ds_value_cur if ds_value_cur is not None else "--"
                 reformat_data = {
                     'chart_id': record.get('chart_id'),
                     'song_id': song_id,
@@ -480,7 +480,7 @@ class DatabaseDataHandler:
                     'artist': artist,
                     'type': record['chart_type'],
                     'level_index': record['level_index'],
-                    'ds': float(record['difficulty']),
+                    'ds': record['difficulty'],  # 支持字符串定数
                     'achievements': f"{record['achievement']:.4f}", # Format as string with 4 decimal places
                     'fc': record['fc_status'],
                     'fs': record['fs_status'],
@@ -503,11 +503,17 @@ class DatabaseDataHandler:
                 metadata = query_songs_metadata(game_type, title, artist)
                 chart_info = metadata.get('charts_info', [])
                 # 获取定数信息
+                ds_value_cur = None
+                ds_value_next = None
                 for chart_meta in chart_info:
                     chart_level_index = chart_meta.get('difficulty', -1)
                     if chart_level_index == level_index:
                         ds_value_cur = get_level_value_from_chart_meta(chart_meta)
                         ds_value_next = get_level_value_from_chart_meta(chart_meta, latest_first=True)
+                # 如果定数信息不存在，尝试使用record中的difficulty字段（可能来自用户自定义的数据）
+                if ds_value_cur is None:
+                    ds_value_cur = record.get('difficulty', "--")
+                ds_value_refomated = ds_value_cur if ds_value_cur is not None else "--"
                 
                 reformat_data = {
                     'chart_id': record.get('chart_id'),
@@ -516,7 +522,7 @@ class DatabaseDataHandler:
                     'artist': artist,
                     'type': record.get('chart_type', 0),
                     'level_index': level_index,
-                    'ds_cur': ds_value_cur,
+                    'ds_cur': ds_value_refomated,
                     'ds_next': ds_value_next,
                     'score': int(record.get('achievement', 0)), # Format as integer score
                     'combo_type': record.get('fc_status', 'none'), 

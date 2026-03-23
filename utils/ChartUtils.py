@@ -19,13 +19,12 @@ import re
 MAIMAI_CHART_TYPE_OPTIONS = {
     "Standard (标准)": 0,
     "Deluxe (DX)": 1,
-    "Utage (宴会场)": 2,
 }
 
 # chunithm 谱面类型
 CHUNITHM_CHART_TYPE_OPTIONS = {
     "Normal (标准)": 0,
-    "WORLD'S END": 1,
+    # "WORLD'S END": 1, # 暂未支持
 }
 
 # maimai 难度
@@ -35,6 +34,7 @@ MAIMAI_LEVEL_INDEX_OPTIONS = {
     "EXPERT": 2,
     "MASTER": 3,
     "Re:MASTER": 4,
+    # "Utage": 10, # 暂未支持
 }
 
 # chunithm 难度
@@ -44,7 +44,7 @@ CHUNITHM_LEVEL_INDEX_OPTIONS = {
     "EXPERT": 2,
     "MASTER": 3,
     "ULTIMA": 4,
-    "WORLD'S END": 5,
+    # "WORLD'S END": 5, # 暂未支持
 }
 
 # maimai FC 状态
@@ -112,15 +112,55 @@ def validate_required_field(value: Any, field_name: str) -> List[str]:
     return errors
 
 
+def try_parse_difficulty(difficulty) -> Optional[float]:
+    """
+    尝试将定数解析为浮点数
+    
+    Args:
+        difficulty: 定数值，可以是 float、int 或字符串（如 "14.9", "15.0", "?", "暂无"）
+    
+    Returns:
+        解析成功返回浮点数，失败返回 None
+    """
+    if difficulty is None:
+        return None
+    
+    # 已经是数值类型
+    if isinstance(difficulty, (int, float)):
+        if difficulty < 0 or difficulty > 20:
+            return None
+        return float(difficulty)
+    
+    # 字符串解析
+    if isinstance(difficulty, str):
+        if not difficulty.strip():
+            return None
+        try:
+            val = float(difficulty.strip())
+            # 验证范围
+            if val < 0 or val > 20:
+                return None
+            return val
+        except (ValueError, TypeError):
+            return None
+    
+    return None
+
+
 def convert_and_validate_difficulty(difficulty_str: str) -> Tuple[Optional[str], List[str]]:
     """
     将定数字符串转换为数据库存储格式
     
     Args:
-        difficulty_str: 用户输入的定数字符串，如 "14.9", "15.0"
+        difficulty_str: 用户输入的定数字符串，如 "14.9", "15.0", "?", "暂无"
     
     Returns:
         (转换后的定数字符串, 错误列表)
+    
+    Note:
+        - 允许任意非空字符串输入
+        - 图片生成时会自动判断是否为数字，非数字时使用文字渲染
+        - Rating 计算时非数字定数返回 0
     """
     errors = []
     
@@ -129,24 +169,19 @@ def convert_and_validate_difficulty(difficulty_str: str) -> Tuple[Optional[str],
     
     difficulty_str = difficulty_str.strip()
     
-    try:
-        # 尝试解析为浮点数
-        difficulty_val = float(difficulty_str)
-        
-        # 验证范围（假设定数范围是 1.0 - 15.0+）
-        if difficulty_val < 0:
-            errors.append(f"定数不能为负数: {difficulty_val}")
-            return None, errors
-        if difficulty_val > 20:
-            errors.append(f"定数超出合理范围: {difficulty_val}")
-            return None, errors
-        
-        # 存储为文本格式
+    # 尝试解析为浮点数进行校验（但不强制要求）
+    difficulty_val = try_parse_difficulty(difficulty_str)
+    
+    if difficulty_val is not None:
+        # 是有效数字，规范化存储格式
         return str(difficulty_val), errors
-        
-    except ValueError:
-        errors.append(f"定数格式错误: '{difficulty_str}' 不是有效的数字")
-        return None, errors
+    else:
+        # 非数字字符串，直接存储原字符串
+        # 限制长度防止过长
+        if len(difficulty_str) > 20:
+            errors.append(f"定数字符串过长: {len(difficulty_str)} 字符（最大 20 字符）")
+            return None, errors
+        return difficulty_str, errors
 
 
 def convert_and_validate_achievement(achievement_str: str, game_type: str) -> Tuple[Optional[float], List[str]]:

@@ -1,5 +1,31 @@
 from utils.PageUtils import load_music_metadata
 
+
+def safe_parse_difficulty(ds) -> float:
+    """
+    安全解析定数值，支持字符串或数值输入
+    
+    Args:
+        ds: 定数值，可以是 float、int 或字符串（如 "14.9", "?", "暂无"）
+    
+    Returns:
+        解析成功返回浮点数，失败返回 0.0
+    """
+    if ds is None:
+        return 0.0
+    
+    # 已经是数值类型
+    if isinstance(ds, (int, float)):
+        return float(ds) if ds > 0 else 0.0
+    
+    # 字符串解析
+    try:
+        val = float(str(ds).strip())
+        return val if val > 0 else 0.0
+    except (ValueError, TypeError):
+        return 0.0
+
+
 # Parse achievement to rate name
 def get_rate(achievement):
     rates = [
@@ -55,10 +81,37 @@ def get_factor(achievement):
 
 # Compute DX rating for a single song
 def compute_rating(ds, score):
-    return int(ds * min(score, 100.5) * get_factor(score))
+    """
+    计算 maimai DX 单曲 Rating
+    
+    Args:
+        ds: 定数（可以是数字或字符串，非数字时返回 0）
+        score: 达成率 (0-100.5)
+    
+    Returns:
+        Rating 整数值
+    """
+    ds_val = safe_parse_difficulty(ds)
+    if ds_val <= 0:
+        return 0
+    return int(ds_val * min(score, 100.5) * get_factor(score))
 
 # Compute Chunithm rating for a single song
 def compute_chunithm_rating(ds, score):
+    """
+    计算 Chunithm 单曲 Rating
+    
+    Args:
+        ds: 定数（可以是数字或字符串，非数字时返回 0.0）
+        score: 分数 (0-1010000)
+    
+    Returns:
+        Rating 浮点数值
+    """
+    ds_val = safe_parse_difficulty(ds)
+    if ds_val <= 0:
+        return 0.0
+    
     try:
         s = int(float(score))
     except Exception:
@@ -81,14 +134,14 @@ def compute_chunithm_rating(ds, score):
         if s >= mn and (mx is None or s < mx):
             typ = rule[0]
             if typ == 'fixed':
-                return round(ds + rule[1], 2)
+                return round(ds_val + rule[1], 2)
             if typ == 'func':
-                return round(rule[1](ds, s), 2)
+                return round(rule[1](ds_val, s), 2)
             # 'step'
             base, step_pts, step_val, cap = rule[1], rule[2], rule[3], rule[4]
             steps = max(0, (s - mn) // step_pts)
             extra = min(steps * step_val, cap - base)
-            return round(ds + base + extra, 2)
+            return round(ds_val + base + extra, 2)
 
     return 0.0
 
