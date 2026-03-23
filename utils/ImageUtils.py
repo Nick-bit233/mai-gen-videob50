@@ -1,9 +1,7 @@
 import json
 import os.path
 import traceback
-import io
 
-from utils.PageUtils import load_music_metadata
 from utils.ChartUtils import try_parse_difficulty
 from PIL import Image, ImageDraw, ImageFont
 
@@ -161,7 +159,8 @@ class MaiImageGenerater:
             Background = Image.new('RGBA', (180, 120), (0, 0, 0, 0))
             
             # 使用 TextDraw 渲染文字
-            Background = self.TextDraw(Background, ds_str, (90, 60))
+            font_size = 48 - - max(8, (len(ds_str) - 1) * 8)  # 字符数超过2时，每多一个字符字体缩小8
+            Background = self.TextDraw(Background, ds_str, (60, 90), stroke_width=2, stroke_fill=(0, 0, 0), font_size=font_size)
             
             return Background
 
@@ -246,14 +245,16 @@ class MaiImageGenerater:
             case _:
                 return Image.new('RGBA', (80, 80), (0, 0, 0, 0))
 
-    def TextDraw(self, Image, Text: str = "", Position: tuple = (0, 0)):
+    def TextDraw(self, Image, Text: str = "", Position: tuple = (0, 0), 
+                 fill_color=(255, 255, 255), font_path=None, font_size=32,
+                 stroke_width=0, stroke_fill=(0, 0, 0), align="left") -> Image.Image:
         # 文本居中绘制
 
         # 载入文字元素
         Draw = ImageDraw.Draw(Image)
-        FontPath = self.font_path
-        FontSize = 32
-        FontColor = (255, 255, 255)
+        FontPath = font_path if font_path else self.font_path
+        FontSize = font_size
+        FontColor = fill_color
         Font = ImageFont.truetype(FontPath, FontSize)
 
         # 获取文本的边界框
@@ -264,7 +265,7 @@ class MaiImageGenerater:
         # 计算文本左上角位置，使文本在中心点居中
         TextPosition = (Position[0] - TextWidth // 2, Position[1] - TextHeight // 2)
         # 绘制
-        Draw.text(TextPosition, Text, fill=FontColor, font=Font)
+        Draw.text(TextPosition, Text, fill=FontColor, font=Font, stroke_width=stroke_width, stroke_fill=stroke_fill, align=align)
         return Image
 
     def count_dx_stars(self, user_dx_score, max_dx_score):
@@ -458,7 +459,7 @@ class ChuniImageGenerater:
             
             # 限制显示长度，过长的字符串缩小字体
             level_number_img = Image.new('RGBA', (108, 88), (0, 0, 0, 0))
-            font_size = 60 if len(ds_str) <= 3 else 40
+            font_size = 60 - (max(10, len(ds_str) - 2) * 10)  # 字符数超过2时，每多一个字符字体缩小10
             level_number_img = self.TextDraw(level_number_img, ds_str, (54, 46), 
                                              font_path=self.level_font_path,
                                              font_size=font_size, font_color=(255, 255, 255), h_align="center")

@@ -19,13 +19,12 @@ import re
 MAIMAI_CHART_TYPE_OPTIONS = {
     "Standard (标准)": 0,
     "Deluxe (DX)": 1,
-    "Utage (宴会场)": 2,
 }
 
 # chunithm 谱面类型
 CHUNITHM_CHART_TYPE_OPTIONS = {
     "Normal (标准)": 0,
-    "WORLD'S END": 1,
+    # "WORLD'S END": 1, # 暂未支持
 }
 
 # maimai 难度
@@ -35,6 +34,7 @@ MAIMAI_LEVEL_INDEX_OPTIONS = {
     "EXPERT": 2,
     "MASTER": 3,
     "Re:MASTER": 4,
+    # "Utage": 10, # 暂未支持
 }
 
 # chunithm 难度
@@ -44,7 +44,7 @@ CHUNITHM_LEVEL_INDEX_OPTIONS = {
     "EXPERT": 2,
     "MASTER": 3,
     "ULTIMA": 4,
-    "WORLD'S END": 5,
+    # "WORLD'S END": 5, # 暂未支持
 }
 
 # maimai FC 状态

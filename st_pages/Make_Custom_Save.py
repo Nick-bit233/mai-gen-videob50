@@ -465,12 +465,10 @@ def render_manual_override_ui(container, external_placeholder):
             
             if game_type == 'maimai':
                 dx_rating = st.text_input("单曲Rating (maimai)", value=default_values['dx_rating'], key=f"mo_dx_rating{form_key_suffix}", disabled=auto_calc_rating,)
+                chuni_rating = '0'
             else:
                 chuni_rating = st.text_input("单曲Rating (chunithm)", value=default_values['chuni_rating'], key=f"mo_chuni_rating{form_key_suffix}", disabled=auto_calc_rating,)
-
-            if auto_calc_rating:
                 dx_rating = '0'
-                chuni_rating = '0'
             
             if game_type == 'maimai':
                 st.divider()
