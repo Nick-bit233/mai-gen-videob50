@@ -20,4 +20,3 @@ jieba>=0.42.1
 pilmoji>=2.0.5
 pyperclip>=1.11.0
 Pillow
-taichi>=1.7.0

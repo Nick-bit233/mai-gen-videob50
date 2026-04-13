@@ -78,7 +78,7 @@ def get_ffmpeg_encoder_args(codec: str, bitrate: str = "5000k") -> list:
 # ============================================================================
 
 class VideoFrameReader:
-    """使用 OpenCV 读取视频帧"""
+    """使用 OpenCV 读取视频帧，支持顺序读取模式避免随机 seek 开销"""
 
     def __init__(self, video_path: str):
         self.path = video_path
@@ -90,14 +90,33 @@ class VideoFrameReader:
         self.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.duration = self.frame_count / self.fps if self.fps > 0 else 0
+        self._current_pos = 0
 
-    def get_frame(self, time_sec: float) -> Optional[np.ndarray]:
-        """获取指定时间点的帧 (RGB uint8)"""
+    def seek_to(self, time_sec: float):
+        """定位到指定时间点，用于开始顺序读取前的初始定位"""
         frame_idx = int(time_sec * self.fps)
         frame_idx = max(0, min(frame_idx, self.frame_count - 1))
         self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+        self._current_pos = frame_idx
+
+    def read_next(self) -> Optional[np.ndarray]:
+        """顺序读取下一帧 (RGB uint8)，避免随机 seek 开销"""
         ret, frame = self.cap.read()
         if ret:
+            self._current_pos += 1
+            return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        return None
+
+    def get_frame(self, time_sec: float) -> Optional[np.ndarray]:
+        """获取指定时间点的帧 (RGB uint8)，需要随机访问时使用"""
+        frame_idx = int(time_sec * self.fps)
+        frame_idx = max(0, min(frame_idx, self.frame_count - 1))
+        if frame_idx != self._current_pos:
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            self._current_pos = frame_idx
+        ret, frame = self.cap.read()
+        if ret:
+            self._current_pos += 1
             return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         return None
 
@@ -534,16 +553,32 @@ def render_info_segment_accel(
         text_img = np.array(text_pil)
         text_pos = (int(0.16 * resolution[0]), int(0.18 * resolution[1]))
 
+        # 预拆分静态 RGBA 层（循环外一次性完成）
+        text_bg_rgb = text_bg_resized[:, :, :3].astype(np.float32)
+        text_bg_mask = text_bg_resized[:, :, 3].astype(np.float32) / 255.0 if text_bg_resized.shape[2] == 4 else None
+        text_img_rgb = text_img[:, :, :3].astype(np.float32)
+        text_img_mask = text_img[:, :, 3].astype(np.float32) / 255.0 if text_img.shape[2] == 4 else None
+        tx, ty = text_pos
+
         writer = FFmpegWriter(
             output_path, resolution[0], resolution[1],
             fps=fps, codec=codec, bitrate=bitrate,
             audio_path=intro_bgm_path, audio_start=0, audio_duration=duration
         )
 
+        # 使用顺序读取模式
+        bg_reader.seek_to(0)
+
         for frame_idx in range(total_frames):
             t = frame_idx / fps
             bg_t = t % bg_reader.duration if bg_reader.duration > 0 else 0
-            bg_frame = bg_reader.get_frame(bg_t)
+            # 循环播放背景视频时需要 seek 回起始点
+            if frame_idx > 0 and bg_t < (frame_idx - 1) / fps % bg_reader.duration:
+                bg_reader.seek_to(bg_t)
+            bg_frame = bg_reader.read_next()
+            if bg_frame is None:
+                bg_reader.seek_to(bg_t)
+                bg_frame = bg_reader.read_next()
             if bg_frame is None:
                 bg_frame = np.zeros((resolution[1], resolution[0], 3), dtype=np.uint8)
             else:
@@ -551,7 +586,6 @@ def render_info_segment_accel(
 
             if ti_available():
                 bg_frame = multiply_brightness(bg_frame, 0.75)
-                # overlay text_bg (RGBA)
                 composed = alpha_composite(bg_frame if bg_frame.shape[2] == 4 else
                     np.dstack([bg_frame, np.full(bg_frame.shape[:2], 255, dtype=np.uint8)]),
                     text_bg_resized, (0, 0))
@@ -559,8 +593,23 @@ def render_info_segment_accel(
                     np.dstack([composed[:, :, :3], np.full(composed.shape[:2], 255, dtype=np.uint8)]),
                     text_img, text_pos)
             else:
-                bg_frame = (bg_frame.astype(np.float32) * 0.75).clip(0, 255).astype(np.uint8)
-                composed = bg_frame
+                # CPU fallback: 完整合成（暗化背景 + text_bg + text）
+                composed = (bg_frame.astype(np.float32) * 0.75).clip(0, 255)
+                # 叠加 text_bg
+                if text_bg_mask is not None:
+                    h, w = text_bg_rgb.shape[:2]
+                    mask3 = text_bg_mask[:, :, np.newaxis]
+                    composed[:h, :w] = composed[:h, :w] * (1 - mask3) + text_bg_rgb * mask3
+                # 叠加 text
+                if text_img_mask is not None:
+                    th, tw = text_img_rgb.shape[:2]
+                    y1, y2 = ty, min(ty + th, composed.shape[0])
+                    x1, x2 = tx, min(tx + tw, composed.shape[1])
+                    sh, sw = y2 - y1, x2 - x1
+                    if sh > 0 and sw > 0:
+                        mask3 = text_img_mask[:sh, :sw, np.newaxis]
+                        composed[y1:y2, x1:x2] = composed[y1:y2, x1:x2] * (1 - mask3) + text_img_rgb[:sh, :sw] * mask3
+                composed = composed.clip(0, 255).astype(np.uint8)
 
             writer.write_frame(composed[:, :, :3])
 

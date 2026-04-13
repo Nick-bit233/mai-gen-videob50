@@ -57,7 +57,11 @@ def init_taichi(arch=None):
         try:
             ti.init(arch=backend_arch)
             # Taichi 可能静默回退到其他后端，检查实际使用的后端
-            actual_arch = ti.lang.impl.current_cfg().arch
+            # 注意：current_cfg() 是 Taichi 内部 API，通过 try/except 保护兼容性
+            try:
+                actual_arch = ti.lang.impl.current_cfg().arch
+            except AttributeError:
+                actual_arch = backend_arch  # API 变更时假设未回退
             if actual_arch != backend_arch and backend_arch != ti.cpu:
                 ti.reset()
                 continue
@@ -525,8 +529,12 @@ class FrameCompositor:
         self._out_buf = np.zeros((self.out_h, self.out_w, 3), dtype=np.uint8)
 
     def update_bg(self, bg: np.ndarray):
-        """动态背景（视频背景）时更新 bg"""
-        self.bg_f = bg[:, :, :3].astype(np.float32)
+        """动态背景（视频背景）时更新 bg，复用缓冲区避免每帧分配"""
+        src = bg[:, :, :3]
+        if self.bg_f.shape[:2] == src.shape[:2]:
+            np.copyto(self.bg_f, src, casting='unsafe')
+        else:
+            self.bg_f = src.astype(np.float32)
 
     def composite(self, video_frame: np.ndarray) -> np.ndarray:
         """

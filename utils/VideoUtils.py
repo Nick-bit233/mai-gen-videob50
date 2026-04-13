@@ -963,7 +963,9 @@ def render_complete_full_video(
                     video_bitrate=video_bitrate,
                     intro_configs=intro_configs,
                     ending_configs=ending_configs,
-                    force_render=True
+                    auto_add_transition=video_trans_enable,
+                    trans_time=video_trans_time,
+                    force_render=force_render
                 )
                 # 第二步：使用 FFmpeg 直接拼接（速度快，无需再次编码）
                 print("[AccelRenderer] 正在拼接完整视频...")
@@ -1077,21 +1079,17 @@ def combine_full_video_direct(video_clip_path):
         # 3. 拼接TS文件并输出为MP4
         output_path = os.path.join(video_clip_path, "final_output.mp4")
         
-        # 切换到视频目录执行拼接命令
-        current_dir = os.getcwd()
-        os.chdir(video_clip_path)
-        
+        # 使用 cwd 参数替代 os.chdir，避免进程级全局状态修改
         cmd = [
             'ffmpeg', '-y',
             '-f', 'concat',
             '-safe', '0',
-            '-i', 'ts_files.txt',  # 使用相对路径
+            '-i', 'ts_files.txt',
             '-c', 'copy',
-            'final_output.mp4'  # 使用相对路径
+            'final_output.mp4'
         ]
         
-        subprocess.run(cmd, check=True)
-        os.chdir(current_dir)  # 恢复原始工作目录
+        subprocess.run(cmd, check=True, cwd=video_clip_path)
         print("视频拼接完成")
         
     finally:
@@ -1100,6 +1098,11 @@ def combine_full_video_direct(video_clip_path):
             for file in os.listdir(temp_dir):
                 os.remove(os.path.join(temp_dir, file))
             os.rmdir(temp_dir)
+        # 清理列表文件
+        for txt_file in ['mp4_files.txt', 'ts_files.txt']:
+            txt_path = os.path.join(video_clip_path, txt_file)
+            if os.path.exists(txt_path):
+                os.remove(txt_path)
 
     return output_path
 
