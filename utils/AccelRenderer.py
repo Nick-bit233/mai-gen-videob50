@@ -263,9 +263,13 @@ def _load_image_rgb(path: str, target_size: tuple = None) -> np.ndarray:
 
 
 def compute_video_crop_and_size(game_type: str, video_reader: VideoFrameReader,
-                                resolution: tuple) -> Tuple[tuple, tuple, tuple]:
+                                resolution: tuple,
+                                visual_center: tuple = None) -> Tuple[tuple, tuple, tuple]:
     """
     计算视频的裁剪区域和目标尺寸（与 VideoUtils.edit_game_video_clip 逻辑一致）
+
+    Args:
+        visual_center: (x, y) 在缩放后帧空间中的视觉中心（来自圆检测），None 使用几何中心
 
     Returns:
         (target_size, crop_rect_on_resized, video_pos)
@@ -282,13 +286,16 @@ def compute_video_crop_and_size(game_type: str, video_reader: VideoFrameReader,
     if game_type == "maimai":
         # 裁剪为正方形
         if abs(target_h - target_w) > 2:
-            center_x = target_w / 2
+            center_x = visual_center[0] if visual_center else target_w / 2
             if target_w > target_h:
                 x1 = center_x - target_h / 2
                 x2 = center_x + target_h / 2
                 if x1 < 0:
                     x1 = 0
                     x2 = target_h
+                elif x2 > target_w:
+                    x2 = target_w
+                    x1 = target_w - target_h
                 crop_rect = (int(x1), 0, int(x2), target_h)
             else:
                 center_y = target_h / 2
@@ -329,7 +336,8 @@ def render_segment_accel(
     output_path: str,
     fps: int = 30,
     bitrate: str = "5000k",
-    codec: str = None
+    codec: str = None,
+    progress_callback=None
 ) -> dict:
     """
     使用 Taichi GPU + FFmpeg 硬件编码渲染单个视频片段。
@@ -425,8 +433,31 @@ def render_segment_accel(
 
         if 'video' in clip_config and clip_config['video'] and os.path.exists(clip_config.get('video', '')):
             video_reader = VideoFrameReader(clip_config['video'])
+
+            # 自动居中对齐：检测视觉中心（maimai 圆形检测）
+            visual_center = None
+            auto_center = clip_config.get('auto_center_align', True)
+            if auto_center and game_type == "maimai":
+                try:
+                    from utils.VisionUtils import find_circle_center
+                    start_time_tmp = clip_config.get('start', 0)
+                    end_time_tmp = clip_config.get('end', start_time_tmp + duration)
+                    mid_time = (start_time_tmp + end_time_tmp) / 2
+                    analysis_frame = video_reader.get_frame(mid_time)
+                    if analysis_frame is not None:
+                        raw_center = find_circle_center(
+                            analysis_frame, debug=False,
+                            name=clip_config.get('clip_title_name', 'clip'))
+                        if raw_center is not None:
+                            # 将原始帧坐标转换到缩放后帧空间
+                            h_resize_ratio = 0.5
+                            scale = int(h_resize_ratio * resolution[1]) / video_reader.height
+                            visual_center = (raw_center[0] * scale, raw_center[1] * scale)
+                except Exception as e:
+                    print(f"[AccelRenderer] Warning: 自动居中检测失败: {e}")
+
             target_video_size, crop_rect, video_pos = compute_video_crop_and_size(
-                game_type, video_reader, resolution
+                game_type, video_reader, resolution, visual_center=visual_center
             )
         
         start_time = clip_config.get('start', 0)
@@ -486,7 +517,9 @@ def render_segment_accel(
 
             writer.write_frame(composed)
 
-        writer.close()
+            # 节流的进度回调（每 30 帧或最后一帧）
+            if progress_callback and (frame_idx % 30 == 0 or frame_idx == total_frames - 1):
+                progress_callback(frame_idx + 1, total_frames, clip_name)
         if video_reader:
             video_reader.close()
         if bg_video_reader:
@@ -507,7 +540,8 @@ def render_info_segment_accel(
     output_path: str,
     fps: int = 30,
     bitrate: str = "5000k",
-    codec: str = None
+    codec: str = None,
+    progress_callback=None
 ) -> dict:
     """
     使用 FFmpeg 硬件编码渲染开场/结尾信息片段。
@@ -613,7 +647,8 @@ def render_info_segment_accel(
 
             writer.write_frame(composed[:, :, :3])
 
-        writer.close()
+            if progress_callback and (frame_idx % 30 == 0 or frame_idx == total_frames - 1):
+                progress_callback(frame_idx + 1, total_frames, clip_name)
         bg_reader.close()
         print(f"[AccelRenderer] ✓ 信息片段渲染完成: {clip_name}")
         return {"status": "success", "info": f"渲染 {clip_name} 完成"}
@@ -635,16 +670,29 @@ def render_all_clips_accel(
     auto_add_transition: bool = True,
     trans_time: float = 1,
     force_render: bool = False,
-    fps: int = 30
+    fps: int = 30,
+    progress_callback=None
 ):
     """
     使用 GPU 加速渲染所有视频片段 —— 替代 VideoUtils.render_all_video_clips()
+    progress_callback: (clip_index, total_clips, frame, total_frames, clip_name) -> None
     """
     codec, codec_name = detect_hw_encoder()
     print(f"[AccelRenderer] 使用编码器: {codec_name}")
     print(f"[AccelRenderer] 输出路径: {video_output_path}")
 
+    total_clips = len(main_configs) + len(intro_configs or []) + len(ending_configs or [])
+    clip_index = [0]  # 使用列表以便在闭包中修改
     vfile_prefix = 0
+
+    def _make_frame_callback():
+        """为当前片段创建帧级回调"""
+        idx = clip_index[0]
+        if progress_callback is None:
+            return None
+        def cb(frame, total_frames, clip_name):
+            progress_callback(idx, total_clips, frame, total_frames, clip_name)
+        return cb
 
     def render_clip(config, prefix, clip_type="content", override_name=None):
         nonlocal vfile_prefix
@@ -654,21 +702,26 @@ def render_all_clips_accel(
 
         if os.path.exists(output_file) and not force_render:
             print(f"[AccelRenderer] 跳过已存在: {prefix}_{name}.mp4")
+            clip_index[0] += 1
             return
 
+        frame_cb = _make_frame_callback()
         if clip_type == "content":
             result = render_segment_accel(
                 game_type, config, style_config, video_res,
-                output_file, fps=fps, bitrate=video_bitrate, codec=codec
+                output_file, fps=fps, bitrate=video_bitrate, codec=codec,
+                progress_callback=frame_cb
             )
         else:
             result = render_info_segment_accel(
                 config, style_config, video_res,
-                output_file, fps=fps, bitrate=video_bitrate, codec=codec
+                output_file, fps=fps, bitrate=video_bitrate, codec=codec,
+                progress_callback=frame_cb
             )
 
         if result['status'] == 'error':
             print(f"[AccelRenderer] Warning: {result['info']}")
+        clip_index[0] += 1
 
     # 开场片段
     if intro_configs:

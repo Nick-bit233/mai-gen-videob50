@@ -813,7 +813,7 @@ def render_all_video_clips(game_type: str, style_config: dict, main_configs: lis
                            video_output_path: str, video_res: tuple, video_bitrate: str,
                            intro_configs: list = None, ending_configs: list = None,
                            auto_add_transition=True, trans_time=1, force_render=False,
-                           use_gpu_accel: bool = None):
+                           use_gpu_accel: bool = None, progress_callback=None):
     """ 渲染所有视频片段，并按照clip_title_name输出到指定路径文件。
         当 use_gpu_accel=True 时使用 Taichi GPU + FFmpeg 硬件编码加速。
         当 use_gpu_accel=None 时从 global_config 读取配置。
@@ -843,7 +843,8 @@ def render_all_video_clips(game_type: str, style_config: dict, main_configs: lis
                     ending_configs=ending_configs,
                     auto_add_transition=auto_add_transition,
                     trans_time=trans_time,
-                    force_render=force_render
+                    force_render=force_render,
+                    progress_callback=progress_callback
                 )
                 return
             else:
@@ -935,7 +936,7 @@ def render_complete_full_video(
         intro_configs: list=None, ending_configs: list=None,
         video_res: tuple = (1920, 1080), video_bitrate: str = "4000k",
         video_trans_enable: bool = True, video_trans_time: float = 1.0, full_last_clip: bool = False,
-        use_gpu_accel: bool = None):
+        use_gpu_accel: bool = None, progress_callback=None):
     """ 根据完整配置合成完整视频，并保存到指定路径的文件。
         当 use_gpu_accel=True 时，先用 GPU 加速渲染所有片段，再用 FFmpeg 拼接。
     """
@@ -965,16 +966,19 @@ def render_complete_full_video(
                     ending_configs=ending_configs,
                     auto_add_transition=video_trans_enable,
                     trans_time=video_trans_time,
-                    force_render=force_render
+                    force_render=True,
+                    progress_callback=progress_callback
                 )
-                # 第二步：使用 FFmpeg 直接拼接（速度快，无需再次编码）
+                # 第二步：使用 FFmpeg 拼接（支持转场效果）
                 print("[AccelRenderer] 正在拼接完整视频...")
-                output_file = combine_full_video_direct(video_output_path)
-                # 重命名为用户文件名
+                output_file = combine_full_video_direct(
+                    video_output_path,
+                    auto_add_transition=video_trans_enable,
+                    trans_time=video_trans_time
+                )
+                # 重命名为用户文件名（先做音频均衡化）
                 final_path = os.path.join(video_output_path, f"{username}_FULL_VIDEO.mp4")
-                if os.path.exists(final_path):
-                    os.remove(final_path)
-                os.rename(output_file, final_path)
+                _normalize_video_audio(output_file, final_path)
                 print(f"[AccelRenderer] ✓ 完整视频生成完成: {final_path}")
                 return {"status": "success", "info": f"GPU加速合成完整视频成功"}
             else:
@@ -1029,39 +1033,40 @@ def render_complete_full_video(
         return {"status": "error", "info": f"合成完整视频时发生异常: {traceback.print_exc()}"}
 
 
-def combine_full_video_direct(video_clip_path):
+def combine_full_video_direct(video_clip_path, auto_add_transition=False, trans_time=1):
     """ 
         拼接指定文件夹下的所有视频片段，生成最终视频文件
-        片段需要具有正确的命名格式(0_xxx, 1_xxx, ...)以确保正确排序 
+        片段需要具有正确的命名格式(0_xxx, 1_xxx, ...)以确保正确排序
+        当 auto_add_transition=True 时使用 FFmpeg xfade 添加转场效果
     """
     print("[Info] --------------------开始拼接视频-------------------")
-    video_files = [f for f in os.listdir(video_clip_path) if f.endswith(".mp4")]
+    # 仅匹配编号前缀的片段文件，排除 final_output.mp4 / *_FULL_VIDEO.mp4 等
+    import re
+    video_files = [f for f in os.listdir(video_clip_path)
+                   if f.endswith(".mp4") and re.match(r'^\d+_', f)]
     sorted_files = sort_video_files(video_files)
     
     if not sorted_files:
         raise ValueError("Error: 没有有效的视频片段文件！")
 
-    # 创建临时目录存放 ts 文件
+    output_path = os.path.join(video_clip_path, "final_output.mp4")
+
+    # 带转场的拼接：使用 FFmpeg xfade 滤镜
+    if auto_add_transition and len(sorted_files) > 1 and trans_time > 0:
+        output_path = _combine_with_xfade(video_clip_path, sorted_files, output_path, trans_time)
+        return output_path
+
+    # 无转场的快速拼接：TS remux + concat
     temp_dir = os.path.join(video_clip_path, "temp_ts")
     os.makedirs(temp_dir, exist_ok=True)
     
     try:
-        # 1. 创建MP4文件列表
-        mp4_list_file = os.path.join(video_clip_path, "mp4_files.txt")
-        with open(mp4_list_file, 'w', encoding='utf-8') as f:
-            for file in sorted_files:
-                # 使用正斜杠替换反斜杠，并使用相对路径
-                full_path = os.path.join(video_clip_path, file).replace('\\', '/')
-                f.write(f"file '{full_path}'\n")
-
-        # 2. 创建TS文件列表并转换视频
         ts_list_file = os.path.join(video_clip_path, "ts_files.txt")
         with open(ts_list_file, 'w', encoding='utf-8') as f:
             for i, file in enumerate(sorted_files):
                 ts_name = f"{i:04d}.ts"
                 ts_path = os.path.join(temp_dir, ts_name)
                 
-                # 转换MP4为TS
                 cmd = [
                     'ffmpeg', '-y',
                     '-i', os.path.join(video_clip_path, file),
@@ -1072,14 +1077,9 @@ def combine_full_video_direct(video_clip_path):
                 ]
                 subprocess.run(cmd, check=True)
                 
-                # 写入TS文件相对路径，使用正斜杠
                 relative_ts_path = os.path.join('temp_ts', ts_name).replace('\\', '/')
                 f.write(f"file '{relative_ts_path}'\n")
 
-        # 3. 拼接TS文件并输出为MP4
-        output_path = os.path.join(video_clip_path, "final_output.mp4")
-        
-        # 使用 cwd 参数替代 os.chdir，避免进程级全局状态修改
         cmd = [
             'ffmpeg', '-y',
             '-f', 'concat',
@@ -1093,17 +1093,124 @@ def combine_full_video_direct(video_clip_path):
         print("视频拼接完成")
         
     finally:
-        # 清理临时文件
         if os.path.exists(temp_dir):
             for file in os.listdir(temp_dir):
                 os.remove(os.path.join(temp_dir, file))
             os.rmdir(temp_dir)
-        # 清理列表文件
         for txt_file in ['mp4_files.txt', 'ts_files.txt']:
             txt_path = os.path.join(video_clip_path, txt_file)
             if os.path.exists(txt_path):
                 os.remove(txt_path)
 
+    return output_path
+
+
+def _normalize_video_audio(input_path: str, output_path: str):
+    """对完整视频进行音频均衡化（单次 FFmpeg loudnorm，与 CPU 路径的 RMS 归一化效果近似）"""
+    if os.path.exists(output_path):
+        os.remove(output_path)
+    try:
+        cmd = [
+            'ffmpeg', '-y', '-hide_banner', '-loglevel', 'warning',
+            '-i', input_path,
+            '-c:v', 'copy',
+            '-af', 'loudnorm=I=-20:TP=-1.5:LRA=11',
+            '-c:a', 'aac', '-b:a', '192k',
+            output_path
+        ]
+        subprocess.run(cmd, check=True)
+        if os.path.exists(input_path) and input_path != output_path:
+            os.remove(input_path)
+        print("[AccelRenderer] ✓ 音频均衡化完成")
+    except Exception as e:
+        print(f"[AccelRenderer] Warning: 音频均衡化失败 ({e})，直接使用原始文件")
+        if not os.path.exists(output_path):
+            os.rename(input_path, output_path)
+
+
+def _get_video_duration(filepath: str) -> float:
+    """使用 ffprobe 获取视频时长"""
+    cmd = [
+        'ffprobe', '-v', 'error',
+        '-show_entries', 'format=duration',
+        '-of', 'default=noprint_wrappers=1:nokey=1',
+        filepath
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        return float(result.stdout.strip())
+    except ValueError:
+        return 0.0
+
+
+def _combine_with_xfade(video_clip_path: str, sorted_files: list,
+                         output_path: str, trans_time: float):
+    """使用 FFmpeg xfade 滤镜拼接视频片段（带淡入淡出转场）"""
+    print(f"[Info] 使用 xfade 转场拼接 ({trans_time}s)")
+    file_paths = [os.path.join(video_clip_path, f) for f in sorted_files]
+
+    # 获取每个片段的时长
+    durations = []
+    for fp in file_paths:
+        d = _get_video_duration(fp)
+        if d <= 0:
+            raise ValueError(f"无法获取视频时长: {fp}")
+        durations.append(d)
+
+    n = len(file_paths)
+
+    # 构建 FFmpeg 输入参数
+    cmd = ['ffmpeg', '-y', '-hide_banner', '-loglevel', 'warning']
+    for fp in file_paths:
+        cmd += ['-i', fp]
+
+    # 构建 xfade + acrossfade 滤镜链
+    filter_parts = []
+
+    # 先统一格式：fps/format/settb 用于视频，aformat 用于音频
+    for i in range(n):
+        filter_parts.append(f"[{i}:v]fps=30,format=yuv420p,settb=AVTB[v{i}]")
+        filter_parts.append(f"[{i}:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[a{i}]")
+
+    # 逐对构建 xfade 和 acrossfade
+    # 累计输出时长用于计算下一个 offset
+    accumulated_duration = durations[0]
+    for i in range(n - 1):
+        offset = accumulated_duration - trans_time
+        if offset < 0:
+            offset = 0.01
+
+        if i == 0:
+            v_in_a, a_in_a = f"[v0]", f"[a0]"
+        else:
+            v_in_a, a_in_a = f"[vfade{i-1}]", f"[afade{i-1}]"
+
+        v_in_b, a_in_b = f"[v{i+1}]", f"[a{i+1}]"
+
+        if i < n - 2:
+            v_out, a_out = f"[vfade{i}]", f"[afade{i}]"
+        else:
+            v_out, a_out = "[vout]", "[aout]"
+
+        filter_parts.append(
+            f"{v_in_a}{v_in_b}xfade=transition=fade:duration={trans_time}:offset={offset:.3f}{v_out}"
+        )
+        filter_parts.append(
+            f"{a_in_a}{a_in_b}acrossfade=d={trans_time}:c1=tri:c2=tri{a_out}"
+        )
+
+        # 每次 xfade 后输出时长 = offset + duration[i+1]
+        accumulated_duration = offset + durations[i + 1]
+
+    filter_complex = ";".join(filter_parts)
+    cmd += ['-filter_complex', filter_complex]
+    cmd += ['-map', '[vout]', '-map', '[aout]']
+    cmd += ['-c:v', 'libx264', '-preset', 'fast', '-crf', '18']
+    cmd += ['-c:a', 'aac', '-b:a', '192k']
+    cmd += [output_path]
+
+    subprocess.run(cmd, check=True)
+    print("视频拼接完成（含转场效果）")
     return output_path
 
 
