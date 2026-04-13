@@ -812,8 +812,45 @@ def get_combined_ending_clip(ending_clips, combined_start_time, trans_time):
 def render_all_video_clips(game_type: str, style_config: dict, main_configs: list,
                            video_output_path: str, video_res: tuple, video_bitrate: str,
                            intro_configs: list = None, ending_configs: list = None,
-                           auto_add_transition=True, trans_time=1, force_render=False):
-    """ 渲染所有视频片段，并按照clip_title_name输出到指定路径文件 """
+                           auto_add_transition=True, trans_time=1, force_render=False,
+                           use_gpu_accel: bool = None):
+    """ 渲染所有视频片段，并按照clip_title_name输出到指定路径文件。
+        当 use_gpu_accel=True 时使用 Taichi GPU + FFmpeg 硬件编码加速。
+        当 use_gpu_accel=None 时从 global_config 读取配置。
+    """
+    # 检查是否启用 GPU 加速
+    if use_gpu_accel is None:
+        from utils.PageUtils import read_global_config
+        use_gpu_accel = read_global_config().get('USE_GPU_ACCEL', False)
+
+    if use_gpu_accel:
+        try:
+            from utils.TaichiAccel import init_taichi, is_available
+            init_taichi()
+            if is_available():
+                from utils.AccelRenderer import render_all_clips_accel
+                print("=" * 60)
+                print("🚀 使用 GPU 加速渲染模式 (Taichi + FFmpeg 硬件编码)")
+                print("=" * 60)
+                render_all_clips_accel(
+                    game_type=game_type,
+                    style_config=style_config,
+                    main_configs=main_configs,
+                    video_output_path=video_output_path,
+                    video_res=video_res,
+                    video_bitrate=video_bitrate,
+                    intro_configs=intro_configs,
+                    ending_configs=ending_configs,
+                    auto_add_transition=auto_add_transition,
+                    trans_time=trans_time,
+                    force_render=force_render
+                )
+                return
+            else:
+                print("[VideoUtils] Taichi 初始化失败，回退到 CPU 渲染")
+        except ImportError:
+            print("[VideoUtils] Taichi 未安装，回退到 CPU 渲染")
+
     vfile_prefix = 0
 
     def modify_and_rend_clip(clip, config, prefix, auto_add_transition, trans_time, override_clip_name=None):
@@ -897,9 +934,53 @@ def render_complete_full_video(
         video_output_path: str, 
         intro_configs: list=None, ending_configs: list=None,
         video_res: tuple = (1920, 1080), video_bitrate: str = "4000k",
-        video_trans_enable: bool = True, video_trans_time: float = 1.0, full_last_clip: bool = False):
-    """ 根据完整配置合成完整视频，并保存到指定路径的文件 """
+        video_trans_enable: bool = True, video_trans_time: float = 1.0, full_last_clip: bool = False,
+        use_gpu_accel: bool = None):
+    """ 根据完整配置合成完整视频，并保存到指定路径的文件。
+        当 use_gpu_accel=True 时，先用 GPU 加速渲染所有片段，再用 FFmpeg 拼接。
+    """
+    # 检查是否启用 GPU 加速
+    if use_gpu_accel is None:
+        from utils.PageUtils import read_global_config
+        use_gpu_accel = read_global_config().get('USE_GPU_ACCEL', False)
 
+    if use_gpu_accel:
+        try:
+            from utils.TaichiAccel import init_taichi, is_available
+            init_taichi()
+            if is_available():
+                from utils.AccelRenderer import render_all_clips_accel, detect_hw_encoder
+                print("=" * 60)
+                print("🚀 使用 GPU 加速完整视频生成模式")
+                print("=" * 60)
+                # 第一步：GPU 加速渲染所有片段
+                render_all_clips_accel(
+                    game_type=game_type,
+                    style_config=style_config,
+                    main_configs=main_configs,
+                    video_output_path=video_output_path,
+                    video_res=video_res,
+                    video_bitrate=video_bitrate,
+                    intro_configs=intro_configs,
+                    ending_configs=ending_configs,
+                    force_render=True
+                )
+                # 第二步：使用 FFmpeg 直接拼接（速度快，无需再次编码）
+                print("[AccelRenderer] 正在拼接完整视频...")
+                output_file = combine_full_video_direct(video_output_path)
+                # 重命名为用户文件名
+                final_path = os.path.join(video_output_path, f"{username}_FULL_VIDEO.mp4")
+                if os.path.exists(final_path):
+                    os.remove(final_path)
+                os.rename(output_file, final_path)
+                print(f"[AccelRenderer] ✓ 完整视频生成完成: {final_path}")
+                return {"status": "success", "info": f"GPU加速合成完整视频成功"}
+            else:
+                print("[VideoUtils] Taichi 初始化失败，回退到 CPU 渲染")
+        except ImportError:
+            print("[VideoUtils] Taichi 未安装，回退到 CPU 渲染")
+
+    # CPU 渲染回退路径
     print(f"正在合成完整视频...")
     try:
         final_video = create_full_video(

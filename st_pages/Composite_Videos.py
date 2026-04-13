@@ -99,6 +99,17 @@ with st.container(border=True):
     st.write("视频比特率(kbps)")  
     v_bitrate = st.number_input("视频比特率", min_value=1000, max_value=10000, value=_video_bitrate)
 
+_gpu_accel = G_config.get('USE_GPU_ACCEL', False)
+with st.container(border=True):
+    st.write("🚀 GPU 加速渲染（实验性）")
+    gpu_accel = st.checkbox(
+        "启用 Taichi GPU 加速",
+        value=_gpu_accel,
+        help="使用 Taichi GPU 合成 + FFmpeg 硬件编码加速视频渲染。需要安装 taichi 库（pip install taichi）。"
+             "启用后将自动检测最佳 GPU 后端（CUDA/Vulkan/Metal）和硬件编码器（NVENC/VideoToolbox 等）。"
+             "如果 GPU 不可用，将自动回退到 CPU 渲染。"
+    )
+
 v_mode_index = options.index(mode_str)
 v_bitrate_kbps = f"{v_bitrate}k"
 
@@ -132,6 +143,7 @@ def save_video_render_config():
     G_config['VIDEO_BITRATE'] = v_bitrate
     G_config['VIDEO_TRANS_ENABLE'] = trans_enable
     G_config['VIDEO_TRANS_TIME'] = trans_time
+    G_config['USE_GPU_ACCEL'] = gpu_accel
     write_global_config(G_config)
     st.toast("配置已保存！")
 
@@ -155,7 +167,8 @@ if st.button("开始生成视频", use_container_width=True, type="primary"):
                         intro_configs=intro_configs,
                         ending_configs=ending_configs,
                         trans_time=trans_time,
-                        force_render=force_render_clip
+                        force_render=force_render_clip,
+                        use_gpu_accel=gpu_accel
                     )
                     st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
             st.success("视频片段生成结束！点击下方按钮打开视频所在文件夹")
@@ -180,7 +193,8 @@ if st.button("开始生成视频", use_container_width=True, type="primary"):
                         video_bitrate=v_bitrate_kbps,
                         video_trans_enable=trans_enable,
                         video_trans_time=trans_time,
-                        full_last_clip=False
+                        full_last_clip=False,
+                        use_gpu_accel=gpu_accel
                     )
                     st.write(f"【{output_info['info']}")
             st.success("完整视频生成结束！点击下方按钮打开视频所在文件夹")
