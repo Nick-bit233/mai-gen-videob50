@@ -1,4 +1,5 @@
 import os
+import time
 import numpy as np
 import subprocess
 import traceback
@@ -954,7 +955,10 @@ def render_complete_full_video(
                 print("=" * 60)
                 print("🚀 使用 GPU 加速完整视频生成模式")
                 print("=" * 60)
+                t_total_start = time.perf_counter()
+
                 # 第一步：GPU 加速渲染所有片段
+                t_step = time.perf_counter()
                 render_all_clips_accel(
                     game_type=game_type,
                     style_config=style_config,
@@ -969,16 +973,28 @@ def render_complete_full_video(
                     force_render=True,
                     progress_callback=progress_callback
                 )
+                print(f"[Timer] 步骤1 - 渲染所有片段耗时: {time.perf_counter() - t_step:.2f}s")
+
                 # 第二步：使用 FFmpeg 拼接（支持转场效果）
+                t_step = time.perf_counter()
                 print("[AccelRenderer] 正在拼接完整视频...")
                 output_file = combine_full_video_direct(
                     video_output_path,
                     auto_add_transition=video_trans_enable,
                     trans_time=video_trans_time
                 )
-                # 重命名为用户文件名（先做音频均衡化）
+                print(f"[Timer] 步骤2 - 视频拼接耗时: {time.perf_counter() - t_step:.2f}s")
+
+                # 第三步：音频均衡化 + 重命名
+                t_step = time.perf_counter()
                 final_path = os.path.join(video_output_path, f"{username}_FULL_VIDEO.mp4")
                 _normalize_video_audio(output_file, final_path)
+                print(f"[Timer] 步骤3 - 音频均衡化耗时: {time.perf_counter() - t_step:.2f}s")
+
+                t_total = time.perf_counter() - t_total_start
+                print(f"[Timer] ============================================")
+                print(f"[Timer] 完整视频生成总耗时: {t_total:.2f}s")
+                print(f"[Timer] ============================================")
                 print(f"[AccelRenderer] ✓ 完整视频生成完成: {final_path}")
                 return {"status": "success", "info": f"GPU加速合成完整视频成功"}
             else:
@@ -1040,6 +1056,7 @@ def combine_full_video_direct(video_clip_path, auto_add_transition=False, trans_
         当 auto_add_transition=True 时使用 FFmpeg xfade 添加转场效果
     """
     print("[Info] --------------------开始拼接视频-------------------")
+    t_concat_start = time.perf_counter()
     # 仅匹配编号前缀的片段文件，排除 final_output.mp4 / *_FULL_VIDEO.mp4 等
     import re
     video_files = [f for f in os.listdir(video_clip_path)
@@ -1048,12 +1065,14 @@ def combine_full_video_direct(video_clip_path, auto_add_transition=False, trans_
     
     if not sorted_files:
         raise ValueError("Error: 没有有效的视频片段文件！")
+    print(f"[Timer] 拼接: 找到 {len(sorted_files)} 个片段")
 
     output_path = os.path.join(video_clip_path, "final_output.mp4")
 
     # 带转场的拼接：使用 FFmpeg xfade 滤镜
     if auto_add_transition and len(sorted_files) > 1 and trans_time > 0:
         output_path = _combine_with_xfade(video_clip_path, sorted_files, output_path, trans_time)
+        print(f"[Timer] 拼接(xfade)总耗时: {time.perf_counter() - t_concat_start:.2f}s")
         return output_path
 
     # 无转场的快速拼接：TS remux + concat
@@ -1061,6 +1080,7 @@ def combine_full_video_direct(video_clip_path, auto_add_transition=False, trans_
     os.makedirs(temp_dir, exist_ok=True)
     
     try:
+        t_remux = time.perf_counter()
         ts_list_file = os.path.join(video_clip_path, "ts_files.txt")
         with open(ts_list_file, 'w', encoding='utf-8') as f:
             for i, file in enumerate(sorted_files):
@@ -1079,7 +1099,9 @@ def combine_full_video_direct(video_clip_path, auto_add_transition=False, trans_
                 
                 relative_ts_path = os.path.join('temp_ts', ts_name).replace('\\', '/')
                 f.write(f"file '{relative_ts_path}'\n")
+        print(f"[Timer] 拼接: TS remux 耗时: {time.perf_counter() - t_remux:.2f}s")
 
+        t_merge = time.perf_counter()
         cmd = [
             'ffmpeg', '-y',
             '-f', 'concat',
@@ -1090,6 +1112,7 @@ def combine_full_video_direct(video_clip_path, auto_add_transition=False, trans_
         ]
         
         subprocess.run(cmd, check=True, cwd=video_clip_path)
+        print(f"[Timer] 拼接: concat merge 耗时: {time.perf_counter() - t_merge:.2f}s")
         print("视频拼接完成")
         
     finally:
@@ -1102,6 +1125,7 @@ def combine_full_video_direct(video_clip_path, auto_add_transition=False, trans_
             if os.path.exists(txt_path):
                 os.remove(txt_path)
 
+    print(f"[Timer] 拼接(concat)总耗时: {time.perf_counter() - t_concat_start:.2f}s")
     return output_path
 
 
@@ -1110,6 +1134,7 @@ def _normalize_video_audio(input_path: str, output_path: str):
     if os.path.exists(output_path):
         os.remove(output_path)
     try:
+        t_norm = time.perf_counter()
         cmd = [
             'ffmpeg', '-y', '-hide_banner', '-loglevel', 'warning',
             '-i', input_path,
@@ -1121,7 +1146,7 @@ def _normalize_video_audio(input_path: str, output_path: str):
         subprocess.run(cmd, check=True)
         if os.path.exists(input_path) and input_path != output_path:
             os.remove(input_path)
-        print("[AccelRenderer] ✓ 音频均衡化完成")
+        print(f"[AccelRenderer] ✓ 音频均衡化完成 (耗时 {time.perf_counter() - t_norm:.2f}s)")
     except Exception as e:
         print(f"[AccelRenderer] Warning: 音频均衡化失败 ({e})，直接使用原始文件")
         if not os.path.exists(output_path):

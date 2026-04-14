@@ -8,6 +8,7 @@ AccelRenderer.py - 加速渲染管线
 import os
 import subprocess
 import traceback
+import time
 import numpy as np
 import cv2
 from PIL import Image
@@ -520,6 +521,7 @@ def render_segment_accel(
             # 节流的进度回调（每 30 帧或最后一帧）
             if progress_callback and (frame_idx % 30 == 0 or frame_idx == total_frames - 1):
                 progress_callback(frame_idx + 1, total_frames, clip_name)
+        writer.close()
         if video_reader:
             video_reader.close()
         if bg_video_reader:
@@ -649,6 +651,7 @@ def render_info_segment_accel(
 
             if progress_callback and (frame_idx % 30 == 0 or frame_idx == total_frames - 1):
                 progress_callback(frame_idx + 1, total_frames, clip_name)
+        writer.close()
         bg_reader.close()
         print(f"[AccelRenderer] ✓ 信息片段渲染完成: {clip_name}")
         return {"status": "success", "info": f"渲染 {clip_name} 完成"}
@@ -681,6 +684,7 @@ def render_all_clips_accel(
     print(f"[AccelRenderer] 使用编码器: {codec_name}")
     print(f"[AccelRenderer] 输出路径: {video_output_path}")
 
+    t_all_start = time.perf_counter()
     total_clips = len(main_configs) + len(intro_configs or []) + len(ending_configs or [])
     clip_index = [0]  # 使用列表以便在闭包中修改
     vfile_prefix = 0
@@ -705,6 +709,7 @@ def render_all_clips_accel(
             clip_index[0] += 1
             return
 
+        t_clip_start = time.perf_counter()
         frame_cb = _make_frame_callback()
         if clip_type == "content":
             result = render_segment_accel(
@@ -718,26 +723,37 @@ def render_all_clips_accel(
                 output_file, fps=fps, bitrate=video_bitrate, codec=codec,
                 progress_callback=frame_cb
             )
+        t_clip_elapsed = time.perf_counter() - t_clip_start
+        print(f"[Timer] 片段 {prefix}_{name} 渲染耗时: {t_clip_elapsed:.2f}s")
 
         if result['status'] == 'error':
             print(f"[AccelRenderer] Warning: {result['info']}")
         clip_index[0] += 1
 
     # 开场片段
+    t_phase = time.perf_counter()
     if intro_configs:
         for config in intro_configs:
             render_clip(config, vfile_prefix, "info", "INTRO")
             vfile_prefix += 1
+    if intro_configs:
+        print(f"[Timer] === 开场片段阶段耗时: {time.perf_counter() - t_phase:.2f}s ===")
 
     # 主要片段
+    t_phase = time.perf_counter()
     for config in main_configs:
         render_clip(config, vfile_prefix, "content")
         vfile_prefix += 1
+    print(f"[Timer] === 主要片段阶段耗时: {time.perf_counter() - t_phase:.2f}s ({len(main_configs)} 个) ===")
 
     # 结尾片段
+    t_phase = time.perf_counter()
     if ending_configs:
         for config in ending_configs:
             render_clip(config, vfile_prefix, "info", "ENDING")
             vfile_prefix += 1
+    if ending_configs:
+        print(f"[Timer] === 结尾片段阶段耗时: {time.perf_counter() - t_phase:.2f}s ===")
 
-    print(f"[AccelRenderer] ✓ 所有片段渲染完成 (共 {vfile_prefix} 个)")
+    t_all_elapsed = time.perf_counter() - t_all_start
+    print(f"[Timer] ====== 全部片段渲染总耗时: {t_all_elapsed:.2f}s (共 {vfile_prefix} 个) ======")
