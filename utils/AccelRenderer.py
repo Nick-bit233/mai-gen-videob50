@@ -138,7 +138,8 @@ class FFmpegWriter:
 
     def __init__(self, output_path: str, width: int, height: int,
                  fps: int = 30, codec: str = None, bitrate: str = "5000k",
-                 audio_path: str = None, audio_start: float = 0, audio_duration: float = None):
+                 audio_path: str = None, audio_start: float = 0, audio_duration: float = None,
+                 audio_fade_in: float = 0, audio_fade_out: float = 0):
         self.output_path = output_path
         self.width = width
         self.height = height
@@ -157,7 +158,8 @@ class FFmpegWriter:
         ]
 
         # 音频输入
-        if audio_path and os.path.exists(audio_path):
+        has_audio = audio_path and os.path.exists(audio_path)
+        if has_audio:
             cmd += ['-ss', str(audio_start)]
             if audio_duration:
                 cmd += ['-t', str(audio_duration)]
@@ -167,8 +169,16 @@ class FFmpegWriter:
         cmd += encoder_args
         cmd += ['-pix_fmt', 'yuv420p']
 
-        # 音频编码
-        if audio_path and os.path.exists(audio_path):
+        # 音频编码 + 可选淡入淡出滤镜
+        if has_audio:
+            af_filters = []
+            if audio_fade_in > 0:
+                af_filters.append(f"afade=t=in:d={audio_fade_in}")
+            if audio_fade_out > 0 and audio_duration:
+                fade_out_start = max(0, audio_duration - audio_fade_out)
+                af_filters.append(f"afade=t=out:st={fade_out_start:.3f}:d={audio_fade_out}")
+            if af_filters:
+                cmd += ['-af', ','.join(af_filters)]
             cmd += ['-c:a', 'aac', '-b:a', '192k', '-map', '0:v', '-map', '1:a', '-shortest']
 
         cmd += [output_path]
@@ -338,7 +348,9 @@ def render_segment_accel(
     fps: int = 30,
     bitrate: str = "5000k",
     codec: str = None,
-    progress_callback=None
+    progress_callback=None,
+    fade_in: float = 0,
+    fade_out: float = 0
 ) -> dict:
     """
     使用 Taichi GPU + FFmpeg 硬件编码渲染单个视频片段。
@@ -472,8 +484,13 @@ def render_segment_accel(
         writer = FFmpegWriter(
             output_path, resolution[0], resolution[1],
             fps=fps, codec=codec, bitrate=bitrate,
-            audio_path=audio_path, audio_start=audio_start, audio_duration=duration
+            audio_path=audio_path, audio_start=audio_start, audio_duration=duration,
+            audio_fade_in=fade_in, audio_fade_out=fade_out
         )
+
+        # === 预计算淡入淡出帧数 ===
+        fade_in_frames = int(fade_in * fps) if fade_in > 0 else 0
+        fade_out_frames = int(fade_out * fps) if fade_out > 0 else 0
 
         # === 逐帧渲染（使用 FrameCompositor 预计算静态层）===
         compositor = FrameCompositor(
@@ -516,6 +533,14 @@ def render_segment_accel(
             # GPU 快速合成（零拷贝路径）
             composed = compositor.composite(video_frame)
 
+            # 视频淡入淡出（GPU 亮度渐变）
+            if fade_in_frames > 0 and frame_idx < fade_in_frames:
+                brightness = frame_idx / fade_in_frames
+                composed = (composed.astype(np.float32) * brightness).clip(0, 255).astype(np.uint8)
+            elif fade_out_frames > 0 and frame_idx >= total_frames - fade_out_frames:
+                brightness = (total_frames - 1 - frame_idx) / fade_out_frames
+                composed = (composed.astype(np.float32) * brightness).clip(0, 255).astype(np.uint8)
+
             writer.write_frame(composed)
 
             # 节流的进度回调（每 30 帧或最后一帧）
@@ -543,7 +568,9 @@ def render_info_segment_accel(
     fps: int = 30,
     bitrate: str = "5000k",
     codec: str = None,
-    progress_callback=None
+    progress_callback=None,
+    fade_in: float = 0,
+    fade_out: float = 0
 ) -> dict:
     """
     使用 FFmpeg 硬件编码渲染开场/结尾信息片段。
@@ -599,8 +626,13 @@ def render_info_segment_accel(
         writer = FFmpegWriter(
             output_path, resolution[0], resolution[1],
             fps=fps, codec=codec, bitrate=bitrate,
-            audio_path=intro_bgm_path, audio_start=0, audio_duration=duration
+            audio_path=intro_bgm_path, audio_start=0, audio_duration=duration,
+            audio_fade_in=fade_in, audio_fade_out=fade_out
         )
+
+        # 预计算淡入淡出帧数
+        fade_in_frames = int(fade_in * fps) if fade_in > 0 else 0
+        fade_out_frames = int(fade_out * fps) if fade_out > 0 else 0
 
         # 使用顺序读取模式
         bg_reader.seek_to(0)
@@ -647,7 +679,16 @@ def render_info_segment_accel(
                         composed[y1:y2, x1:x2] = composed[y1:y2, x1:x2] * (1 - mask3) + text_img_rgb[:sh, :sw] * mask3
                 composed = composed.clip(0, 255).astype(np.uint8)
 
-            writer.write_frame(composed[:, :, :3])
+            # 视频淡入淡出（亮度渐变）
+            out_frame = composed[:, :, :3]
+            if fade_in_frames > 0 and frame_idx < fade_in_frames:
+                brightness = frame_idx / fade_in_frames
+                out_frame = (out_frame.astype(np.float32) * brightness).clip(0, 255).astype(np.uint8)
+            elif fade_out_frames > 0 and frame_idx >= total_frames - fade_out_frames:
+                brightness = (total_frames - 1 - frame_idx) / fade_out_frames
+                out_frame = (out_frame.astype(np.float32) * brightness).clip(0, 255).astype(np.uint8)
+
+            writer.write_frame(out_frame)
 
             if progress_callback and (frame_idx % 30 == 0 or frame_idx == total_frames - 1):
                 progress_callback(frame_idx + 1, total_frames, clip_name)
@@ -709,19 +750,25 @@ def render_all_clips_accel(
             clip_index[0] += 1
             return
 
+        # 确定淡入淡出时长
+        fade_in_time = trans_time if auto_add_transition else 0
+        fade_out_time = trans_time if auto_add_transition else 0
+
         t_clip_start = time.perf_counter()
         frame_cb = _make_frame_callback()
         if clip_type == "content":
             result = render_segment_accel(
                 game_type, config, style_config, video_res,
                 output_file, fps=fps, bitrate=video_bitrate, codec=codec,
-                progress_callback=frame_cb
+                progress_callback=frame_cb,
+                fade_in=fade_in_time, fade_out=fade_out_time
             )
         else:
             result = render_info_segment_accel(
                 config, style_config, video_res,
                 output_file, fps=fps, bitrate=video_bitrate, codec=codec,
-                progress_callback=frame_cb
+                progress_callback=frame_cb,
+                fade_in=fade_in_time, fade_out=fade_out_time
             )
         t_clip_elapsed = time.perf_counter() - t_clip_start
         print(f"[Timer] 片段 {prefix}_{name} 渲染耗时: {t_clip_elapsed:.2f}s")

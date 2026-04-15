@@ -212,6 +212,7 @@ if st.button("开始生成视频", use_container_width=True, type="primary"):
                         video_trans_time=trans_time,
                         full_last_clip=False,
                         use_gpu_accel=gpu_accel,
+                        use_baked_fade=False if gpu_accel else None,
                         progress_callback=progress_cb
                     )
                     st.write(f"【{output_info['info']}")
@@ -231,28 +232,59 @@ with st.expander("展开其他视频生成方案"):
     st.warning("⚠️ 请注意，此区域的功能未经充分测试，不保证生成视频的效果或稳定性，请谨慎使用。")
     with st.container(border=True):
         st.write("【快速模式】先生成所有视频片段，再直接拼接为完整视频")
-        st.info("本方案会降低视频生成过程中的内存占用，并减少生成时间，但视频片段之间将只有黑屏过渡。")
+        if gpu_accel:
+            st.info("GPU加速快速模式：使用烘焙黑场过渡 + 流拷贝拼接，速度更快但片段之间为fade through black过渡。")
+        else:
+            st.info("本方案会降低视频生成过程中的内存占用，并减少生成时间，但视频片段之间将只有黑屏过渡。")
         if st.button("直接拼接方式生成完整视频"):
             save_video_render_config()
             video_res = (v_res_width, v_res_height)
-            with st.spinner("正在生成所有视频片段……"):
-                render_all_video_clips(
-                    game_type=G_type,
-                    style_config=style_config,
-                    main_configs=main_configs,
-                    video_output_path=video_output_path, 
-                    video_res=video_res, 
-                    video_bitrate=v_bitrate_kbps,
-                    intro_configs=intro_configs,
-                    ending_configs=ending_configs,
-                    auto_add_transition=trans_enable, 
-                    trans_time=trans_time,
-                    force_render=force_render_clip
-                )
-                st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
-            with st.spinner("正在拼接视频……"):
-                combine_full_video_direct(video_output_path)
-            st.success("所有任务已退出，请从上方按钮打开文件夹查看视频生成结果")
+            if gpu_accel:
+                # GPU快速模式：方案B（烘焙黑场过渡 + 流拷贝）
+                try:
+                    progress_cb = _make_st_progress(st.container())
+                    with st.spinner("正在使用GPU加速快速模式生成完整视频……"):
+                        output_info = render_complete_full_video(
+                            username=username,
+                            game_type=G_type,
+                            main_configs=main_configs,
+                            intro_configs=intro_configs,
+                            ending_configs=ending_configs,
+                            style_config=style_config,
+                            video_output_path=video_output_path,
+                            video_res=video_res,
+                            video_bitrate=v_bitrate_kbps,
+                            video_trans_enable=trans_enable,
+                            video_trans_time=trans_time,
+                            full_last_clip=False,
+                            use_gpu_accel=True,
+                            use_baked_fade=True,
+                            progress_callback=progress_cb
+                        )
+                        st.write(f"【{output_info['info']}")
+                    st.success("GPU快速模式生成完成！点击上方按钮打开文件夹查看视频")
+                except Exception as e:
+                    st.error(f"GPU快速模式生成失败，错误详情: {traceback.print_exc()}")
+            else:
+                # CPU快速模式：原有逻辑
+                with st.spinner("正在生成所有视频片段……"):
+                    render_all_video_clips(
+                        game_type=G_type,
+                        style_config=style_config,
+                        main_configs=main_configs,
+                        video_output_path=video_output_path, 
+                        video_res=video_res, 
+                        video_bitrate=v_bitrate_kbps,
+                        intro_configs=intro_configs,
+                        ending_configs=ending_configs,
+                        auto_add_transition=trans_enable, 
+                        trans_time=trans_time,
+                        force_render=force_render_clip
+                    )
+                    st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
+                with st.spinner("正在拼接视频……"):
+                    combine_full_video_direct(video_output_path)
+                st.success("所有任务已退出，请从上方按钮打开文件夹查看视频生成结果")
 
     with st.container(border=True):
         st.write("【更多过渡效果】使用ffmpeg concat生成视频，允许自定义片段过渡效果")
