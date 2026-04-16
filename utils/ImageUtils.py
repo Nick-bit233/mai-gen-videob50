@@ -691,13 +691,17 @@ class ChuniImageGenerater:
                 ds_next_pos = (1756, 1018)
                 ds_cur = record_detail["ds_cur"]
                 ds_next = record_detail["ds_next"]
-                ds_cur_text = str(ds_cur)
-                if not ds_cur or ds_cur <= 0.0:  # 不在当前版本的谱面，使用0来标记无定数
-                    ds_cur_text = "--"
-                if not ds_next or ds_next <= 0.0:  # 未有新版本数据的谱面，使用0来标记无定数
-                    ds_next_text = "--"
+                # 使用 try_parse_difficulty 安全解析定数（可能为字符串如"--"）
+                ds_cur_numeric = try_parse_difficulty(ds_cur)
+                ds_next_numeric = try_parse_difficulty(ds_next)
+                if ds_cur_numeric is not None and ds_cur_numeric > 0.0:
+                    ds_cur_text = str(ds_cur)
                 else:
-                    ds_next_text = modified_ds_next(ds_cur, ds_next)
+                    ds_cur_text = "--"
+                if ds_next_numeric is not None and ds_next_numeric > 0.0:
+                    ds_next_text = modified_ds_next(ds_cur_numeric, ds_next_numeric)
+                else:
+                    ds_next_text = "--"
                 _temp_img = self.TextDraw(_temp_img, ds_cur_text , ds_cur_pos,
                                           font_path=self.title_font_path, 
                                           font_size=45, font_color=(77, 77, 77), h_align="center")

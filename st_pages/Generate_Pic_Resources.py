@@ -163,7 +163,7 @@ with st.expander(f"🔄 更换分表存档", expanded=False):
 ### Savefile Management - End ###
 
 if archive_id:
-    current_paths = get_user_media_dir(username, game_type=G_type)
+    current_paths = get_user_media_dir(username, game_type=G_type, archive_id=archive_id)
     image_path = current_paths['image_dir']
     
     st.markdown("### 🎨 生成成绩背景图片")

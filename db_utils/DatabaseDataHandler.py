@@ -6,14 +6,6 @@ import os
 import json
 from datetime import datetime
 
-# 尝试导入 moviepy，如果失败则使用备用方法
-try:
-    from moviepy import VideoFileClip
-    MOVIEPY_AVAILABLE = True
-except ImportError:
-    MOVIEPY_AVAILABLE = False
-    VideoFileClip = None
-
 class DatabaseDataHandler:
     """
     New data handler that replaces JSON-based storage with SQLite database.
@@ -408,21 +400,22 @@ class DatabaseDataHandler:
                 level_index = record.get('level_index', 0)
                 song_id = record.get('song_id', '')
                 
-                # 获取歌曲元数据
-                metadata = query_songs_metadata(game_type, title, artist)
-                chart_info = metadata.get('charts_info', [])
-                # 获取定数信息（从元数据）
+                # 获取定数信息（优先从元数据，如果无采用自定义数据）
                 ds_value_cur = None
                 ds_value_next = None
-                for chart_meta in chart_info:
-                    chart_level_index = chart_meta.get('difficulty', -1)
-                    if chart_level_index == level_index:
-                        ds_value_cur = get_level_value_from_chart_meta(chart_meta)
-                        ds_value_next = get_level_value_from_chart_meta(chart_meta, latest_first=True)
-                # 如果定数信息不存在，尝试使用record中的difficulty字段（可能来自用户自定义的数据）
+                metadata = query_songs_metadata(game_type, title, artist)
+                if metadata:
+                    chart_info = metadata.get('charts_info', [])
+                    for chart_meta in chart_info:
+                        chart_level_index = chart_meta.get('difficulty', -1)
+                        if chart_level_index == level_index:
+                            ds_value_cur = get_level_value_from_chart_meta(chart_meta)
+                            ds_value_next = get_level_value_from_chart_meta(chart_meta, latest_first=True)
+                # 如果定数信息不存在，使用record中的difficulty字段, fallback为"--"
                 if ds_value_cur is None:
-                    ds_value_cur = record.get('difficulty', "--")
-                ds_value_refomated = ds_value_cur if ds_value_cur is not None else "--"
+                    ds_value_cur = record.get('difficulty', None)
+                if ds_value_cur is None:
+                    ds_value_cur = "--"
                 reformat_data = {
                     'chart_id': record.get('chart_id'),
                     'song_id': song_id,
@@ -430,7 +423,7 @@ class DatabaseDataHandler:
                     'artist': artist,
                     'type': record.get('chart_type', 0),
                     'level_index': level_index,
-                    'ds_cur': ds_value_refomated,
+                    'ds_cur': ds_value_cur,
                     'ds_next': ds_value_next,
                     'score': int(record.get('achievement', 0)), # Format as integer score
                     'combo_type': record.get('fc_status', 'none'), 
@@ -499,21 +492,22 @@ class DatabaseDataHandler:
                 level_index = record.get('level_index', 0)
                 song_id = record.get('song_id', '')
                 
-                # 获取歌曲元数据
-                metadata = query_songs_metadata(game_type, title, artist)
-                chart_info = metadata.get('charts_info', [])
-                # 获取定数信息
+                # 获取定数信息（优先从元数据，如果无采用自定义数据）
                 ds_value_cur = None
                 ds_value_next = None
-                for chart_meta in chart_info:
-                    chart_level_index = chart_meta.get('difficulty', -1)
-                    if chart_level_index == level_index:
-                        ds_value_cur = get_level_value_from_chart_meta(chart_meta)
-                        ds_value_next = get_level_value_from_chart_meta(chart_meta, latest_first=True)
-                # 如果定数信息不存在，尝试使用record中的difficulty字段（可能来自用户自定义的数据）
+                metadata = query_songs_metadata(game_type, title, artist)
+                if metadata:
+                    chart_info = metadata.get('charts_info', [])
+                    for chart_meta in chart_info:
+                        chart_level_index = chart_meta.get('difficulty', -1)
+                        if chart_level_index == level_index:
+                            ds_value_cur = get_level_value_from_chart_meta(chart_meta)
+                            ds_value_next = get_level_value_from_chart_meta(chart_meta, latest_first=True)
+                # 如果定数信息不存在，使用record中的difficulty字段, fallback为"--"
                 if ds_value_cur is None:
-                    ds_value_cur = record.get('difficulty', "--")
-                ds_value_refomated = ds_value_cur if ds_value_cur is not None else "--"
+                    ds_value_cur = record.get('difficulty', None)
+                if ds_value_cur is None:
+                    ds_value_cur = "--"
                 
                 reformat_data = {
                     'chart_id': record.get('chart_id'),
@@ -522,7 +516,7 @@ class DatabaseDataHandler:
                     'artist': artist,
                     'type': record.get('chart_type', 0),
                     'level_index': level_index,
-                    'ds_cur': ds_value_refomated,
+                    'ds_cur': ds_value_cur,
                     'ds_next': ds_value_next,
                     'score': int(record.get('achievement', 0)), # Format as integer score
                     'combo_type': record.get('fc_status', 'none'), 
@@ -709,35 +703,7 @@ class DatabaseDataHandler:
             s = record.get('video_slice_start', 0)
             e = record.get('video_slice_end', 0)
             start, end = get_valid_time_range(s, e)
-            
-            # 验证并调整时间范围，确保不超过视频实际长度
-            # TODO：读取和验证时间过长，需要优化
-            # print(f"debug: 验证{record.get('clip_title_name', '未知')}的视频时间范围...")
-            # video_path = record.get('video_path')
-            # if video_path and os.path.exists(video_path) and MOVIEPY_AVAILABLE:
-            #     try:
-            #         video_clip = VideoFileClip(video_path)
-            #         video_duration = video_clip.duration
-            #         video_clip.close()
-                    
-            #         # 如果结束时间超出视频长度，自动调整
-            #         if end > video_duration:
-            #             print(f"警告: {record.get('clip_title_name', '未知')} 的结束时间 {end:.2f} 超出视频长度 {video_duration:.2f}，自动调整")
-            #             end = video_duration
-                    
-            #         # 如果开始时间超出视频长度，重置为0
-            #         if start >= video_duration:
-            #             print(f"警告: {record.get('clip_title_name', '未知')} 的开始时间 {start:.2f} 超出视频长度 {video_duration:.2f}，自动调整为0")
-            #             start = 0
-            #             end = min(end, video_duration)
-                    
-            #         # 确保结束时间大于开始时间
-            #         if end <= start:
-            #             end = min(start + 1, video_duration)
-            #     except Exception as e:
-            #         print(f"警告: 无法读取视频 {video_path} 的长度，跳过时间验证: {e}")
-            
-            duration = end - start  # 修复：应该是 end - start，不是 start - end
+            duration = end - start
             entry = {
                 'game_type': record.get('game_type'),
                 'chart_id': record.get('chart_id', None),
@@ -799,15 +765,6 @@ class DatabaseDataHandler:
         archive_id = self.load_save_archive(username, archive_name)
         if not archive_id:
             raise ValueError("No active archive found to save configuration.")
-        
-        # Delete existing configurations of this type
-        # with self.db.get_connection() as conn:
-        #     cursor = conn.cursor()
-        #     cursor.execute('''
-        #         DELETE FROM extra_video_configs 
-        #         WHERE archive_id = ? AND config_type = ?
-        #     ''', (archive_id, config_type))
-        #     conn.commit()
         
         # Save new configurations with proper indexing
         for index, config_data in enumerate(config_data_list):
