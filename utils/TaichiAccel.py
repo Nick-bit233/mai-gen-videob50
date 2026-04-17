@@ -100,16 +100,17 @@ def init_taichi(arch=None):
     # 快速路径：本轮已初始化
     if _ti_initialized:
         return True
+
+    if not TAICHI_AVAILABLE:
+        print("[TaichiAccel] Warning: taichi 未安装，GPU 加速不可用")
+        return False
+
     # 跨 reimport 持久化标记（Streamlit 页面刷新时模块被重新加载，
     # 但 ti 模块常驻 sys.modules，其属性不受影响）
     if getattr(ti, '_mgv_ti_initialized', False):
         _ti_initialized = True
         print("[TaichiAccel] ✓ 复用已有的 Taichi 运行时")
         return True
-
-    if not TAICHI_AVAILABLE:
-        print("[TaichiAccel] Warning: taichi 未安装，GPU 加速不可用")
-        return False
 
     # 在工作线程上执行初始化，确保 CUDA 上下文绑定到该线程
     try:
