@@ -107,11 +107,12 @@ with st.container(border=True):
     st.markdown("##### 🚀 GPU 加速渲染（实验性）")
     gpu_accel = st.checkbox(
         "启用 Taichi GPU 加速",
-        value=_gpu_accel,
+        value=_gpu_accel and st.session_state.taichi_accel_installed,
         disabled=not st.session_state.taichi_accel_installed,
         help="使用 Taichi GPU 合成 + FFmpeg 硬件编码加速视频渲染。如果无法勾选，请在主页检查是否安装Taichi加速组件。"
              "启用后将自动检测最佳 GPU 后端（CUDA/Vulkan/Metal）和硬件编码器（NVENC/VideoToolbox 等）。"
     )
+    gpu_accel = gpu_accel and st.session_state.taichi_accel_installed
 
 v_mode_index = options.index(mode_str)
 v_bitrate_kbps = f"{v_bitrate}k"
