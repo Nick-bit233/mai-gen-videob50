@@ -911,10 +911,12 @@ def update_record_grid(grid, external_placeholder):
                 st.write("当前没有记录，请添加记录。")
 
     st.divider()
-    render_records_preview(st.session_state.records, cur_game_type)  # 显示记录预览
+    if cur_game_type in ["maimai"]:
+        render_records_preview(st.session_state.records, cur_game_type)  # 渲染网格记录预览
+
 
 def render_records_preview(records, game_type):
-    # 记录预览列表（带曲绘）
+    # 记录预览网格组件（渲染曲绘，暂时仅支持maimai使用）
     with st.expander("📁 查看可视化分表预览", expanded=True):
         if records:
             st.markdown(f"""**共 {len(records)} 条记录** | 💡 若曲绘无法正常显示，尝试稍后刷新页面；若多次刷新无效，请检查网络环境""")
@@ -1211,7 +1213,6 @@ if not st.session_state.get("username", None):
 
 # 初始化会话状态
 # """
-#     本页面的会话状态包含：
 #     - username: 当前用户名
 #     - archive_name: 当前存档名，用于从数据库加载和保存存档
 #     - archive_meta: 当前存档的元配置（临时缓存，未保存前不会写入数据库）
