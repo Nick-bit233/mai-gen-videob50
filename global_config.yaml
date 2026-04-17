@@ -20,7 +20,7 @@ SEARCH_WAIT_TIME: !!python/tuple
 USE_ALL_CACHE: false
 USE_AUTO_PO_TOKEN: false
 USE_CUSTOM_PO_TOKEN: false
-USE_GPU_ACCEL: true
+USE_GPU_ACCEL: false
 USE_OAUTH: true
 USE_PROXY: false
 USE_YOUTUBE_API: true
