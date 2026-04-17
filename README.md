@@ -8,31 +8,25 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 ## 更新速览
 
+`v1.2` 开发版本更新：
+- 🚀 **GPU 加速渲染（实验功能）**：新增基于 Taichi 的 GPU 加速渲染管线，大幅提升视频合成速度，预计加速比在x3以上：
+    - 自动检测最佳 GPU 后端：CUDA（NVIDIA）、Vulkan、Metal（macOS）、OpenGL，不可用时自动回退 CPU
+    - 默认检测GPU硬件视频编码器进行拼接，优先使用N卡NVIDIA NVENC
+- 🎚️ **自定义模式优化**：现在支持在自定义乐曲元数据中使用任意字符串格式的定数字段
+- 🛠️ **Bug修复**：修复中二模式中无法加载自定义数据的问题，修复获取多个存档时生成图片背景和乐曲不一致的问题，另修复若干小型问题，详见release日志。
+
+注意：升级到v1.2版本需要更新依赖运行库，请将新版本runtime目录的所有文件复制并覆盖原有文件。GPU 加速需要安装 `taichi` 库（`pip install taichi`），此项不会自动安装，请按照主页引导进行安装，未安装时将自动使用 CPU 渲染。
+
+如果使用源代码安装，请注意v1.2版本推荐使用ffmpeg版本==7.1，ffmpeg版本可能影响GPU加速时的硬件编码器兼容性。
+
+---
+
 `v1.1` 开发版本更新：
 - ✨ **文字渲染优化**：现在支持多语言智能换行、描边和（基于Unicode的）Emoji 渲染
 - ✨ **手动填写模式**：在「编辑自定义分表」页面新增手动填写模式，允许用户完全自定义乐曲元数据和成绩信息
     - 支持上传自定义曲绘（仅 maimai）
     - 卡片式预览列表，直观展示曲绘和记录信息
 - 🛠️ **曲绘管理优化**：现在将自动在后台抓取存档曲绘，生成成绩图片时，自定义曲绘优先级会大于默认远端获取。同时，修复了若干UI体验的Bug
-
-注意：升级到v1.1版本需要更新依赖运行库，请将新版本runtime目录的所有文件复制并覆盖原有文件。
-
-如果使用源代码安装，运行 `pip install -r requirements.txt` 更新依赖。
-
-想要完整体验新版本功能，建议使用新建存档。
-
----
-
-`v1.0` 测试版本：
-- ✨ **重大更新**：现已支持中二节奏（CHUNITHM）B50视频生成！并统一支持了水鱼查分器和落雪查分器的双数据源更新
-    - 中二节奏的国际服数据查询还在施工中，敬请谅解
-- 🛠️ 数据库重构：使用本地Sqlite3数据库替换原基于文件的数据存储系统，在调取资源时更加灵活，并兼容分表数据的未来更新
-- 🎮 界面更新：更加友好的控件布局和和流程导航，在使用不同生成模式时自动切换配色方案
-- 🔍 搜索优化：支持使用YouTube Data API v3进行搜索（您需要自行获取api密钥），并优化更加快捷的手动搜索流程
-
-由于数据库支持更新，`v1.0`版本需要重新开始使用，旧版本数据暂时不能迁移，敬请谅解。
-
-- 如果您需要更快速度地制作中二分表，可以参考由 [〖天蓝〗](https://github.com/MetallicAllex) 制作的渲染改进版分支 [chu-gen-videob30](https://github.com/MetallicAllex/chu-gen-videob30/tree/get_userdata_FC)
 
 ---
 
@@ -259,11 +253,9 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
     合并完整视频的时间取决于你设置的预览时长和设备的性能，在每个片段10s的情况下，生成完整视频至少需要60分钟。
 
-    本工具的性能瓶颈主要是CPU性能，由于依赖的第三方库特性，**目前无法实现GPU加速渲染**，敬请谅解。
+    如果未启用 GPU 加速，本工具的性能瓶颈主要是 CPU 性能。建议在 `global_config.yaml` 中设置 `USE_GPU_ACCEL: true` 或在「合成完整视频」页面勾选 GPU 加速以显著提升渲染速度。
     
-    如果您的CPU性能不佳，该时间可能会延长到3小时甚至以上，请考虑缩减视频时长，或降低视频分辨率（不推荐，可能需要手动调整字号以防止文字错位）
-
-    >  如果您在制作中二分表，[〖天蓝〗](https://github.com/MetallicAllex) 在本项目v0.6.5版本的基础上开发了优化ffmepg渲染速度的改进版分支 [chu-gen-videob30](https://github.com/MetallicAllex/chu-gen-videob30/tree/get_userdata_FC)，确实需要更快渲染速度的情况下，可以参考该分支。
+    如果您的设备不支持 GPU 加速，该时间可能会延长到3小时甚至以上，请考虑缩减视频时长，或降低视频分辨率（不推荐，可能需要手动调整字号以防止文字错位）
 
 - Q：视频生成过程中中断，并提示无法读取某视频文件
 
@@ -339,7 +331,7 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 - 中二落雪查分器支持，YouTube Data API v3和部分界面重构支持，由[caiccu](https://github.com/CAICCU)参与贡献
 
-- 中二视频渲染改进分支，由[〖天蓝〗](https://github.com/MetallicAllex)制作
+- 中二视频渲染改进分支，由[〖天蓝〗](https://github.com/MetallicAllex)制作，您仍然可以使用此分支以获得由其开发的特色功能，查看[这里](https://github.com/MetallicAllex/chu-gen-videob30/tree/get_userdata_FC)
 
 - [Tomsens Nanser](https://space.bilibili.com/255845314) 提供图片生成素材模板以及代码实现
 

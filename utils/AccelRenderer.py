@@ -18,8 +18,51 @@ from utils.PageUtils import remove_invalid_chars
 
 
 # ============================================================================
-# FFmpeg 硬件编码器检测
+# FFmpeg 版本检测与硬件编码器检测
 # ============================================================================
+
+_FFMPEG_MIN_VERSION = (5, 0)  # 最低要求 FFmpeg 5.0（NVENC 新版 preset API）
+_ffmpeg_version_checked = False
+
+def check_ffmpeg_version():
+    """检测 FFmpeg 版本，低于最低要求时抛出 RuntimeError。
+
+    可多次调用，仅首次实际执行检测，后续直接返回。
+    """
+    global _ffmpeg_version_checked
+    if _ffmpeg_version_checked:
+        return
+
+    import re
+    try:
+        ffmpeg_path = os.path.join(os.getcwd(), 'ffmpeg.exe' if os.name == 'nt' else 'ffmpeg')
+        result = subprocess.run(
+            [ffmpeg_path, '-version'],
+            capture_output=True, text=True, timeout=10
+        )
+        # 匹配多种版本号格式:
+        #   "ffmpeg version 7.1-full_build-..."
+        #   "ffmpeg version n4.3.2-160-gfbb9368226 ..."
+        #   "ffmpeg version N-112107-..."
+        match = re.search(r'ffmpeg version [nN]?(\d+)\.(\d+)', result.stdout)
+        if not match:
+            raise RuntimeError(
+                f"无法解析 FFmpeg 版本号。请确认 FFmpeg 已正确安装。\n"
+                f"FFmpeg 输出: {result.stdout.splitlines()[0] if result.stdout else '(空)'}"
+            )
+        major, minor = int(match.group(1)), int(match.group(2))
+        if (major, minor) < _FFMPEG_MIN_VERSION:
+            raise RuntimeError(
+                f"FFmpeg 版本过低: 检测到 {major}.{minor}，"
+                f"最低要求 {_FFMPEG_MIN_VERSION[0]}.{_FFMPEG_MIN_VERSION[1]}。"
+                f"请更新 FFmpeg 或使用最新的 runtime 运行环境包。"
+            )
+        _ffmpeg_version_checked = True
+        print(f"[AccelRenderer] ✓ FFmpeg 版本: {major}.{minor}")
+    except FileNotFoundError:
+        raise RuntimeError(
+            "未找到 FFmpeg，请确认已安装 FFmpeg 并将其添加到系统 PATH 中。"
+        )
 
 _hw_encoder_cache = None
 
@@ -49,9 +92,20 @@ def detect_hw_encoder() -> Tuple[str, str]:
         output = result.stdout + result.stderr
         for codec, name in encoders:
             if codec in output:
-                _hw_encoder_cache = (codec, name)
-                print(f"[AccelRenderer] ✓ 检测到硬件编码器: {name} ({codec})")
-                return _hw_encoder_cache
+                # 实际探测编码器是否能工作（驱动版本可能不满足要求）
+                probe = subprocess.run(
+                    ['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error',
+                     '-f', 'lavfi', '-i', 'nullsrc=s=64x64:d=0.04:r=25',
+                     '-c:v', codec, '-f', 'null', '-'],
+                    capture_output=True, text=True, timeout=10
+                )
+                if probe.returncode == 0:
+                    _hw_encoder_cache = (codec, name)
+                    print(f"[AccelRenderer] ✓ 检测到硬件编码器: {name} ({codec})")
+                    return _hw_encoder_cache
+                else:
+                    reason = probe.stderr.strip().split('\n')[-1] if probe.stderr.strip() else '未知原因'
+                    print(f"[AccelRenderer] ✗ {name} ({codec}) 不可用: {reason}")
     except Exception as e:
         print(f"[AccelRenderer] Warning: 检测硬件编码器失败: {e}")
 
@@ -194,6 +248,10 @@ class FFmpegWriter:
             if audio_duration:
                 cmd += ['-t', str(audio_duration)]
             cmd += ['-i', audio_path]
+        else:
+            # 无音频源时生成静音音轨，确保输出始终包含音频流（xfade 拼接需要）
+            cmd += ['-f', 'lavfi', '-i',
+                    f'anullsrc=channel_layout=stereo:sample_rate=44100']
 
         # 视频编码参数
         cmd += encoder_args
@@ -211,6 +269,9 @@ class FFmpegWriter:
                 af_filters.append(f"afade=t=out:st={fade_out_start:.3f}:d={audio_fade_out}")
             if af_filters:
                 cmd += ['-af', ','.join(af_filters)]
+            cmd += ['-c:a', 'aac', '-b:a', '192k', '-map', '0:v', '-map', '1:a', '-shortest']
+        else:
+            # 静音音轨：仅需编码，用 -shortest 使其匹配视频长度
             cmd += ['-c:a', 'aac', '-b:a', '192k', '-map', '0:v', '-map', '1:a', '-shortest']
 
         cmd += [output_path]

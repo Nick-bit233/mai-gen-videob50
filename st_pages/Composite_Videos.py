@@ -155,6 +155,14 @@ if st.button("开始生成视频", use_container_width=True, type="primary"):
     save_video_render_config()
     video_res = (v_res_width, v_res_height)
 
+    # 前置检查 FFmpeg 版本
+    try:
+        from utils.AccelRenderer import check_ffmpeg_version
+        check_ffmpeg_version()
+    except RuntimeError as e:
+        st.error(f"❌ FFmpeg 版本检查失败: {e}")
+        st.stop()
+
     placeholder = st.empty()
 
     # GPU 加速时创建 Streamlit 进度回调
@@ -239,6 +247,12 @@ with st.expander("展开其他视频生成方案"):
         if st.button("直接拼接方式生成完整视频"):
             save_video_render_config()
             video_res = (v_res_width, v_res_height)
+            try:
+                from utils.AccelRenderer import check_ffmpeg_version
+                check_ffmpeg_version()
+            except RuntimeError as e:
+                st.error(f"❌ FFmpeg 版本检查失败: {e}")
+                st.stop()
             if gpu_accel:
                 # GPU快速模式：方案B（烘焙黑场过渡 + 流拷贝）
                 try:
