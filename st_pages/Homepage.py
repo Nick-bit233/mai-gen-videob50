@@ -134,12 +134,26 @@ with col_header2:
                 st.session_state.theme = "Verse"
                 change_theme(THEME_COLORS["chunithm"]["Verse"])
     G_type = st.session_state.get('game_type', 'maimai')
-    st.caption(f"当前版本 v1.1 |\
+    st.caption(f"当前版本 v1.2 |\
                Created by: [Nickbit](https://github.com/Nick-bit233), \
-               Thanks to: [caiccu](https://github.com/CAICCU), \
-               [MetallicAllex](https://github.com/MetallicAllex), \
-               [YelonNotXTD](https://github.com/YelonNotXTD) ")
+               Thanks to: [MetallicAllex](https://github.com/MetallicAllex), \
+               [YelonNotXTD](https://github.com/YelonNotXTD), \
+               [caiccu](https://github.com/CAICCU)")
     st.info(f"您正在使用 **{get_game_type_text(G_type)}** 视频生成模式")
+
+# 检查Taichi依赖是否安装
+if 'taichi_accel_installed' not in st.session_state:
+    st.session_state.taichi_accel_installed = False
+# if not st.session_state.taichi_accel_installed:
+try:
+    from utils.TaichiAccel import init_taichi, is_available
+    init_taichi()
+    if is_available():
+        st.session_state.taichi_accel_installed = True
+    else:
+        st.session_state.taichi_accel_installed = False
+except ImportError:
+    st.session_state.taichi_accel_installed = False
 
 # 游戏类型切换
 with st.container(border=True):
@@ -174,7 +188,7 @@ with st.container(border=True):
     👋 欢迎使用 mai-gen-videob50！本工具旨在帮助您轻松生成{get_game_type_text(G_type)}的分表展示视频，请按照以下步骤操作：
     
     1. **获取数据** | 在左侧的**数据管理**页面分组中注册用户名和存档，您可以选择从第三方查分器获取分表，或手动创建自定义分表
-    2. **生成和抓取资源** | 在左侧的**资源生成**页面分组中完成： 1）生成成绩图片，2)搜索视频，3)确认正确的视频并下载（需要联网并建议登录相关平台）
+    2. **生成和抓取资源** | 在左侧的**资源生成**页面分组中完成： 1）生成成绩图片，2)搜索视频，3)确认正确的视频下载（需联网，并建议登录相关平台）
     3. **编辑评论** | 在左侧的**评论编辑**页面分组中编辑您需要剪辑的内容，也就是每个视频的展示片段和评论文字
     4. **合成视频** | 全部完成后，前往**合成视频**页面中启动最终的视频渲染过程
     
@@ -185,12 +199,10 @@ with st.container(border=True):
 with st.container(border=True):
     st.markdown("### ⚠️ 重要提示（第一次使用请仔细阅读）")
     st.info("**数据缓存**: 本工具的缓存数据均保存在本地，若您中途退出或意外刷新页面，可在任意步骤加载已有存档继续编辑。", icon="💾")
-    st.warning(""" **生成时间**: 本工具旨在节省搜集素材与编辑视频步骤中的工作量，而未专门对视频渲染速度进行优化
-   
-    - 从零开始到获取完整视频的时间受到多种因素影响（如网络速度、视频长度与分辨率、硬件CPU性能等）
-    - 我们无法估算准确时间，但**渲染步骤至少需要60分钟，缓慢情况下可能需要 >3小时** (渲染期间，可以正常使用您的设备)
+    st.warning(""" **生成时间与加速**: 本工具默认使用纯CPU渲染方案，**渲染时间可能较长**，如果您的设备带有显卡，可尝试安装GPU加速组件。
+    - 如果使用纯CPU渲染，**渲染时间视硬件性能，在约1~4小时左右** (渲染期间，可以正常使用您的设备)。
+    - 如果安装并启用GPU加速组件（见下方），**渲染时间可能缩短至30分钟以内**（具体时间取决于您的GPU性能）。
     - 如果您正在使用一台公共或计时设备，请务必注意预留足够的使用时间
-  
     """, icon="🕐")
     st.success("**问题反馈**: 使用过程中遇到任何问题，可以前往Github页面发起issue，或加入QQ群：[994702414](https://qm.qq.com/q/ogt02jHEjK) 反馈", icon="💬")
 
@@ -210,6 +222,22 @@ if not os.path.exists(DEFAULT_STYLE_CONFIG_FILE_PATH):
 
 # 系统状态检查
 st.markdown("### 🔧 系统状态")
+
+# Taichi加速组件状态
+with st.container(border=False):
+    if not st.session_state.taichi_accel_installed:
+        st.warning("⚠️ 您尚未安装GPU加速组件。如果您在使用整合包runtime，请点击下方按钮安装。")
+        if st.button("安装Taichi加速库", key="install_taichi_btn", use_container_width=False, type="primary"):
+            with st.spinner("正在安装Taichi加速库..."):
+                try:
+                    import subprocess
+                    subprocess.check_call([r".\runtime\python.exe", "-m", "pip", "install", "taichi[all]"])
+                    st.success("✅ Taichi加速库安装成功！请重新启动应用以生效。")
+                except Exception as e:
+                    st.error(f"❌ 安装失败: {e}")
+        st.markdown("> 如果您是从源代码手动部署，运行下列命令安装依赖，然后重启应用：\n\n```\npip install taichi[all]\n```")
+    else:
+        st.success("✅ GPU加速组件已安装，您已可以在合成视频前启用GPU加速！", icon="⚡")
 
 # 元数据状态 - 根据当前游戏类型检查对应的元数据文件
 metadata_ready = False

@@ -774,7 +774,7 @@ def render_all_clips_accel(
         print(f"[Timer] 片段 {prefix}_{name} 渲染耗时: {t_clip_elapsed:.2f}s")
 
         if result['status'] == 'error':
-            print(f"[AccelRenderer] Warning: {result['info']}")
+            raise RuntimeError(f"[AccelRenderer] 片段 {prefix}_{name} 渲染失败: {result['info']}")
         clip_index[0] += 1
 
     # 开场片段

@@ -1074,10 +1074,6 @@ def render_complete_full_video(
         print("=" * 60)
         print(f"输出文件: {output_file}")
         print(f"视频比特率: {video_bitrate}")
-        print("提示：如需更快速度，可以考虑：")
-        print("  1. 降低视频分辨率（1280x720 比 1920x1080 快4倍）")
-        print("  2. 减少片段数量")
-        print("  3. 关闭转场效果")
         print("=" * 60)
         
         final_video.write_videofile(
@@ -1095,8 +1091,8 @@ def render_complete_full_video(
         final_video.close()
         return {"status": "success", "info": f"合成完整视频成功"}
     except Exception as e:
-        print(f"Error: 合成完整视频时发生异常: {traceback.print_exc()}")
-        return {"status": "error", "info": f"合成完整视频时发生异常: {traceback.print_exc()}"}
+        print(f"Error: 合成完整视频时发生异常: {traceback.format_exc()}")
+        return {"status": "error", "info": f"合成完整视频时发生异常: {traceback.format_exc()}"}
 
 
 def combine_full_video_direct(video_clip_path, auto_add_transition=False, trans_time=1,

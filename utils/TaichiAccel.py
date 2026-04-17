@@ -21,6 +21,12 @@ def init_taichi(arch=None):
     """
     初始化 Taichi 运行时，自动选择最佳 GPU 后端。
     如果 GPU 不可用则回退到 CPU。
+
+    针对 Streamlit 等场景做了防重入处理：
+    - 模块被 reimport 后 _ti_initialized 会重置为 False，
+      但 taichi 包本身保留在 sys.modules 中，运行时仍在进程内存活。
+    - 此时不能调用 ti.reset()（会触发 CUDA_ERROR_INVALID_CONTEXT），
+      而是直接复用已有的运行时。通过在 ti 模块上打标记来跨 reimport 传递状态。
     """
     global _ti_initialized
     if _ti_initialized:
@@ -29,10 +35,19 @@ def init_taichi(arch=None):
         print("[TaichiAccel] Warning: taichi 未安装，GPU 加速不可用")
         return False
 
+    # Streamlit 刷新页面时本模块会被 reimport（_ti_initialized 被重置），
+    # 但 taichi 包仍缓存在 sys.modules 中，旧的运行时依然存活。
+    # 直接复用，不做 reset（reset 会触发 CUDA_ERROR_INVALID_CONTEXT）。
+    if getattr(ti, '_mgv_ti_initialized', False):
+        _ti_initialized = True
+        print("[TaichiAccel] ✓ 复用已有的 Taichi 运行时（Streamlit 页面刷新）")
+        return True
+
     if arch is not None:
         try:
             ti.init(arch=arch)
             _ti_initialized = True
+            ti._mgv_ti_initialized = True
             print(f"[TaichiAccel] 已使用指定后端初始化: {arch}")
             return True
         except Exception:
@@ -67,6 +82,7 @@ def init_taichi(arch=None):
                 continue
             actual_name = str(actual_arch).replace("Arch.", "").upper()
             _ti_initialized = True
+            ti._mgv_ti_initialized = True
             print(f"[TaichiAccel] ✓ 使用 {actual_name} 后端初始化成功")
             return True
         except Exception:

@@ -67,7 +67,7 @@ if not archive_id:
     st.stop()
 ### Savefile Management - End ###
 
-st.write("视频生成相关设置")
+st.markdown("#### 视频生成设置")
 
 _mode_index = 0 if G_config['ONLY_GENERATE_CLIPS'] else 1
 _video_res = G_config['VIDEO_RES']
@@ -78,10 +78,11 @@ _trans_time = G_config['VIDEO_TRANS_TIME']
 options = ["仅生成每个视频片段", "生成完整视频"]
 with st.container(border=True):
     mode_str = st.radio("选择视频生成模式", 
+            horizontal=True,
             options=options, 
             index=_mode_index)
     
-    force_render_clip = st.checkbox("生成视频片段时，强制覆盖已存在的视频文件", value=False)
+    force_render_clip = st.checkbox("生成视频片段时，强制覆盖已存在的视频文件（否则将跳过同名片段的生成）", value=False)
 
 trans_config_placeholder = st.empty()
 with trans_config_placeholder.container(border=True):
@@ -89,25 +90,27 @@ with trans_config_placeholder.container(border=True):
     trans_enable = st.checkbox("启用片段过渡", value=_trans_enable)
     trans_time = st.number_input("过渡时间", min_value=0.5, max_value=10.0, value=_trans_time, step=0.5,
                                  disabled=not trans_enable)
-with st.container(border=True):
-    st.write("视频分辨率")
-    col1, col2 = st.columns(2)
-    v_res_width = col1.number_input("视频宽度", min_value=360, max_value=4096, value=_video_res[0])
-    v_res_height = col2.number_input("视频高度", min_value=360, max_value=4096, value=_video_res[1])
-
-with st.container(border=True):
-    st.write("视频比特率(kbps)")  
-    v_bitrate = st.number_input("视频比特率", min_value=1000, max_value=10000, value=_video_bitrate)
+vcof_col1, vcof_col2 = st.columns(2)
+with vcof_col1:
+    with st.container(border=True):
+        st.write("视频分辨率")
+        col1, col2 = st.columns(2)
+        v_res_width = col1.number_input("视频宽度", min_value=360, max_value=4096, value=_video_res[0])
+        v_res_height = col2.number_input("视频高度", min_value=360, max_value=4096, value=_video_res[1])
+with vcof_col2:
+    with st.container(border=True):
+        st.write("视频比特率(kbps)")  
+        v_bitrate = st.number_input("视频比特率", min_value=1000, max_value=10000, value=_video_bitrate)
 
 _gpu_accel = G_config.get('USE_GPU_ACCEL', False)
 with st.container(border=True):
-    st.write("🚀 GPU 加速渲染（实验性）")
+    st.markdown("##### 🚀 GPU 加速渲染（实验性）")
     gpu_accel = st.checkbox(
         "启用 Taichi GPU 加速",
         value=_gpu_accel,
-        help="使用 Taichi GPU 合成 + FFmpeg 硬件编码加速视频渲染。需要安装 taichi 库（pip install taichi）。"
+        disabled=not st.session_state.taichi_accel_installed,
+        help="使用 Taichi GPU 合成 + FFmpeg 硬件编码加速视频渲染。如果无法勾选，请在主页检查是否安装Taichi加速组件。"
              "启用后将自动检测最佳 GPU 后端（CUDA/Vulkan/Metal）和硬件编码器（NVENC/VideoToolbox 等）。"
-             "如果 GPU 不可用，将自动回退到 CPU 渲染。"
     )
 
 v_mode_index = options.index(mode_str)
@@ -162,7 +165,7 @@ if st.button("开始生成视频", use_container_width=True, type="primary"):
             frame_progress = frame / total_frames if total_frames > 0 else 0
             overall = (clip_idx + frame_progress) / total_clips if total_clips > 0 else 0
             progress_bar.progress(min(overall, 1.0),
-                text=f"🚀 片段 {clip_idx+1}/{total_clips}: {clip_name} ({frame}/{total_frames}帧)")
+                text=f"🚀 正在渲染: {int(overall * 100)}% | 片段 {clip_idx+1}/{total_clips}: {clip_name} ({frame}/{total_frames})")
         return callback if gpu_accel else None
 
     if v_mode_index == 0:
@@ -194,7 +197,6 @@ if st.button("开始生成视频", use_container_width=True, type="primary"):
     else:
         try:
             with placeholder.container(border=True, height=560):
-                st.info("请注意，生成完整视频通常需要一定时间，您可以在控制台窗口中查看进度")
                 st.warning("生成过程中请不要手动跳转到其他页面，或刷新本页面，否则可能导致生成失败！")
                 progress_cb = _make_st_progress(st.container()) if gpu_accel else None
                 with st.spinner("正在生成完整视频……"):
@@ -231,11 +233,8 @@ st.divider()
 with st.expander("展开其他视频生成方案"):
     st.warning("⚠️ 请注意，此区域的功能未经充分测试，不保证生成视频的效果或稳定性，请谨慎使用。")
     with st.container(border=True):
-        st.write("【快速模式】先生成所有视频片段，再直接拼接为完整视频")
-        if gpu_accel:
-            st.info("GPU加速快速模式：使用烘焙黑场过渡 + 流拷贝拼接，速度更快但片段之间为fade through black过渡。")
-        else:
-            st.info("本方案会降低视频生成过程中的内存占用，并减少生成时间，但视频片段之间将只有黑屏过渡。")
+        st.write("【简单模式】直接拼接视频片段为完整视频（无过渡效果）")
+        st.info("使用此模式可以降低视频生成过程中的内存占用，但视频片段之间将只有黑屏过渡。此模式支持GPU加速。")
         if st.button("直接拼接方式生成完整视频"):
             save_video_render_config()
             video_res = (v_res_width, v_res_height)
@@ -288,7 +287,7 @@ with st.expander("展开其他视频生成方案"):
 
     with st.container(border=True):
         st.write("【更多过渡效果】使用ffmpeg concat生成视频，允许自定义片段过渡效果")
-        st.warning("本功能要求先在本地环境中安装ffmpeg concat插件，请务必查看使用说明后进行！")
+        st.warning("此模式要求先在本地环境中安装ffmpeg concat插件，请务必查看使用说明后进行！此模式不支持GPU加速！")
         @st.dialog("ffmpeg-concat使用说明")
         def delete_video_config_dialog(file):
             ### 展示markdown文本
