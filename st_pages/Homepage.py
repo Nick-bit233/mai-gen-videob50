@@ -227,7 +227,14 @@ with st.container(border=False):
             with st.spinner("正在安装Taichi加速库..."):
                 try:
                     import subprocess
-                    subprocess.check_call([r".\runtime\python.exe", "-m", "pip", "install", "taichi[all]"])
+                    if os.name == 'nt':
+                        python_executable = os.path.join(os.getcwd(), "runtime", "python.exe")
+                        if not os.path.exists(python_executable):
+                            st.warning("⚠️ 在整合包中未找到python.exe，正在尝试使用系统Python安装Taichi...")
+                            python_executable = "python"
+                    else:
+                        python_executable = "python3"
+                    subprocess.check_call([python_executable, "-m", "pip", "install", "taichi[all]"])
                     st.success("✅ Taichi加速库安装成功！请重新启动应用以生效。")
                 except Exception as e:
                     st.error(f"❌ 安装失败: {e}")
