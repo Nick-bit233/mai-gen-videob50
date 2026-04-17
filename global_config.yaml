@@ -18,9 +18,9 @@ SEARCH_WAIT_TIME: !!python/tuple
 - 1
 - 3
 USE_ALL_CACHE: false
-USE_GPU_ACCEL: false
 USE_AUTO_PO_TOKEN: false
 USE_CUSTOM_PO_TOKEN: false
+USE_GPU_ACCEL: false
 USE_OAUTH: true
 USE_PROXY: false
 USE_YOUTUBE_API: true

@@ -1,4 +1,5 @@
 import os
+import time
 import numpy as np
 import subprocess
 import traceback
@@ -936,9 +937,10 @@ def render_complete_full_video(
         intro_configs: list=None, ending_configs: list=None,
         video_res: tuple = (1920, 1080), video_bitrate: str = "4000k",
         video_trans_enable: bool = True, video_trans_time: float = 1.0, full_last_clip: bool = False,
-        use_gpu_accel: bool = None, progress_callback=None):
+        use_gpu_accel: bool = None, use_baked_fade: bool = None, progress_callback=None):
     """ 根据完整配置合成完整视频，并保存到指定路径的文件。
         当 use_gpu_accel=True 时，先用 GPU 加速渲染所有片段，再用 FFmpeg 拼接。
+        use_baked_fade: True=烘焙黑场过渡+流拷贝, False=xfade+硬件编码, None=读取配置文件
     """
     # 检查是否启用 GPU 加速
     if use_gpu_accel is None:
@@ -954,31 +956,95 @@ def render_complete_full_video(
                 print("=" * 60)
                 print("🚀 使用 GPU 加速完整视频生成模式")
                 print("=" * 60)
-                # 第一步：GPU 加速渲染所有片段
-                render_all_clips_accel(
-                    game_type=game_type,
-                    style_config=style_config,
-                    main_configs=main_configs,
-                    video_output_path=video_output_path,
-                    video_res=video_res,
-                    video_bitrate=video_bitrate,
-                    intro_configs=intro_configs,
-                    ending_configs=ending_configs,
-                    auto_add_transition=video_trans_enable,
-                    trans_time=video_trans_time,
-                    force_render=True,
-                    progress_callback=progress_callback
-                )
-                # 第二步：使用 FFmpeg 拼接（支持转场效果）
-                print("[AccelRenderer] 正在拼接完整视频...")
-                output_file = combine_full_video_direct(
-                    video_output_path,
-                    auto_add_transition=video_trans_enable,
-                    trans_time=video_trans_time
-                )
-                # 重命名为用户文件名（先做音频均衡化）
+                t_total_start = time.perf_counter()
+
+                # 检测硬件编码器
+                hw_codec, hw_codec_name = detect_hw_encoder()
+
+                # 判断转场模式：
+                #   use_baked_fade=True  → 烘焙黑场过渡 + 流拷贝拼接（快速，但只能fade through black）
+                #   use_baked_fade=False → xfade 真交叉淡入淡出 + 硬件编码拼接（默认）
+                if use_baked_fade is None:
+                    use_baked_fade = read_global_config().get('GPU_USE_BAKED_FADE', False)
+
+                if video_trans_enable and not use_baked_fade:
+                    # === 模式A: xfade + 硬件编码（真交叉淡入淡出）===
+                    print(f"[GPU] 转场模式: xfade + {hw_codec_name}")
+
+                    # 第一步：渲染片段（不烘焙淡入淡出）
+                    t_step = time.perf_counter()
+                    render_all_clips_accel(
+                        game_type=game_type,
+                        style_config=style_config,
+                        main_configs=main_configs,
+                        video_output_path=video_output_path,
+                        video_res=video_res,
+                        video_bitrate=video_bitrate,
+                        intro_configs=intro_configs,
+                        ending_configs=ending_configs,
+                        auto_add_transition=False,
+                        trans_time=video_trans_time,
+                        force_render=True,
+                        progress_callback=progress_callback
+                    )
+                    print(f"[Timer] 步骤1 - 渲染所有片段耗时: {time.perf_counter() - t_step:.2f}s")
+
+                    # 第二步：xfade 拼接（使用硬件编码器）
+                    t_step = time.perf_counter()
+                    print(f"[AccelRenderer] 正在拼接完整视频（xfade + {hw_codec_name}）...")
+                    output_file = combine_full_video_direct(
+                        video_output_path,
+                        auto_add_transition=True,
+                        trans_time=video_trans_time,
+                        codec=hw_codec,
+                        bitrate=video_bitrate
+                    )
+                    print(f"[Timer] 步骤2 - 视频拼接(xfade)耗时: {time.perf_counter() - t_step:.2f}s")
+                else:
+                    # === 模式B: 烘焙黑场过渡 + 流拷贝（或无转场）===
+                    if video_trans_enable:
+                        print("[GPU] 转场模式: 烘焙黑场过渡 + 流拷贝")
+                    else:
+                        print("[GPU] 无转场模式: 直接流拷贝拼接")
+
+                    # 第一步：渲染片段（根据需要烘焙淡入淡出）
+                    t_step = time.perf_counter()
+                    render_all_clips_accel(
+                        game_type=game_type,
+                        style_config=style_config,
+                        main_configs=main_configs,
+                        video_output_path=video_output_path,
+                        video_res=video_res,
+                        video_bitrate=video_bitrate,
+                        intro_configs=intro_configs,
+                        ending_configs=ending_configs,
+                        auto_add_transition=video_trans_enable,
+                        trans_time=video_trans_time,
+                        force_render=True,
+                        progress_callback=progress_callback
+                    )
+                    print(f"[Timer] 步骤1 - 渲染所有片段耗时: {time.perf_counter() - t_step:.2f}s")
+
+                    # 第二步：流拷贝拼接（无需重编码）
+                    t_step = time.perf_counter()
+                    print("[AccelRenderer] 正在拼接完整视频（流拷贝模式）...")
+                    output_file = combine_full_video_direct(
+                        video_output_path,
+                        auto_add_transition=False,
+                        trans_time=video_trans_time
+                    )
+                    print(f"[Timer] 步骤2 - 视频拼接(流拷贝)耗时: {time.perf_counter() - t_step:.2f}s")
+
+                # 第三步：音频均衡化 + 重命名
+                t_step = time.perf_counter()
                 final_path = os.path.join(video_output_path, f"{username}_FULL_VIDEO.mp4")
                 _normalize_video_audio(output_file, final_path)
+                print(f"[Timer] 步骤3 - 音频均衡化耗时: {time.perf_counter() - t_step:.2f}s")
+
+                t_total = time.perf_counter() - t_total_start
+                print(f"[Timer] ============================================")
+                print(f"[Timer] 完整视频生成总耗时: {t_total:.2f}s")
+                print(f"[Timer] ============================================")
                 print(f"[AccelRenderer] ✓ 完整视频生成完成: {final_path}")
                 return {"status": "success", "info": f"GPU加速合成完整视频成功"}
             else:
@@ -1008,10 +1074,6 @@ def render_complete_full_video(
         print("=" * 60)
         print(f"输出文件: {output_file}")
         print(f"视频比特率: {video_bitrate}")
-        print("提示：如需更快速度，可以考虑：")
-        print("  1. 降低视频分辨率（1280x720 比 1920x1080 快4倍）")
-        print("  2. 减少片段数量")
-        print("  3. 关闭转场效果")
         print("=" * 60)
         
         final_video.write_videofile(
@@ -1029,17 +1091,20 @@ def render_complete_full_video(
         final_video.close()
         return {"status": "success", "info": f"合成完整视频成功"}
     except Exception as e:
-        print(f"Error: 合成完整视频时发生异常: {traceback.print_exc()}")
-        return {"status": "error", "info": f"合成完整视频时发生异常: {traceback.print_exc()}"}
+        print(f"Error: 合成完整视频时发生异常: {traceback.format_exc()}")
+        return {"status": "error", "info": f"合成完整视频时发生异常: {traceback.format_exc()}"}
 
 
-def combine_full_video_direct(video_clip_path, auto_add_transition=False, trans_time=1):
+def combine_full_video_direct(video_clip_path, auto_add_transition=False, trans_time=1,
+                              codec=None, bitrate="5000k"):
     """ 
         拼接指定文件夹下的所有视频片段，生成最终视频文件
         片段需要具有正确的命名格式(0_xxx, 1_xxx, ...)以确保正确排序
         当 auto_add_transition=True 时使用 FFmpeg xfade 添加转场效果
+        codec/bitrate: 可选硬件编码器参数，传递给 xfade 拼接
     """
     print("[Info] --------------------开始拼接视频-------------------")
+    t_concat_start = time.perf_counter()
     # 仅匹配编号前缀的片段文件，排除 final_output.mp4 / *_FULL_VIDEO.mp4 等
     import re
     video_files = [f for f in os.listdir(video_clip_path)
@@ -1048,12 +1113,15 @@ def combine_full_video_direct(video_clip_path, auto_add_transition=False, trans_
     
     if not sorted_files:
         raise ValueError("Error: 没有有效的视频片段文件！")
+    print(f"[Timer] 拼接: 找到 {len(sorted_files)} 个片段")
 
     output_path = os.path.join(video_clip_path, "final_output.mp4")
 
     # 带转场的拼接：使用 FFmpeg xfade 滤镜
     if auto_add_transition and len(sorted_files) > 1 and trans_time > 0:
-        output_path = _combine_with_xfade(video_clip_path, sorted_files, output_path, trans_time)
+        output_path = _combine_with_xfade(video_clip_path, sorted_files, output_path, trans_time,
+                                          codec=codec, bitrate=bitrate)
+        print(f"[Timer] 拼接(xfade)总耗时: {time.perf_counter() - t_concat_start:.2f}s")
         return output_path
 
     # 无转场的快速拼接：TS remux + concat
@@ -1061,6 +1129,7 @@ def combine_full_video_direct(video_clip_path, auto_add_transition=False, trans_
     os.makedirs(temp_dir, exist_ok=True)
     
     try:
+        t_remux = time.perf_counter()
         ts_list_file = os.path.join(video_clip_path, "ts_files.txt")
         with open(ts_list_file, 'w', encoding='utf-8') as f:
             for i, file in enumerate(sorted_files):
@@ -1079,7 +1148,9 @@ def combine_full_video_direct(video_clip_path, auto_add_transition=False, trans_
                 
                 relative_ts_path = os.path.join('temp_ts', ts_name).replace('\\', '/')
                 f.write(f"file '{relative_ts_path}'\n")
+        print(f"[Timer] 拼接: TS remux 耗时: {time.perf_counter() - t_remux:.2f}s")
 
+        t_merge = time.perf_counter()
         cmd = [
             'ffmpeg', '-y',
             '-f', 'concat',
@@ -1090,6 +1161,7 @@ def combine_full_video_direct(video_clip_path, auto_add_transition=False, trans_
         ]
         
         subprocess.run(cmd, check=True, cwd=video_clip_path)
+        print(f"[Timer] 拼接: concat merge 耗时: {time.perf_counter() - t_merge:.2f}s")
         print("视频拼接完成")
         
     finally:
@@ -1102,6 +1174,7 @@ def combine_full_video_direct(video_clip_path, auto_add_transition=False, trans_
             if os.path.exists(txt_path):
                 os.remove(txt_path)
 
+    print(f"[Timer] 拼接(concat)总耗时: {time.perf_counter() - t_concat_start:.2f}s")
     return output_path
 
 
@@ -1110,6 +1183,7 @@ def _normalize_video_audio(input_path: str, output_path: str):
     if os.path.exists(output_path):
         os.remove(output_path)
     try:
+        t_norm = time.perf_counter()
         cmd = [
             'ffmpeg', '-y', '-hide_banner', '-loglevel', 'warning',
             '-i', input_path,
@@ -1121,7 +1195,7 @@ def _normalize_video_audio(input_path: str, output_path: str):
         subprocess.run(cmd, check=True)
         if os.path.exists(input_path) and input_path != output_path:
             os.remove(input_path)
-        print("[AccelRenderer] ✓ 音频均衡化完成")
+        print(f"[AccelRenderer] ✓ 音频均衡化完成 (耗时 {time.perf_counter() - t_norm:.2f}s)")
     except Exception as e:
         print(f"[AccelRenderer] Warning: 音频均衡化失败 ({e})，直接使用原始文件")
         if not os.path.exists(output_path):
@@ -1144,8 +1218,14 @@ def _get_video_duration(filepath: str) -> float:
 
 
 def _combine_with_xfade(video_clip_path: str, sorted_files: list,
-                         output_path: str, trans_time: float):
-    """使用 FFmpeg xfade 滤镜拼接视频片段（带淡入淡出转场）"""
+                         output_path: str, trans_time: float,
+                         codec: str = None, bitrate: str = "5000k"):
+    """使用 FFmpeg xfade 滤镜拼接视频片段（带淡入淡出转场）
+    
+    Args:
+        codec: 硬件编码器名称（如 'h264_nvenc'），为 None 时使用 libx264 软编码
+        bitrate: 硬件编码使用的目标码率
+    """
     print(f"[Info] 使用 xfade 转场拼接 ({trans_time}s)")
     file_paths = [os.path.join(video_clip_path, f) for f in sorted_files]
 
@@ -1205,7 +1285,18 @@ def _combine_with_xfade(video_clip_path: str, sorted_files: list,
     filter_complex = ";".join(filter_parts)
     cmd += ['-filter_complex', filter_complex]
     cmd += ['-map', '[vout]', '-map', '[aout]']
-    cmd += ['-c:v', 'libx264', '-preset', 'fast', '-crf', '18']
+    # 使用硬件编码器（如 NVENC）或回退到 libx264 软编码
+    if codec and codec != 'libx264':
+        try:
+            from utils.AccelRenderer import get_ffmpeg_encoder_args
+            encoder_args = get_ffmpeg_encoder_args(codec, bitrate)
+            print(f"[Info] xfade 使用硬件编码器: {codec} (bitrate={bitrate})")
+        except ImportError:
+            encoder_args = ['-c:v', 'libx264', '-preset', 'fast', '-crf', '18']
+            print("[Info] xfade 硬件编码器不可用，回退到 libx264")
+    else:
+        encoder_args = ['-c:v', 'libx264', '-preset', 'fast', '-crf', '18']
+    cmd += encoder_args
     cmd += ['-c:a', 'aac', '-b:a', '192k']
     cmd += [output_path]
 

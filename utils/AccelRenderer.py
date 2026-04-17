@@ -8,6 +8,7 @@ AccelRenderer.py - 加速渲染管线
 import os
 import subprocess
 import traceback
+import time
 import numpy as np
 import cv2
 from PIL import Image
@@ -74,6 +75,35 @@ def get_ffmpeg_encoder_args(codec: str, bitrate: str = "5000k") -> list:
 
 
 # ============================================================================
+# 音频响度测量
+# ============================================================================
+
+import re as _re
+
+def _measure_audio_rms(audio_path: str, start: float = 0, duration: float = None) -> float:
+    """使用 FFmpeg volumedetect 测量音频片段的 RMS 电平 (dB)
+    
+    Returns:
+        float: mean_volume in dB, or -20.0 if measurement fails
+    """
+    cmd = ['ffmpeg', '-hide_banner', '-loglevel', 'info']
+    if start > 0:
+        cmd += ['-ss', str(start)]
+    if duration:
+        cmd += ['-t', str(duration)]
+    cmd += ['-i', audio_path, '-af', 'volumedetect', '-f', 'null', '-']
+    
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        match = _re.search(r'mean_volume:\s*([-\d.]+)\s*dB', result.stderr)
+        if match:
+            return float(match.group(1))
+    except Exception as e:
+        print(f"[AccelRenderer] Warning: 音频RMS测量失败: {e}")
+    return -20.0  # fallback: 假设已在目标电平
+
+
+# ============================================================================
 # 视频帧读取工具
 # ============================================================================
 
@@ -137,7 +167,9 @@ class FFmpegWriter:
 
     def __init__(self, output_path: str, width: int, height: int,
                  fps: int = 30, codec: str = None, bitrate: str = "5000k",
-                 audio_path: str = None, audio_start: float = 0, audio_duration: float = None):
+                 audio_path: str = None, audio_start: float = 0, audio_duration: float = None,
+                 audio_fade_in: float = 0, audio_fade_out: float = 0,
+                 volume_adjust_db: float = 0):
         self.output_path = output_path
         self.width = width
         self.height = height
@@ -156,7 +188,8 @@ class FFmpegWriter:
         ]
 
         # 音频输入
-        if audio_path and os.path.exists(audio_path):
+        has_audio = audio_path and os.path.exists(audio_path)
+        if has_audio:
             cmd += ['-ss', str(audio_start)]
             if audio_duration:
                 cmd += ['-t', str(audio_duration)]
@@ -166,8 +199,18 @@ class FFmpegWriter:
         cmd += encoder_args
         cmd += ['-pix_fmt', 'yuv420p']
 
-        # 音频编码
-        if audio_path and os.path.exists(audio_path):
+        # 音频编码 + 可选淡入淡出滤镜
+        if has_audio:
+            af_filters = []
+            if abs(volume_adjust_db) > 0.5:
+                af_filters.append(f"volume={volume_adjust_db:.1f}dB")
+            if audio_fade_in > 0:
+                af_filters.append(f"afade=t=in:d={audio_fade_in}")
+            if audio_fade_out > 0 and audio_duration:
+                fade_out_start = max(0, audio_duration - audio_fade_out)
+                af_filters.append(f"afade=t=out:st={fade_out_start:.3f}:d={audio_fade_out}")
+            if af_filters:
+                cmd += ['-af', ','.join(af_filters)]
             cmd += ['-c:a', 'aac', '-b:a', '192k', '-map', '0:v', '-map', '1:a', '-shortest']
 
         cmd += [output_path]
@@ -337,7 +380,9 @@ def render_segment_accel(
     fps: int = 30,
     bitrate: str = "5000k",
     codec: str = None,
-    progress_callback=None
+    progress_callback=None,
+    fade_in: float = 0,
+    fade_out: float = 0
 ) -> dict:
     """
     使用 Taichi GPU + FFmpeg 硬件编码渲染单个视频片段。
@@ -467,12 +512,29 @@ def render_segment_accel(
         audio_path = clip_config.get('video', None)
         audio_start = start_time
 
+        # === 逐片段音频响度均衡（匹配 CPU 路径的 per-clip RMS 归一化）===
+        volume_adjust_db = 0
+        if audio_path and os.path.exists(audio_path):
+            measured_rms = _measure_audio_rms(audio_path, audio_start, duration)
+            target_rms_db = -20.0
+            volume_adjust_db = target_rms_db - measured_rms
+            # 限制增益范围：对应 CPU 路径 gain clamp [0.1, 3.0] → [-20dB, +9.5dB]
+            volume_adjust_db = max(-20.0, min(9.5, volume_adjust_db))
+            if abs(volume_adjust_db) > 0.5:
+                print(f"[AccelRenderer] 音频均衡: {clip_name} RMS={measured_rms:.1f}dB, 调整={volume_adjust_db:+.1f}dB")
+
         # === FFmpeg 写入器 ===
         writer = FFmpegWriter(
             output_path, resolution[0], resolution[1],
             fps=fps, codec=codec, bitrate=bitrate,
-            audio_path=audio_path, audio_start=audio_start, audio_duration=duration
+            audio_path=audio_path, audio_start=audio_start, audio_duration=duration,
+            audio_fade_in=fade_in, audio_fade_out=fade_out,
+            volume_adjust_db=volume_adjust_db
         )
+
+        # === 预计算淡入淡出帧数 ===
+        fade_in_frames = int(fade_in * fps) if fade_in > 0 else 0
+        fade_out_frames = int(fade_out * fps) if fade_out > 0 else 0
 
         # === 逐帧渲染（使用 FrameCompositor 预计算静态层）===
         compositor = FrameCompositor(
@@ -515,11 +577,20 @@ def render_segment_accel(
             # GPU 快速合成（零拷贝路径）
             composed = compositor.composite(video_frame)
 
+            # 视频淡入淡出（GPU 亮度渐变）
+            if fade_in_frames > 0 and frame_idx < fade_in_frames:
+                brightness = frame_idx / fade_in_frames
+                composed = (composed.astype(np.float32) * brightness).clip(0, 255).astype(np.uint8)
+            elif fade_out_frames > 0 and frame_idx >= total_frames - fade_out_frames:
+                brightness = (total_frames - 1 - frame_idx) / fade_out_frames
+                composed = (composed.astype(np.float32) * brightness).clip(0, 255).astype(np.uint8)
+
             writer.write_frame(composed)
 
             # 节流的进度回调（每 30 帧或最后一帧）
             if progress_callback and (frame_idx % 30 == 0 or frame_idx == total_frames - 1):
                 progress_callback(frame_idx + 1, total_frames, clip_name)
+        writer.close()
         if video_reader:
             video_reader.close()
         if bg_video_reader:
@@ -541,7 +612,9 @@ def render_info_segment_accel(
     fps: int = 30,
     bitrate: str = "5000k",
     codec: str = None,
-    progress_callback=None
+    progress_callback=None,
+    fade_in: float = 0,
+    fade_out: float = 0
 ) -> dict:
     """
     使用 FFmpeg 硬件编码渲染开场/结尾信息片段。
@@ -594,11 +667,27 @@ def render_info_segment_accel(
         text_img_mask = text_img[:, :, 3].astype(np.float32) / 255.0 if text_img.shape[2] == 4 else None
         tx, ty = text_pos
 
+        # === 逐片段音频响度均衡 ===
+        volume_adjust_db = 0
+        if intro_bgm_path and os.path.exists(intro_bgm_path):
+            measured_rms = _measure_audio_rms(intro_bgm_path, 0, duration)
+            target_rms_db = -20.0
+            volume_adjust_db = target_rms_db - measured_rms
+            volume_adjust_db = max(-20.0, min(9.5, volume_adjust_db))
+            if abs(volume_adjust_db) > 0.5:
+                print(f"[AccelRenderer] 音频均衡: {clip_name} RMS={measured_rms:.1f}dB, 调整={volume_adjust_db:+.1f}dB")
+
         writer = FFmpegWriter(
             output_path, resolution[0], resolution[1],
             fps=fps, codec=codec, bitrate=bitrate,
-            audio_path=intro_bgm_path, audio_start=0, audio_duration=duration
+            audio_path=intro_bgm_path, audio_start=0, audio_duration=duration,
+            audio_fade_in=fade_in, audio_fade_out=fade_out,
+            volume_adjust_db=volume_adjust_db
         )
+
+        # 预计算淡入淡出帧数
+        fade_in_frames = int(fade_in * fps) if fade_in > 0 else 0
+        fade_out_frames = int(fade_out * fps) if fade_out > 0 else 0
 
         # 使用顺序读取模式
         bg_reader.seek_to(0)
@@ -645,10 +734,20 @@ def render_info_segment_accel(
                         composed[y1:y2, x1:x2] = composed[y1:y2, x1:x2] * (1 - mask3) + text_img_rgb[:sh, :sw] * mask3
                 composed = composed.clip(0, 255).astype(np.uint8)
 
-            writer.write_frame(composed[:, :, :3])
+            # 视频淡入淡出（亮度渐变）
+            out_frame = composed[:, :, :3]
+            if fade_in_frames > 0 and frame_idx < fade_in_frames:
+                brightness = frame_idx / fade_in_frames
+                out_frame = (out_frame.astype(np.float32) * brightness).clip(0, 255).astype(np.uint8)
+            elif fade_out_frames > 0 and frame_idx >= total_frames - fade_out_frames:
+                brightness = (total_frames - 1 - frame_idx) / fade_out_frames
+                out_frame = (out_frame.astype(np.float32) * brightness).clip(0, 255).astype(np.uint8)
+
+            writer.write_frame(out_frame)
 
             if progress_callback and (frame_idx % 30 == 0 or frame_idx == total_frames - 1):
                 progress_callback(frame_idx + 1, total_frames, clip_name)
+        writer.close()
         bg_reader.close()
         print(f"[AccelRenderer] ✓ 信息片段渲染完成: {clip_name}")
         return {"status": "success", "info": f"渲染 {clip_name} 完成"}
@@ -681,6 +780,7 @@ def render_all_clips_accel(
     print(f"[AccelRenderer] 使用编码器: {codec_name}")
     print(f"[AccelRenderer] 输出路径: {video_output_path}")
 
+    t_all_start = time.perf_counter()
     total_clips = len(main_configs) + len(intro_configs or []) + len(ending_configs or [])
     clip_index = [0]  # 使用列表以便在闭包中修改
     vfile_prefix = 0
@@ -705,39 +805,57 @@ def render_all_clips_accel(
             clip_index[0] += 1
             return
 
+        # 确定淡入淡出时长
+        fade_in_time = trans_time if auto_add_transition else 0
+        fade_out_time = trans_time if auto_add_transition else 0
+
+        t_clip_start = time.perf_counter()
         frame_cb = _make_frame_callback()
         if clip_type == "content":
             result = render_segment_accel(
                 game_type, config, style_config, video_res,
                 output_file, fps=fps, bitrate=video_bitrate, codec=codec,
-                progress_callback=frame_cb
+                progress_callback=frame_cb,
+                fade_in=fade_in_time, fade_out=fade_out_time
             )
         else:
             result = render_info_segment_accel(
                 config, style_config, video_res,
                 output_file, fps=fps, bitrate=video_bitrate, codec=codec,
-                progress_callback=frame_cb
+                progress_callback=frame_cb,
+                fade_in=fade_in_time, fade_out=fade_out_time
             )
+        t_clip_elapsed = time.perf_counter() - t_clip_start
+        print(f"[Timer] 片段 {prefix}_{name} 渲染耗时: {t_clip_elapsed:.2f}s")
 
         if result['status'] == 'error':
-            print(f"[AccelRenderer] Warning: {result['info']}")
+            raise RuntimeError(f"[AccelRenderer] 片段 {prefix}_{name} 渲染失败: {result['info']}")
         clip_index[0] += 1
 
     # 开场片段
+    t_phase = time.perf_counter()
     if intro_configs:
         for config in intro_configs:
             render_clip(config, vfile_prefix, "info", "INTRO")
             vfile_prefix += 1
+    if intro_configs:
+        print(f"[Timer] === 开场片段阶段耗时: {time.perf_counter() - t_phase:.2f}s ===")
 
     # 主要片段
+    t_phase = time.perf_counter()
     for config in main_configs:
         render_clip(config, vfile_prefix, "content")
         vfile_prefix += 1
+    print(f"[Timer] === 主要片段阶段耗时: {time.perf_counter() - t_phase:.2f}s ({len(main_configs)} 个) ===")
 
     # 结尾片段
+    t_phase = time.perf_counter()
     if ending_configs:
         for config in ending_configs:
             render_clip(config, vfile_prefix, "info", "ENDING")
             vfile_prefix += 1
+    if ending_configs:
+        print(f"[Timer] === 结尾片段阶段耗时: {time.perf_counter() - t_phase:.2f}s ===")
 
-    print(f"[AccelRenderer] ✓ 所有片段渲染完成 (共 {vfile_prefix} 个)")
+    t_all_elapsed = time.perf_counter() - t_all_start
+    print(f"[Timer] ====== 全部片段渲染总耗时: {t_all_elapsed:.2f}s (共 {vfile_prefix} 个) ======")

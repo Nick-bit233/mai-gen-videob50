@@ -7,6 +7,8 @@ TaichiAccel.py - Taichi GPU 加速模块
 
 import numpy as np
 import traceback
+import threading
+import queue as _queue_module
 
 try:
     import taichi as ti
@@ -17,28 +19,120 @@ except ImportError:
 _ti_initialized = False
 
 
+# ============================================================================
+# Worker Thread - CUDA 上下文线程亲和性保障
+# ============================================================================
+
+class _TaichiWorkerThread(threading.Thread):
+    """Taichi/CUDA 专用持久线程。
+    
+    CUDA 上下文绑定到创建它的线程。Streamlit 每次 rerun 可能在不同的 worker 线程上执行，
+    导致 CUDA_ERROR_INVALID_CONTEXT。此线程在进程生命周期内持有 CUDA 上下文，
+    所有 Taichi 内核调用通过它分发，确保线程亲和性。
+    线程引用存储在 ti 模块上，跨 Streamlit reimport 存活。
+    """
+    daemon = True
+
+    def __init__(self):
+        super().__init__(name="TaichiGPUWorker")
+        self._task_queue = _queue_module.Queue()
+
+    def run(self):
+        while True:
+            try:
+                task = self._task_queue.get()
+                if task is None:
+                    break
+                func, args, kwargs, holder, done_event = task
+                try:
+                    holder['value'] = func(*args, **kwargs)
+                    holder['error'] = None
+                except Exception as e:
+                    holder['value'] = None
+                    holder['error'] = e
+                finally:
+                    done_event.set()
+            except Exception:
+                continue
+
+    def submit(self, func, *args, **kwargs):
+        """提交任务到此线程并等待结果。线程安全。"""
+        done = threading.Event()
+        holder = {}
+        self._task_queue.put((func, args, kwargs, holder, done))
+        done.wait()
+        if holder.get('error') is not None:
+            raise holder['error']
+        return holder.get('value')
+
+
+def _get_worker():
+    """获取或创建持久化的 Taichi 工作线程。"""
+    if not TAICHI_AVAILABLE:
+        return None
+    worker = getattr(ti, '_mgv_worker', None)
+    if worker is None or not worker.is_alive():
+        worker = _TaichiWorkerThread()
+        worker.start()
+        ti._mgv_worker = worker
+    return worker
+
+
+def _submit_to_worker(func, *args, **kwargs):
+    """将函数提交到 Taichi 工作线程执行。工作线程不可用时直接调用。"""
+    worker = _get_worker()
+    if worker is not None:
+        return worker.submit(func, *args, **kwargs)
+    return func(*args, **kwargs)
+
+
 def init_taichi(arch=None):
     """
     初始化 Taichi 运行时，自动选择最佳 GPU 后端。
     如果 GPU 不可用则回退到 CPU。
+
+    所有 ti.init() 调用通过专用工作线程执行，确保 CUDA 上下文始终
+    绑定到同一线程，避免 Streamlit rerun 时因线程变更导致的
+    CUDA_ERROR_INVALID_CONTEXT。
     """
     global _ti_initialized
+
+    # 快速路径：本轮已初始化
     if _ti_initialized:
         return True
+
     if not TAICHI_AVAILABLE:
         print("[TaichiAccel] Warning: taichi 未安装，GPU 加速不可用")
         return False
 
+    # 跨 reimport 持久化标记（Streamlit 页面刷新时模块被重新加载，
+    # 但 ti 模块常驻 sys.modules，其属性不受影响）
+    if getattr(ti, '_mgv_ti_initialized', False):
+        _ti_initialized = True
+        print("[TaichiAccel] ✓ 复用已有的 Taichi 运行时")
+        return True
+
+    # 在工作线程上执行初始化，确保 CUDA 上下文绑定到该线程
+    try:
+        result = _submit_to_worker(_do_init_taichi, arch)
+    except Exception as e:
+        print(f"[TaichiAccel] Warning: 初始化异常: {e}")
+        result = False
+    _ti_initialized = result
+    return result
+
+
+def _do_init_taichi(arch=None):
+    """实际的 Taichi 初始化逻辑 ——  在工作线程上执行。"""
     if arch is not None:
         try:
             ti.init(arch=arch)
-            _ti_initialized = True
+            ti._mgv_ti_initialized = True
             print(f"[TaichiAccel] 已使用指定后端初始化: {arch}")
             return True
         except Exception:
             pass
 
-    # 按优先级尝试 GPU 后端 (macOS 上 Metal 优先于 Vulkan)
     import platform
     if platform.system() == "Darwin":
         backends = [
@@ -56,17 +150,15 @@ def init_taichi(arch=None):
     for backend_arch, name in backends:
         try:
             ti.init(arch=backend_arch)
-            # Taichi 可能静默回退到其他后端，检查实际使用的后端
-            # 注意：current_cfg() 是 Taichi 内部 API，通过 try/except 保护兼容性
             try:
                 actual_arch = ti.lang.impl.current_cfg().arch
             except AttributeError:
-                actual_arch = backend_arch  # API 变更时假设未回退
+                actual_arch = backend_arch
             if actual_arch != backend_arch and backend_arch != ti.cpu:
                 ti.reset()
                 continue
             actual_name = str(actual_arch).replace("Arch.", "").upper()
-            _ti_initialized = True
+            ti._mgv_ti_initialized = True
             print(f"[TaichiAccel] ✓ 使用 {actual_name} 后端初始化成功")
             return True
         except Exception:
@@ -368,7 +460,7 @@ def alpha_composite(base: np.ndarray, overlay: np.ndarray,
     overlay_rgb, mask = _split_rgba(overlay)
     out = np.zeros((h, w, 3), dtype=np.float32)
 
-    _alpha_composite_kernel(base_f, overlay_rgb, mask, out, ox, oy, oh, ow, h, w)
+    _submit_to_worker(_alpha_composite_kernel, base_f, overlay_rgb, mask, out, ox, oy, oh, ow, h, w)
     return np.clip(out, 0, 255).astype(np.uint8)
 
 
@@ -380,7 +472,7 @@ def multiply_brightness(image: np.ndarray, factor: float) -> np.ndarray:
     h, w = image.shape[:2]
     src = image.astype(np.float32)
     out = np.zeros_like(src)
-    _multiply_brightness_kernel(src, out, factor, h, w)
+    _submit_to_worker(_multiply_brightness_kernel, src, out, factor, h, w)
     return np.clip(out, 0, 255).astype(np.uint8)
 
 
@@ -408,11 +500,11 @@ def resize_bilinear(image: np.ndarray, target_size: tuple) -> np.ndarray:
 
     if channels == 4:
         out = np.zeros((dst_h, dst_w, 4), dtype=np.float32)
-        _resize_bilinear_4ch_kernel(src, out, src_h, src_w, dst_h, dst_w)
+        _submit_to_worker(_resize_bilinear_4ch_kernel, src, out, src_h, src_w, dst_h, dst_w)
     else:
         src = src[:, :, :3]
         out = np.zeros((dst_h, dst_w, 3), dtype=np.float32)
-        _resize_bilinear_kernel(src, out, src_h, src_w, dst_h, dst_w)
+        _submit_to_worker(_resize_bilinear_kernel, src, out, src_h, src_w, dst_h, dst_w)
     return np.clip(out, 0, 255).astype(np.uint8)
 
 
@@ -425,7 +517,7 @@ def crossfade(frame_a: np.ndarray, frame_b: np.ndarray, alpha: float) -> np.ndar
     a_f = frame_a.astype(np.float32)
     b_f = frame_b.astype(np.float32)
     out = np.zeros_like(a_f)
-    _crossfade_kernel(a_f, b_f, out, alpha, h, w)
+    _submit_to_worker(_crossfade_kernel, a_f, b_f, out, alpha, h, w)
     return np.clip(out, 0, 255).astype(np.uint8)
 
 
@@ -479,7 +571,8 @@ def composite_five_layers(
 
     out = np.zeros((out_h, out_w, 3), dtype=np.float32)
 
-    _five_layer_composite_kernel(
+    _submit_to_worker(
+        _five_layer_composite_kernel,
         bg_f, video_f, score_rgb, score_mask, text_rgb, text_mask, out,
         bg_brightness,
         vid_x, vid_y, vid_h, vid_w,
@@ -545,7 +638,8 @@ class FrameCompositor:
         vid_h, vid_w = video_frame.shape[:2]
         video_u8 = np.ascontiguousarray(video_frame[:, :, :3])
 
-        _five_layer_fast_kernel(
+        _submit_to_worker(
+            _five_layer_fast_kernel,
             self.bg_f, video_u8,
             self.score_rgb, self.score_mask,
             self.text_rgb, self.text_mask,
