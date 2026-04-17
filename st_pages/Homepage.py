@@ -146,12 +146,8 @@ if 'taichi_accel_installed' not in st.session_state:
     st.session_state.taichi_accel_installed = False
 # if not st.session_state.taichi_accel_installed:
 try:
-    from utils.TaichiAccel import init_taichi, is_available
-    init_taichi()
-    if is_available():
-        st.session_state.taichi_accel_installed = True
-    else:
-        st.session_state.taichi_accel_installed = False
+    from utils.TaichiAccel import TAICHI_AVAILABLE
+    st.session_state.taichi_accel_installed = TAICHI_AVAILABLE
 except ImportError:
     st.session_state.taichi_accel_installed = False
 
@@ -200,8 +196,8 @@ with st.container(border=True):
     st.markdown("### ⚠️ 重要提示（第一次使用请仔细阅读）")
     st.info("**数据缓存**: 本工具的缓存数据均保存在本地，若您中途退出或意外刷新页面，可在任意步骤加载已有存档继续编辑。", icon="💾")
     st.warning(""" **生成时间与加速**: 本工具默认使用纯CPU渲染方案，**渲染时间可能较长**，如果您的设备带有显卡，可尝试安装GPU加速组件。
-    - 如果使用纯CPU渲染，**渲染时间视硬件性能，在约1~4小时左右** (渲染期间，可以正常使用您的设备)。
-    - 如果安装并启用GPU加速组件（见下方），**渲染时间可能缩短至30分钟以内**（具体时间取决于您的GPU性能）。
+    - 如果使用纯CPU渲染，**渲染时间视硬件性能，在约1~4小时左右** (渲染期间，可以正常使用您的设备)
+    - 如果安装并启用GPU加速组件（见下方），**渲染时间可能缩短至30分钟以内**（具体时间取决于您的GPU性能）
     - 如果您正在使用一台公共或计时设备，请务必注意预留足够的使用时间
     """, icon="🕐")
     st.success("**问题反馈**: 使用过程中遇到任何问题，可以前往Github页面发起issue，或加入QQ群：[994702414](https://qm.qq.com/q/ogt02jHEjK) 反馈", icon="💬")
@@ -226,7 +222,7 @@ st.markdown("### 🔧 系统状态")
 # Taichi加速组件状态
 with st.container(border=False):
     if not st.session_state.taichi_accel_installed:
-        st.warning("⚠️ 您尚未安装GPU加速组件。如果您在使用整合包runtime，请点击下方按钮安装。")
+        st.warning("⚠️ 尚未安装GPU加速组件。如果您在使用整合包runtime，请点击下方按钮安装。")
         if st.button("安装Taichi加速库", key="install_taichi_btn", use_container_width=False, type="primary"):
             with st.spinner("正在安装Taichi加速库..."):
                 try:

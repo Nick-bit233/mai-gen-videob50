@@ -192,7 +192,7 @@ if st.button("开始生成视频", use_container_width=True, type="primary"):
                         st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
             st.success("视频片段生成结束！点击下方按钮打开视频所在文件夹")
         except Exception as e:
-            st.error(f"视频片段生成失败，错误详情: {traceback.print_exc()}")
+            st.error(f"视频片段生成失败，错误: {e}，转到控制台查看详情")
 
     else:
         try:
@@ -220,7 +220,7 @@ if st.button("开始生成视频", use_container_width=True, type="primary"):
                     st.write(f"【{output_info['info']}")
             st.success("完整视频生成结束！点击下方按钮打开视频所在文件夹")
         except Exception as e:
-            st.error(f"完整视频生成失败，错误详情: {traceback.print_exc()}")
+            st.error(f"完整视频生成失败，错误: {e}，转到控制台查看详情")
 
 abs_path = os.path.abspath(video_output_path)
 if st.button("打开视频输出文件夹"):
@@ -263,7 +263,7 @@ with st.expander("展开其他视频生成方案"):
                         st.write(f"【{output_info['info']}")
                     st.success("GPU快速模式生成完成！点击上方按钮打开文件夹查看视频")
                 except Exception as e:
-                    st.error(f"GPU快速模式生成失败，错误详情: {traceback.print_exc()}")
+                    st.error(f"GPU快速模式生成失败，错误: {e}，转到控制台查看详情")
             else:
                 # CPU快速模式：原有逻辑
                 with st.spinner("正在生成所有视频片段……"):

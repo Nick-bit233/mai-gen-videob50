@@ -75,6 +75,35 @@ def get_ffmpeg_encoder_args(codec: str, bitrate: str = "5000k") -> list:
 
 
 # ============================================================================
+# 音频响度测量
+# ============================================================================
+
+import re as _re
+
+def _measure_audio_rms(audio_path: str, start: float = 0, duration: float = None) -> float:
+    """使用 FFmpeg volumedetect 测量音频片段的 RMS 电平 (dB)
+    
+    Returns:
+        float: mean_volume in dB, or -20.0 if measurement fails
+    """
+    cmd = ['ffmpeg', '-hide_banner', '-loglevel', 'info']
+    if start > 0:
+        cmd += ['-ss', str(start)]
+    if duration:
+        cmd += ['-t', str(duration)]
+    cmd += ['-i', audio_path, '-af', 'volumedetect', '-f', 'null', '-']
+    
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        match = _re.search(r'mean_volume:\s*([-\d.]+)\s*dB', result.stderr)
+        if match:
+            return float(match.group(1))
+    except Exception as e:
+        print(f"[AccelRenderer] Warning: 音频RMS测量失败: {e}")
+    return -20.0  # fallback: 假设已在目标电平
+
+
+# ============================================================================
 # 视频帧读取工具
 # ============================================================================
 
@@ -139,7 +168,8 @@ class FFmpegWriter:
     def __init__(self, output_path: str, width: int, height: int,
                  fps: int = 30, codec: str = None, bitrate: str = "5000k",
                  audio_path: str = None, audio_start: float = 0, audio_duration: float = None,
-                 audio_fade_in: float = 0, audio_fade_out: float = 0):
+                 audio_fade_in: float = 0, audio_fade_out: float = 0,
+                 volume_adjust_db: float = 0):
         self.output_path = output_path
         self.width = width
         self.height = height
@@ -172,6 +202,8 @@ class FFmpegWriter:
         # 音频编码 + 可选淡入淡出滤镜
         if has_audio:
             af_filters = []
+            if abs(volume_adjust_db) > 0.5:
+                af_filters.append(f"volume={volume_adjust_db:.1f}dB")
             if audio_fade_in > 0:
                 af_filters.append(f"afade=t=in:d={audio_fade_in}")
             if audio_fade_out > 0 and audio_duration:
@@ -480,12 +512,24 @@ def render_segment_accel(
         audio_path = clip_config.get('video', None)
         audio_start = start_time
 
+        # === 逐片段音频响度均衡（匹配 CPU 路径的 per-clip RMS 归一化）===
+        volume_adjust_db = 0
+        if audio_path and os.path.exists(audio_path):
+            measured_rms = _measure_audio_rms(audio_path, audio_start, duration)
+            target_rms_db = -20.0
+            volume_adjust_db = target_rms_db - measured_rms
+            # 限制增益范围：对应 CPU 路径 gain clamp [0.1, 3.0] → [-20dB, +9.5dB]
+            volume_adjust_db = max(-20.0, min(9.5, volume_adjust_db))
+            if abs(volume_adjust_db) > 0.5:
+                print(f"[AccelRenderer] 音频均衡: {clip_name} RMS={measured_rms:.1f}dB, 调整={volume_adjust_db:+.1f}dB")
+
         # === FFmpeg 写入器 ===
         writer = FFmpegWriter(
             output_path, resolution[0], resolution[1],
             fps=fps, codec=codec, bitrate=bitrate,
             audio_path=audio_path, audio_start=audio_start, audio_duration=duration,
-            audio_fade_in=fade_in, audio_fade_out=fade_out
+            audio_fade_in=fade_in, audio_fade_out=fade_out,
+            volume_adjust_db=volume_adjust_db
         )
 
         # === 预计算淡入淡出帧数 ===
@@ -623,11 +667,22 @@ def render_info_segment_accel(
         text_img_mask = text_img[:, :, 3].astype(np.float32) / 255.0 if text_img.shape[2] == 4 else None
         tx, ty = text_pos
 
+        # === 逐片段音频响度均衡 ===
+        volume_adjust_db = 0
+        if intro_bgm_path and os.path.exists(intro_bgm_path):
+            measured_rms = _measure_audio_rms(intro_bgm_path, 0, duration)
+            target_rms_db = -20.0
+            volume_adjust_db = target_rms_db - measured_rms
+            volume_adjust_db = max(-20.0, min(9.5, volume_adjust_db))
+            if abs(volume_adjust_db) > 0.5:
+                print(f"[AccelRenderer] 音频均衡: {clip_name} RMS={measured_rms:.1f}dB, 调整={volume_adjust_db:+.1f}dB")
+
         writer = FFmpegWriter(
             output_path, resolution[0], resolution[1],
             fps=fps, codec=codec, bitrate=bitrate,
             audio_path=intro_bgm_path, audio_start=0, audio_duration=duration,
-            audio_fade_in=fade_in, audio_fade_out=fade_out
+            audio_fade_in=fade_in, audio_fade_out=fade_out,
+            volume_adjust_db=volume_adjust_db
         )
 
         # 预计算淡入淡出帧数
