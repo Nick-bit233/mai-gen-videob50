@@ -9,6 +9,7 @@ from moviepy import vfx, afx
 from utils.VisionUtils import find_circle_center, draw_center_marker
 from utils.PageUtils import remove_invalid_chars
 from utils.TextRenderer import TextRenderer, TextStyle, LayoutConfig
+from utils.AccelRenderer import get_ffmpeg_binary
 from typing import Union, Tuple
 
 
@@ -1137,7 +1138,7 @@ def combine_full_video_direct(video_clip_path, auto_add_transition=False, trans_
                 ts_path = os.path.join(temp_dir, ts_name)
                 
                 cmd = [
-                    'ffmpeg', '-y',
+                    get_ffmpeg_binary('ffmpeg'), '-y',
                     '-i', os.path.join(video_clip_path, file),
                     '-c', 'copy',
                     '-bsf:v', 'h264_mp4toannexb',
@@ -1152,7 +1153,7 @@ def combine_full_video_direct(video_clip_path, auto_add_transition=False, trans_
 
         t_merge = time.perf_counter()
         cmd = [
-            'ffmpeg', '-y',
+            get_ffmpeg_binary('ffmpeg'), '-y',
             '-f', 'concat',
             '-safe', '0',
             '-i', 'ts_files.txt',
@@ -1185,7 +1186,7 @@ def _normalize_video_audio(input_path: str, output_path: str):
     try:
         t_norm = time.perf_counter()
         cmd = [
-            'ffmpeg', '-y', '-hide_banner', '-loglevel', 'warning',
+            get_ffmpeg_binary('ffmpeg'), '-y', '-hide_banner', '-loglevel', 'warning',
             '-i', input_path,
             '-c:v', 'copy',
             '-af', 'loudnorm=I=-20:TP=-1.5:LRA=11',
@@ -1205,7 +1206,7 @@ def _normalize_video_audio(input_path: str, output_path: str):
 def _get_video_duration(filepath: str) -> float:
     """使用 ffprobe 获取视频时长"""
     cmd = [
-        'ffprobe', '-v', 'error',
+        get_ffmpeg_binary('ffprobe'), '-v', 'error',
         '-show_entries', 'format=duration',
         '-of', 'default=noprint_wrappers=1:nokey=1',
         filepath
@@ -1240,7 +1241,7 @@ def _combine_with_xfade(video_clip_path: str, sorted_files: list,
     n = len(file_paths)
 
     # 构建 FFmpeg 输入参数
-    cmd = ['ffmpeg', '-y', '-hide_banner', '-loglevel', 'warning']
+    cmd = [get_ffmpeg_binary('ffmpeg'), '-y', '-hide_banner', '-loglevel', 'warning']
     for fp in file_paths:
         cmd += ['-i', fp]
 

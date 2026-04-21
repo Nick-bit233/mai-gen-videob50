@@ -6,6 +6,7 @@ AccelRenderer.py - 加速渲染管线
 """
 
 import os
+import shutil
 import subprocess
 import traceback
 import time
@@ -24,6 +25,20 @@ from utils.PageUtils import remove_invalid_chars
 _FFMPEG_MIN_VERSION = (5, 0)  # 最低要求 FFmpeg 5.0（NVENC 新版 preset API）
 _ffmpeg_version_checked = False
 
+
+def get_ffmpeg_binary(tool_name: str = 'ffmpeg') -> str:
+    """解析 FFmpeg 工具路径，优先使用运行目录中的打包二进制。"""
+    executable = f"{tool_name}.exe" if os.name == 'nt' else tool_name
+    local_path = os.path.join(os.getcwd(), executable)
+    if os.path.exists(local_path):
+        return local_path
+
+    resolved = shutil.which(tool_name)
+    if resolved:
+        return resolved
+
+    raise FileNotFoundError(f"未找到 {executable}")
+
 def check_ffmpeg_version():
     """检测 FFmpeg 版本，低于最低要求时抛出 RuntimeError。
 
@@ -35,7 +50,8 @@ def check_ffmpeg_version():
 
     import re
     try:
-        ffmpeg_path = os.path.join(os.getcwd(), 'ffmpeg.exe' if os.name == 'nt' else 'ffmpeg')
+        ffmpeg_path = get_ffmpeg_binary('ffmpeg')
+        ffprobe_path = get_ffmpeg_binary('ffprobe')
         result = subprocess.run(
             [ffmpeg_path, '-version'],
             capture_output=True, text=True, timeout=10
@@ -57,11 +73,16 @@ def check_ffmpeg_version():
                 f"最低要求 {_FFMPEG_MIN_VERSION[0]}.{_FFMPEG_MIN_VERSION[1]}。"
                 f"请更新 FFmpeg 或使用最新的 runtime 运行环境包。"
             )
+        # xfade 拼接与时长探测依赖 ffprobe，前置确认可以避免在长时间渲染后才报 WinError 2。
+        subprocess.run(
+            [ffprobe_path, '-version'],
+            capture_output=True, text=True, timeout=10, check=True
+        )
         _ffmpeg_version_checked = True
         print(f"[AccelRenderer] ✓ FFmpeg 版本: {major}.{minor}")
     except FileNotFoundError:
         raise RuntimeError(
-            "未找到 FFmpeg，请确认已安装 FFmpeg 并将其添加到系统 PATH 中。"
+            "未找到 FFmpeg 或 FFprobe，请确认使用最新 runtime 包，或已将它们添加到系统 PATH 中。"
         )
 
 _hw_encoder_cache = None
@@ -86,7 +107,7 @@ def detect_hw_encoder() -> Tuple[str, str]:
 
     try:
         result = subprocess.run(
-            ['ffmpeg', '-hide_banner', '-encoders'],
+            [get_ffmpeg_binary('ffmpeg'), '-hide_banner', '-encoders'],
             capture_output=True, text=True, timeout=10
         )
         output = result.stdout + result.stderr
@@ -94,7 +115,7 @@ def detect_hw_encoder() -> Tuple[str, str]:
             if codec in output:
                 # 实际探测编码器是否能工作（驱动版本可能不满足要求）
                 probe = subprocess.run(
-                    ['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error',
+                    [get_ffmpeg_binary('ffmpeg'), '-y', '-hide_banner', '-loglevel', 'error',
                      '-f', 'lavfi', '-i', 'nullsrc=s=64x64:d=0.04:r=25',
                      '-c:v', codec, '-f', 'null', '-'],
                     capture_output=True, text=True, timeout=10
@@ -140,7 +161,7 @@ def _measure_audio_rms(audio_path: str, start: float = 0, duration: float = None
     Returns:
         float: mean_volume in dB, or -20.0 if measurement fails
     """
-    cmd = ['ffmpeg', '-hide_banner', '-loglevel', 'info']
+    cmd = [get_ffmpeg_binary('ffmpeg'), '-hide_banner', '-loglevel', 'info']
     if start > 0:
         cmd += ['-ss', str(start)]
     if duration:
@@ -234,7 +255,7 @@ class FFmpegWriter:
         encoder_args = get_ffmpeg_encoder_args(codec, bitrate)
 
         cmd = [
-            'ffmpeg', '-y', '-hide_banner', '-loglevel', 'warning',
+            get_ffmpeg_binary('ffmpeg'), '-y', '-hide_banner', '-loglevel', 'warning',
             # 视频输入 (raw frames from stdin)
             '-f', 'rawvideo', '-pix_fmt', 'rgb24',
             '-s', f'{width}x{height}', '-r', str(fps),

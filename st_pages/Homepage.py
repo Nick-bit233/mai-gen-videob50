@@ -144,12 +144,11 @@ with col_header2:
 # 检查Taichi依赖是否安装
 if 'taichi_accel_installed' not in st.session_state:
     st.session_state.taichi_accel_installed = False
-# if not st.session_state.taichi_accel_installed:
-try:
-    from utils.TaichiAccel import TAICHI_AVAILABLE
-    st.session_state.taichi_accel_installed = TAICHI_AVAILABLE
-except ImportError:
-    st.session_state.taichi_accel_installed = False
+    try:
+        from utils.TaichiAccel import TAICHI_AVAILABLE
+        st.session_state.taichi_accel_installed = TAICHI_AVAILABLE
+    except ImportError:
+        st.session_state.taichi_accel_installed = False
 
 # 游戏类型切换
 with st.container(border=True):

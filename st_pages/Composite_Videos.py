@@ -22,6 +22,15 @@ st.markdown(f"> 您正在使用 **{get_game_type_text(G_type)}** 视频生成模
 
 st.info("在执行视频生成前，请确保已经完成了4-1和4-2步骤，并且检查所有填写的配置无误。")
 
+# 检查Taichi依赖是否安装
+if 'taichi_accel_installed' not in st.session_state:
+    st.session_state.taichi_accel_installed = False
+    try:
+        from utils.TaichiAccel import TAICHI_AVAILABLE
+        st.session_state.taichi_accel_installed = TAICHI_AVAILABLE
+    except ImportError:
+        st.session_state.taichi_accel_installed = False
+
 ### Savefile Management - Start ###
 username = st.session_state.get("username", None)
 archive_name = st.session_state.get("archive_name", None)
