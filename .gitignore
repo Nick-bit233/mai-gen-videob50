@@ -202,3 +202,7 @@ static/assets/custom_jackets
 *.db
 *.bak
 *.sqlite
+
+# dsstore
+*.DS_Store
+.DS_Store
