@@ -23,6 +23,10 @@ MAX_LOGIN_RETRIES = 3
 BILIBILI_URL_PREFIX = "https://www.bilibili.com/video/"
 
 
+class POTokenGenerationError(RuntimeError):
+    """PO Token 自动生成失败时抛出的明确异常。"""
+
+
 def _run_ffmpeg_merge(input_files: list[str], output_file: str):
     cmd = [get_ffmpeg_binary('ffmpeg'), '-y']
     for input_file in input_files:
@@ -55,8 +59,7 @@ def autogen_po_token_verifier() -> Tuple[str, str]:
     script_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "external_scripts", "po_token_generator.js")
     node_binary = shutil.which("node")
     if not node_binary:
-        print("未找到 node，可在 macOS 上执行 `brew install node` 后重试自动生成 PO Token。")
-        return None, None
+        raise POTokenGenerationError("未找到 node，可在 macOS 上执行 `brew install node` 后重试自动生成 PO Token。")
 
     result = subprocess.run([node_binary, script_path], capture_output=True, text=True)
     
@@ -65,18 +68,18 @@ def autogen_po_token_verifier() -> Tuple[str, str]:
         output = json.loads(cleaned_output)
         # print(f"PO Token生成结果: {output}")
     except json.JSONDecodeError as e:
-        print(f"验证PO Token生成失败 (JSON解析错误): {str(e)}")
-        print(f"原始输出内容: {repr(result.stdout)}")  # 使用repr()显示所有特殊字符
-        
+        error_details = [f"验证PO Token生成失败 (JSON解析错误): {str(e)}",
+                         f"原始输出内容: {repr(result.stdout)}"]
         if result.stderr:
-            print(f"外部脚本错误输出: {result.stderr}")
-        return None, None
+            error_details.append(f"外部脚本错误输出: {result.stderr}")
+        raise POTokenGenerationError("\n".join(error_details)) from e
     
     # 检查输出中是否含有特定键
     if "visitorData" not in output or "poToken" not in output:
-        print("验证PO Token生成失败: 输出中不包含有效值")
-        print(f"原始输出内容: {repr(result.stdout)}")
-        return None, None
+        raise POTokenGenerationError(
+            "验证PO Token生成失败: 输出中不包含有效值\n"
+            f"原始输出内容: {repr(result.stdout)}"
+        )
     
     # print(f"/Auto Generated PO Token/\n"
     #       f"visitor_data: {output['visitor_data']}, \n"
@@ -254,6 +257,70 @@ class PurePytubefixDownloader(Downloader):
             except Exception as e:
                 print(f"读取配置文件失败: {e}")
                 self.api_key = ''
+
+    def _build_search_with_auth(self, keyword, proxies):
+        if self.use_potoken:
+            try:
+                return Search(
+                    keyword,
+                    proxies=proxies,
+                    use_oauth=False,
+                    use_po_token=True,
+                    po_token_verifier=self.po_token_verifier
+                )
+            except POTokenGenerationError as e:
+                print(f"{e}\n自动回退到不使用 PO Token 的搜索模式。")
+                return Search(
+                    keyword,
+                    proxies=proxies,
+                    use_oauth=False,
+                    use_po_token=False
+                )
+        if self.use_oauth:
+            return Search(
+                keyword,
+                proxies=proxies,
+                use_oauth=True,
+                use_po_token=False
+            )
+        return Search(
+            keyword,
+            proxies=proxies,
+            use_oauth=False,
+            use_po_token=False
+        )
+
+    def _build_youtube_with_auth(self, url, proxies):
+        if self.use_potoken:
+            try:
+                return YouTube(
+                    url,
+                    proxies=proxies,
+                    use_oauth=False,
+                    use_po_token=True,
+                    po_token_verifier=self.po_token_verifier
+                )
+            except POTokenGenerationError as e:
+                print(f"{e}\n自动回退到不使用 PO Token 的模式。")
+                return YouTube(
+                    url,
+                    proxies=proxies,
+                    use_oauth=False,
+                    use_po_token=False
+                )
+        if self.use_oauth:
+            return YouTube(
+                url,
+                proxies=proxies,
+                use_oauth=True,
+                use_po_token=False
+            )
+        return YouTube(
+            url,
+            proxies=proxies,
+            use_oauth=False,
+            use_po_token=False
+        )
     
     def search_video(self, keyword):
         # 如果配置了使用 API，优先使用 YouTube Data API v3
@@ -432,26 +499,7 @@ class PurePytubefixDownloader(Downloader):
         
         for attempt in range(max_retries):
             try:
-                # 尝试使用不同的配置进行搜索
-                if self.use_potoken:
-                    # 使用 PO Token
-                    results = Search(keyword, 
-                                   proxies=proxies, 
-                                   use_oauth=False, 
-                                   use_po_token=True,
-                                   po_token_verifier=self.po_token_verifier)
-                elif self.use_oauth:
-                    # 使用 OAuth
-                    results = Search(keyword, 
-                                   proxies=proxies, 
-                                   use_oauth=True, 
-                                   use_po_token=False)
-                else:
-                    # 不使用认证（可能更容易触发400错误，但先尝试）
-                    results = Search(keyword, 
-                                   proxies=proxies, 
-                                   use_oauth=False, 
-                                   use_po_token=False)
+                results = self._build_search_with_auth(keyword, proxies)
                 
                 videos = []
                 for result in results.videos:
@@ -508,23 +556,7 @@ class PurePytubefixDownloader(Downloader):
                 else:
                     url = f"https://www.youtube.com/watch?v={video_id}"
                 
-                # 尝试使用不同的配置获取视频信息
-                if self.use_potoken:
-                    yt = YouTube(url, 
-                               proxies=proxies, 
-                               use_oauth=False, 
-                               use_po_token=True,
-                               po_token_verifier=self.po_token_verifier)
-                elif self.use_oauth:
-                    yt = YouTube(url, 
-                               proxies=proxies, 
-                               use_oauth=True, 
-                               use_po_token=False)
-                else:
-                    yt = YouTube(url, 
-                               proxies=proxies, 
-                               use_oauth=False, 
-                               use_po_token=False)
+                yt = self._build_youtube_with_auth(url, proxies)
                 
                 # 返回符合存档格式的video_info信息
                 video_info = {
@@ -585,11 +617,7 @@ class PurePytubefixDownloader(Downloader):
             else:
                 proxies = None
 
-            yt = YouTube(video_id, 
-                         proxies=proxies, 
-                         use_oauth=self.use_oauth, 
-                         use_po_token=self.use_potoken,
-                         po_token_verifier=self.po_token_verifier)
+            yt = self._build_youtube_with_auth(video_id, proxies)
             
             print(f"正在下载: {yt.title}")
             if high_res:
