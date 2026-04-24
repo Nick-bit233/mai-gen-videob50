@@ -1,6 +1,7 @@
 from pytubefix import YouTube, Search
 from bilibili_api import login_v2, user, search, video, Credential, sync, HEADERS
 from utils.PageUtils import download_temp_image_to_static
+from utils.AccelRenderer import get_ffmpeg_binary
 from typing import Tuple, Optional
 from abc import ABC, abstractmethod
 import os
@@ -15,17 +16,25 @@ import platform
 import re
 import requests
 import time
+import tempfile
+import shutil
 
-# 根据操作系统选择FFMPEG的输出重定向方式
-# TODO：添加日志输出
-if platform.system() == "Windows":
-    REDIRECT = "> NUL 2>&1"
-else:
-    REDIRECT = "> /dev/null 2>&1"
-
-FFMPEG_PATH = 'ffmpeg'
 MAX_LOGIN_RETRIES = 3
 BILIBILI_URL_PREFIX = "https://www.bilibili.com/video/"
+
+
+def _run_ffmpeg_merge(input_files: list[str], output_file: str):
+    cmd = [get_ffmpeg_binary('ffmpeg'), '-y']
+    for input_file in input_files:
+        cmd.extend(['-i', input_file])
+    cmd.extend(['-vcodec', 'copy', '-acodec', 'copy', output_file])
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def _create_temp_media_file(output_path: str, suffix: str) -> str:
+    fd, temp_path = tempfile.mkstemp(dir=output_path, suffix=suffix)
+    os.close(fd)
+    return temp_path
 
 def custom_po_token_verifier() -> Tuple[str, str]:
 
@@ -44,7 +53,12 @@ def custom_po_token_verifier() -> Tuple[str, str]:
 def autogen_po_token_verifier() -> Tuple[str, str]:
     # 自动生成 PO Token
     script_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "external_scripts", "po_token_generator.js")
-    result = subprocess.run(["node", script_path], capture_output=True, text=True)
+    node_binary = shutil.which("node")
+    if not node_binary:
+        print("未找到 node，可在 macOS 上执行 `brew install node` 后重试自动生成 PO Token。")
+        return None, None
+
+    result = subprocess.run([node_binary, script_path], capture_output=True, text=True)
     
     try:
         cleaned_output = result.stdout.strip()  # 尝试清理输出中的空白字符
@@ -171,20 +185,23 @@ async def bilibili_download(bvid, credential, output_name, output_path, high_res
     # 新版 API 使用 check_flv_mp4_stream() 替代 check_flv_stream()
     if detecter.check_flv_mp4_stream():
         # FLV/MP4 流下载（音视频合并）
-        await download_url_from_bili(streams[0].url, "flv_temp.flv", "FLV/MP4 音视频")
-        os.system(f'{FFMPEG_PATH} -y -i flv_temp.flv {output_file} {REDIRECT}')
+        temp_flv = _create_temp_media_file(output_path, ".flv")
+        await download_url_from_bili(streams[0].url, temp_flv, "FLV/MP4 音视频")
+        _run_ffmpeg_merge([temp_flv], output_file)
         # 删除临时文件
-        os.remove("flv_temp.flv")
+        os.remove(temp_flv)
         print(f"下载完成，存储为: {output_name}.mp4")
     else:
         # DASH 流下载（音视频分离）
-        await download_url_from_bili(streams[0].url, "video_temp.m4s", "视频流")
-        await download_url_from_bili(streams[1].url, "audio_temp.m4s", "音频流")
+        temp_video = _create_temp_media_file(output_path, ".m4s")
+        temp_audio = _create_temp_media_file(output_path, ".m4s")
+        await download_url_from_bili(streams[0].url, temp_video, "视频流")
+        await download_url_from_bili(streams[1].url, temp_audio, "音频流")
         print(f"下载完成，正在合并视频和音频")
-        os.system(f'{FFMPEG_PATH} -y -i video_temp.m4s -i audio_temp.m4s -vcodec copy -acodec copy {output_file} {REDIRECT}')
+        _run_ffmpeg_merge([temp_video, temp_audio], output_file)
         # 删除临时文件
-        os.remove("video_temp.m4s")
-        os.remove("audio_temp.m4s")
+        os.remove(temp_video)
+        os.remove(temp_audio)
         print(f"合并完成，存储为: {output_name}.mp4")
 
 class Downloader(ABC):
@@ -584,7 +601,7 @@ class PurePytubefixDownloader(Downloader):
                 down_audio = audio.download(output_path, filename="audio_temp")
                 print(f"下载完成，正在合并视频和音频")
                 output_file = os.path.join(output_path, f"{output_name}.mp4")
-                os.system(f'{FFMPEG_PATH} -y -i {down_video} -i {down_audio} -vcodec copy -acodec copy {output_file} {REDIRECT}')
+                _run_ffmpeg_merge([down_video, down_audio], output_file)
                 # 删除临时文件
                 os.remove(f"{down_video}")
                 os.remove(f"{down_audio}")

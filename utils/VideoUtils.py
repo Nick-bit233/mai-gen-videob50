@@ -3,6 +3,7 @@ import time
 import numpy as np
 import subprocess
 import traceback
+import shutil
 from PIL import Image, ImageFilter
 from moviepy import VideoFileClip, ImageClip, TextClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip, concatenate_videoclips
 from moviepy import vfx, afx
@@ -1328,13 +1329,26 @@ def combine_full_video_ffmpeg_concat_gl(video_clip_path, trans_name="fade", tran
             f.write(f"file '{full_path}'\n")
 
 
-    # 使用nodejs脚本拼接视频
-    node_script_path = os.path.join(os.path.dirname(__file__), "external_scripts", "concat_videos_ffmpeg.js")
+    # 使用 nodejs 脚本拼接视频
+    node_binary = shutil.which("node")
+    if not node_binary:
+        raise FileNotFoundError("未找到 node，请先在 macOS 上安装 Node.js 后再使用 ffmpeg-concat 模式。")
 
-    cmd = f'node {node_script_path} -o {output_path} -v {mp4_list_file} -t {trans_name} -d {int(trans_time * 1000)}'
-    print(f"执行命令: {cmd}")
+    project_root = os.path.dirname(os.path.dirname(__file__))
+    node_script_path = os.path.join(project_root, "external_scripts", "concat_videos_ffmpeg.js")
+    if not os.path.exists(node_script_path):
+        raise FileNotFoundError(f"未找到 ffmpeg-concat 脚本: {node_script_path}")
 
-    os.system(cmd)
+    cmd = [
+        node_binary,
+        node_script_path,
+        "-o", output_path,
+        "-v", mp4_list_file,
+        "-t", trans_name,
+        "-d", str(int(trans_time * 1000)),
+    ]
+    print(f"执行命令: {' '.join(cmd)}")
+
+    subprocess.run(cmd, check=True, cwd=video_clip_path)
 
     return output_path
-
