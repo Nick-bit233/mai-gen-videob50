@@ -1312,6 +1312,7 @@ def combine_full_video_ffmpeg_concat_gl(video_clip_path, trans_name="fade", tran
         使用ffmpeg的concat_gl脚本，以指定的转场效果拼接指定文件夹下的所有视频片段，生成最终视频文件
         片段需要具有正确的命名格式(0_xxx, 1_xxx, ...)以确保正确排序
     """
+    video_clip_path = os.path.abspath(video_clip_path)
     video_files = [f for f in os.listdir(video_clip_path) if f.endswith(".mp4")]
     sorted_files = sort_video_files(video_files)
     
@@ -1324,7 +1325,7 @@ def combine_full_video_ffmpeg_concat_gl(video_clip_path, trans_name="fade", tran
     mp4_list_file = os.path.join(video_clip_path, "mp4_files.txt")
     with open(mp4_list_file, 'w', encoding='utf-8') as f:
         for file in sorted_files:
-            # 使用正斜杠替换反斜杠，并使用相对路径
+            # 使用绝对路径，避免子进程 cwd 变化导致 ffmpeg-concat 找不到输入文件
             full_path = os.path.join(video_clip_path, file).replace('\\', '/')
             f.write(f"file '{full_path}'\n")
 
@@ -1349,6 +1350,6 @@ def combine_full_video_ffmpeg_concat_gl(video_clip_path, trans_name="fade", tran
     ]
     print(f"执行命令: {' '.join(cmd)}")
 
-    subprocess.run(cmd, check=True, cwd=video_clip_path)
+    subprocess.run(cmd, check=True, cwd=project_root)
 
     return output_path
