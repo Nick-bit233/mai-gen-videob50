@@ -813,6 +813,7 @@ def get_combined_ending_clip(ending_clips, combined_start_time, trans_time):
 
 def render_all_video_clips(game_type: str, style_config: dict, main_configs: list,
                            video_output_path: str, video_res: tuple, video_bitrate: str,
+                           video_fps: int = 60,
                            intro_configs: list = None, ending_configs: list = None,
                            auto_add_transition=True, trans_time=1, force_render=False,
                            use_gpu_accel: bool = None, progress_callback=None):
@@ -846,6 +847,7 @@ def render_all_video_clips(game_type: str, style_config: dict, main_configs: lis
                     auto_add_transition=auto_add_transition,
                     trans_time=trans_time,
                     force_render=force_render,
+                    fps=video_fps,
                     progress_callback=progress_callback
                 )
                 return
@@ -882,7 +884,7 @@ def render_all_video_clips(game_type: str, style_config: dict, main_configs: lis
             ])
         # 直接渲染clip为视频文件
         print(f"正在合成视频片段: {prefix}_{clip_title_name}.mp4")
-        clip.write_videofile(output_file, fps=30, threads=4, preset='ultrafast', bitrate=video_bitrate)
+        clip.write_videofile(output_file, fps=video_fps, threads=4, preset='ultrafast', bitrate=video_bitrate)
         clip.close()
         # 强制垃圾回收
         del clip
@@ -937,6 +939,7 @@ def render_complete_full_video(
         video_output_path: str, 
         intro_configs: list=None, ending_configs: list=None,
         video_res: tuple = (1920, 1080), video_bitrate: str = "4000k",
+        video_fps: int = 60,
         video_trans_enable: bool = True, video_trans_time: float = 1.0, full_last_clip: bool = False,
         use_gpu_accel: bool = None, use_baked_fade: bool = None, progress_callback=None):
     """ 根据完整配置合成完整视频，并保存到指定路径的文件。
@@ -986,6 +989,7 @@ def render_complete_full_video(
                         auto_add_transition=False,
                         trans_time=video_trans_time,
                         force_render=True,
+                        fps=video_fps,
                         progress_callback=progress_callback
                     )
                     print(f"[Timer] 步骤1 - 渲染所有片段耗时: {time.perf_counter() - t_step:.2f}s")
@@ -1022,6 +1026,7 @@ def render_complete_full_video(
                         auto_add_transition=video_trans_enable,
                         trans_time=video_trans_time,
                         force_render=True,
+                        fps=video_fps,
                         progress_callback=progress_callback
                     )
                     print(f"[Timer] 步骤1 - 渲染所有片段耗时: {time.perf_counter() - t_step:.2f}s")
