@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
 from contextlib import contextmanager
 import uuid
+from pathlib import Path
 
 class DatabaseManager:
     """
@@ -14,8 +15,21 @@ class DatabaseManager:
     """
     
     def __init__(self, db_path: str = "mai_gen_videob50.db"):
-        self.db_path = db_path
+        self.db_path = self._resolve_db_path(db_path)
         self.init_database()
+
+    @staticmethod
+    def _resolve_db_path(db_path: str) -> str:
+        """Resolve the database path relative to the project root."""
+        path = Path(db_path)
+        if path.is_absolute():
+            resolved = path
+        else:
+            project_root = Path(__file__).resolve().parent.parent
+            resolved = project_root / path
+
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        return str(resolved)
     
     @contextmanager
     def get_connection(self):

@@ -3,6 +3,7 @@ import time
 import numpy as np
 import subprocess
 import traceback
+import shutil
 from PIL import Image, ImageFilter
 from moviepy import VideoFileClip, ImageClip, TextClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip, concatenate_videoclips
 from moviepy import vfx, afx
@@ -1323,6 +1324,7 @@ def combine_full_video_ffmpeg_concat_gl(video_clip_path, trans_name="fade", tran
         使用ffmpeg的concat_gl脚本，以指定的转场效果拼接指定文件夹下的所有视频片段，生成最终视频文件
         片段需要具有正确的命名格式(0_xxx, 1_xxx, ...)以确保正确排序
     """
+    video_clip_path = os.path.abspath(video_clip_path)
     video_files = [f for f in os.listdir(video_clip_path) if f.endswith(".mp4")]
     sorted_files = sort_video_files(video_files)
     
@@ -1335,18 +1337,31 @@ def combine_full_video_ffmpeg_concat_gl(video_clip_path, trans_name="fade", tran
     mp4_list_file = os.path.join(video_clip_path, "mp4_files.txt")
     with open(mp4_list_file, 'w', encoding='utf-8') as f:
         for file in sorted_files:
-            # 使用正斜杠替换反斜杠，并使用相对路径
+            # 使用绝对路径，避免子进程 cwd 变化导致 ffmpeg-concat 找不到输入文件
             full_path = os.path.join(video_clip_path, file).replace('\\', '/')
             f.write(f"file '{full_path}'\n")
 
 
-    # 使用nodejs脚本拼接视频
-    node_script_path = os.path.join(os.path.dirname(__file__), "external_scripts", "concat_videos_ffmpeg.js")
+    # 使用 nodejs 脚本拼接视频
+    node_binary = shutil.which("node")
+    if not node_binary:
+        raise FileNotFoundError("未找到 node，请先在 macOS 上安装 Node.js 后再使用 ffmpeg-concat 模式。")
 
-    cmd = f'node {node_script_path} -o {output_path} -v {mp4_list_file} -t {trans_name} -d {int(trans_time * 1000)}'
-    print(f"执行命令: {cmd}")
+    project_root = os.path.dirname(os.path.dirname(__file__))
+    node_script_path = os.path.join(project_root, "external_scripts", "concat_videos_ffmpeg.js")
+    if not os.path.exists(node_script_path):
+        raise FileNotFoundError(f"未找到 ffmpeg-concat 脚本: {node_script_path}")
 
-    os.system(cmd)
+    cmd = [
+        node_binary,
+        node_script_path,
+        "-o", output_path,
+        "-v", mp4_list_file,
+        "-t", trans_name,
+        "-d", str(int(trans_time * 1000)),
+    ]
+    print(f"执行命令: {' '.join(cmd)}")
+
+    subprocess.run(cmd, check=True, cwd=project_root)
 
     return output_path
-

@@ -53,7 +53,7 @@ async function concatenateVideos(output, videoListFile, transitionName, transiti
             .filter(line => line.trim())
             .map(line => {
                 console.log('Processing line:', line)
-                const match = line.trim().match(/^file\s+'\.\/(.+)'$/)
+                const match = line.trim().match(/^file\s+'(.+)'$/)
                 console.log('Match result:', match)
                 const result = match ? match[1] : line.trim()
                 console.log('Processed result:', result)

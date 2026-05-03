@@ -124,7 +124,8 @@ class AssetManager:
             custom_path = AssetManager.get_custom_jacket_path(archive_id, chart_id)
             if custom_path:
                 try:
-                    return Image.open(custom_path)
+                    with Image.open(custom_path) as img:
+                        return img.copy()
                 except Exception as e:
                     print(f"[AssetManager] Failed to load custom jacket: {e}")
         
@@ -136,7 +137,8 @@ class AssetManager:
             path = AssetManager.get_storage_path(game_type, image_code)
             if os.path.exists(path):
                 try:
-                    return Image.open(path)
+                    with Image.open(path) as img:
+                        return img.copy()
                 except Exception:
                     return None
         
