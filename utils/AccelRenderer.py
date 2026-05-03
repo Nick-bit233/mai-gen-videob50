@@ -281,6 +281,9 @@ class FFmpegWriter:
         # 音频编码 + 可选淡入淡出滤镜
         if has_audio:
             af_filters = []
+            # 裁剪后的音频必须从 0 PTS 开始，否则后续 xfade/acrossfade 可能继承源文件时间戳，
+            # 表现为完整视频中音频相对画面整体滞后。
+            af_filters.append("asetpts=PTS-STARTPTS")
             if abs(volume_adjust_db) > 0.5:
                 af_filters.append(f"volume={volume_adjust_db:.1f}dB")
             if audio_fade_in > 0:
@@ -288,12 +291,14 @@ class FFmpegWriter:
             if audio_fade_out > 0 and audio_duration:
                 fade_out_start = max(0, audio_duration - audio_fade_out)
                 af_filters.append(f"afade=t=out:st={fade_out_start:.3f}:d={audio_fade_out}")
+            af_filters.append("aresample=48000:first_pts=0")
+            af_filters.append("asetpts=N/SR/TB")
             if af_filters:
                 cmd += ['-af', ','.join(af_filters)]
-            cmd += ['-c:a', 'aac', '-b:a', '192k', '-map', '0:v', '-map', '1:a', '-shortest']
+            cmd += ['-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-map', '0:v', '-map', '1:a', '-shortest']
         else:
             # 静音音轨：仅需编码，用 -shortest 使其匹配视频长度
-            cmd += ['-c:a', 'aac', '-b:a', '192k', '-map', '0:v', '-map', '1:a', '-shortest']
+            cmd += ['-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-map', '0:v', '-map', '1:a', '-shortest']
 
         cmd += [output_path]
         

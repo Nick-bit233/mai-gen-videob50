@@ -1189,8 +1189,9 @@ def _normalize_video_audio(input_path: str, output_path: str):
             get_ffmpeg_binary('ffmpeg'), '-y', '-hide_banner', '-loglevel', 'warning',
             '-i', input_path,
             '-c:v', 'copy',
-            '-af', 'loudnorm=I=-20:TP=-1.5:LRA=11',
+            '-af', 'loudnorm=I=-20:TP=-1.5:LRA=11,aresample=48000:first_pts=0,asetpts=N/SR/TB',
             '-c:a', 'aac', '-b:a', '192k',
+            '-ar', '48000',
             output_path
         ]
         subprocess.run(cmd, check=True)
@@ -1248,10 +1249,18 @@ def _combine_with_xfade(video_clip_path: str, sorted_files: list,
     # 构建 xfade + acrossfade 滤镜链
     filter_parts = []
 
-    # 先统一格式：fps/format/settb 用于视频，aformat 用于音频
-    for i in range(n):
-        filter_parts.append(f"[{i}:v]fps=30,format=yuv420p,settb=AVTB[v{i}]")
-        filter_parts.append(f"[{i}:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[a{i}]")
+    # 先统一格式和时长：音频必须裁到与视频 offset 使用的 duration 一致，
+    # 避免 AAC priming/padding 在多次 acrossfade 后累积成可感知延迟。
+    for i, duration in enumerate(durations):
+        filter_parts.append(
+            f"[{i}:v]setpts=PTS-STARTPTS,trim=duration={duration:.6f},"
+            f"setpts=PTS-STARTPTS,fps=30,format=yuv420p,settb=AVTB[v{i}]"
+        )
+        filter_parts.append(
+            f"[{i}:a]asetpts=PTS-STARTPTS,aresample=48000:async=1:first_pts=0,"
+            f"atrim=duration={duration:.6f},asetpts=N/SR/TB,"
+            f"aformat=sample_fmts=fltp:channel_layouts=stereo[a{i}]"
+        )
 
     # 逐对构建 xfade 和 acrossfade
     # 累计输出时长用于计算下一个 offset
@@ -1271,7 +1280,7 @@ def _combine_with_xfade(video_clip_path: str, sorted_files: list,
         if i < n - 2:
             v_out, a_out = f"[vfade{i}]", f"[afade{i}]"
         else:
-            v_out, a_out = "[vout]", "[aout]"
+            v_out, a_out = "[vout_raw]", "[aout_raw]"
 
         filter_parts.append(
             f"{v_in_a}{v_in_b}xfade=transition=fade:duration={trans_time}:offset={offset:.3f}{v_out}"
@@ -1282,6 +1291,9 @@ def _combine_with_xfade(video_clip_path: str, sorted_files: list,
 
         # 每次 xfade 后输出时长 = offset + duration[i+1]
         accumulated_duration = offset + durations[i + 1]
+
+    filter_parts.append("[vout_raw]setpts=PTS-STARTPTS[vout]")
+    filter_parts.append("[aout_raw]aresample=48000:async=1:first_pts=0,asetpts=N/SR/TB[aout]")
 
     filter_complex = ";".join(filter_parts)
     cmd += ['-filter_complex', filter_complex]
