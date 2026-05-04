@@ -813,6 +813,7 @@ def get_combined_ending_clip(ending_clips, combined_start_time, trans_time):
 
 def render_all_video_clips(game_type: str, style_config: dict, main_configs: list,
                            video_output_path: str, video_res: tuple, video_bitrate: str,
+                           video_fps: int = 60,
                            intro_configs: list = None, ending_configs: list = None,
                            auto_add_transition=True, trans_time=1, force_render=False,
                            use_gpu_accel: bool = None, progress_callback=None):
@@ -846,6 +847,7 @@ def render_all_video_clips(game_type: str, style_config: dict, main_configs: lis
                     auto_add_transition=auto_add_transition,
                     trans_time=trans_time,
                     force_render=force_render,
+                    fps=video_fps,
                     progress_callback=progress_callback
                 )
                 return
@@ -882,7 +884,7 @@ def render_all_video_clips(game_type: str, style_config: dict, main_configs: lis
             ])
         # 直接渲染clip为视频文件
         print(f"正在合成视频片段: {prefix}_{clip_title_name}.mp4")
-        clip.write_videofile(output_file, fps=30, threads=4, preset='ultrafast', bitrate=video_bitrate)
+        clip.write_videofile(output_file, fps=video_fps, threads=4, preset='ultrafast', bitrate=video_bitrate)
         clip.close()
         # 强制垃圾回收
         del clip
@@ -912,7 +914,8 @@ def render_one_video_clip(
         config: dict, 
         style_config: dict, 
         video_output_path: str, video_res: tuple, video_bitrate: str,
-        video_file_name: str=None
+        video_file_name: str=None,
+        video_fps: int = 60
     ):
     """ 根据一条配置合成单个视频片段，并保存到指定路径的文件 """
     if not video_file_name:
@@ -921,7 +924,7 @@ def render_one_video_clip(
     try:
         clip = create_video_segment(game_type, config, style_config, video_res)
         clip.write_videofile(os.path.join(video_output_path, video_file_name), 
-                             fps=30, threads=4, preset='ultrafast', bitrate=video_bitrate)
+                             fps=video_fps, threads=4, preset='ultrafast', bitrate=video_bitrate)
         clip.close()
         return {"status": "success", "info": f"合成视频片段{video_file_name}成功"}
     except Exception as e:
@@ -937,6 +940,7 @@ def render_complete_full_video(
         video_output_path: str, 
         intro_configs: list=None, ending_configs: list=None,
         video_res: tuple = (1920, 1080), video_bitrate: str = "4000k",
+        video_fps: int = 60,
         video_trans_enable: bool = True, video_trans_time: float = 1.0, full_last_clip: bool = False,
         use_gpu_accel: bool = None, use_baked_fade: bool = None, progress_callback=None):
     """ 根据完整配置合成完整视频，并保存到指定路径的文件。
@@ -1079,7 +1083,7 @@ def render_complete_full_video(
         
         final_video.write_videofile(
             output_file, 
-            fps=30,
+            fps=video_fps,
             threads=12,  # CPU模式使用多线程
             codec='libx264',
             preset='medium',  # balanced 质量：medium preset
@@ -1121,7 +1125,7 @@ def combine_full_video_direct(video_clip_path, auto_add_transition=False, trans_
     # 带转场的拼接：使用 FFmpeg xfade 滤镜
     if auto_add_transition and len(sorted_files) > 1 and trans_time > 0:
         output_path = _combine_with_xfade(video_clip_path, sorted_files, output_path, trans_time,
-                                          codec=codec, bitrate=bitrate)
+                                          codec=codec, bitrate=bitrate, video_fps=video_fps)
         print(f"[Timer] 拼接(xfade)总耗时: {time.perf_counter() - t_concat_start:.2f}s")
         return output_path
 
@@ -1221,7 +1225,8 @@ def _get_video_duration(filepath: str) -> float:
 
 def _combine_with_xfade(video_clip_path: str, sorted_files: list,
                          output_path: str, trans_time: float,
-                         codec: str = None, bitrate: str = "5000k"):
+                         codec: str = None, bitrate: str = "5000k",
+                         video_fps: int = 60):
     """使用 FFmpeg xfade 滤镜拼接视频片段（带淡入淡出转场）
     
     Args:
@@ -1254,7 +1259,7 @@ def _combine_with_xfade(video_clip_path: str, sorted_files: list,
     for i, duration in enumerate(durations):
         filter_parts.append(
             f"[{i}:v]setpts=PTS-STARTPTS,trim=duration={duration:.6f},"
-            f"setpts=PTS-STARTPTS,fps=30,format=yuv420p,settb=AVTB[v{i}]"
+            f"setpts=PTS-STARTPTS,fps={video_fps},format=yuv420p,settb=AVTB[v{i}]"
         )
         filter_parts.append(
             f"[{i}:a]asetpts=PTS-STARTPTS,aresample=48000:async=1:first_pts=0,"

@@ -404,7 +404,8 @@ if video_configs:
                         video_file_name=target_video_filename,
                         video_output_path=video_output_path,
                         video_res=v_res,
-                        video_bitrate=v_bitrate_kbps
+                        video_bitrate=v_bitrate_kbps,
+                        video_fps=G_config.get('VIDEO_FPS', 60)
                     )
                 if res['status'] == 'success':
                     st.success(res['info'])
