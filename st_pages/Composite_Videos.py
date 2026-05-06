@@ -80,7 +80,8 @@ st.markdown("#### 视频生成设置")
 
 _mode_index = 0 if G_config['ONLY_GENERATE_CLIPS'] else 1
 _video_res = G_config['VIDEO_RES']
-_video_bitrate = 5000 # TODO：存储到配置文件中
+_video_bitrate = G_config.get('VIDEO_BITRATE', 5000)
+_video_fps = G_config.get('VIDEO_FPS', 60)
 _trans_enable = G_config['VIDEO_TRANS_ENABLE']
 _trans_time = G_config['VIDEO_TRANS_TIME']
 
@@ -110,6 +111,10 @@ with vcof_col2:
     with st.container(border=True):
         st.write("视频比特率(kbps)")  
         v_bitrate = st.number_input("视频比特率", min_value=1000, max_value=10000, value=_video_bitrate)
+
+with st.container(border=True):
+    st.write("视频帧率")
+    v_fps = st.number_input("输出帧率 (fps)", min_value=24, max_value=120, value=_video_fps, step=1)
 
 _gpu_accel = G_config.get('USE_GPU_ACCEL', False)
 with st.container(border=True):
@@ -154,6 +159,7 @@ def save_video_render_config():
     G_config['ONLY_GENERATE_CLIPS'] = v_mode_index == 0
     G_config['VIDEO_RES'] = (v_res_width, v_res_height)
     G_config['VIDEO_BITRATE'] = v_bitrate
+    G_config['VIDEO_FPS'] = v_fps
     G_config['VIDEO_TRANS_ENABLE'] = trans_enable
     G_config['VIDEO_TRANS_TIME'] = trans_time
     G_config['USE_GPU_ACCEL'] = gpu_accel
@@ -199,6 +205,7 @@ if st.button("开始生成视频", use_container_width=True, type="primary"):
                         video_output_path=video_output_path,
                         video_res=video_res,
                         video_bitrate=v_bitrate_kbps,
+                        video_fps=v_fps,
                         intro_configs=intro_configs,
                         ending_configs=ending_configs,
                         trans_time=trans_time,
@@ -228,6 +235,7 @@ if st.button("开始生成视频", use_container_width=True, type="primary"):
                         video_output_path=video_output_path,
                         video_res=video_res,
                         video_bitrate=v_bitrate_kbps,
+                        video_fps=v_fps,
                         video_trans_enable=trans_enable,
                         video_trans_time=trans_time,
                         full_last_clip=False,
@@ -277,6 +285,7 @@ with st.expander("展开其他视频生成方案"):
                             video_output_path=video_output_path,
                             video_res=video_res,
                             video_bitrate=v_bitrate_kbps,
+                            video_fps=v_fps,
                             video_trans_enable=trans_enable,
                             video_trans_time=trans_time,
                             full_last_clip=False,
@@ -298,6 +307,7 @@ with st.expander("展开其他视频生成方案"):
                         video_output_path=video_output_path, 
                         video_res=video_res, 
                         video_bitrate=v_bitrate_kbps,
+                        video_fps=v_fps,
                         intro_configs=intro_configs,
                         ending_configs=ending_configs,
                         auto_add_transition=trans_enable, 
@@ -306,7 +316,7 @@ with st.expander("展开其他视频生成方案"):
                     )
                     st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
                 with st.spinner("正在拼接视频……"):
-                    combine_full_video_direct(video_output_path)
+                    combine_full_video_direct(video_output_path, video_fps=v_fps)
                 st.success("所有任务已退出，请从上方按钮打开文件夹查看视频生成结果")
 
     with st.container(border=True):
@@ -337,6 +347,7 @@ with st.expander("展开其他视频生成方案"):
                         video_output_path=video_output_path, 
                         video_res=video_res, 
                         video_bitrate=v_bitrate_kbps,
+                        video_fps=v_fps,
                         intro_configs=intro_configs,
                         ending_configs=ending_configs,
                         auto_add_transition=trans_enable,

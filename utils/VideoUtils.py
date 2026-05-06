@@ -990,6 +990,7 @@ def render_complete_full_video(
                         auto_add_transition=False,
                         trans_time=video_trans_time,
                         force_render=True,
+                        fps=video_fps,
                         progress_callback=progress_callback
                     )
                     print(f"[Timer] 步骤1 - 渲染所有片段耗时: {time.perf_counter() - t_step:.2f}s")
@@ -1002,7 +1003,8 @@ def render_complete_full_video(
                         auto_add_transition=True,
                         trans_time=video_trans_time,
                         codec=hw_codec,
-                        bitrate=video_bitrate
+                        bitrate=video_bitrate,
+                        video_fps=video_fps
                     )
                     print(f"[Timer] 步骤2 - 视频拼接(xfade)耗时: {time.perf_counter() - t_step:.2f}s")
                 else:
@@ -1026,6 +1028,7 @@ def render_complete_full_video(
                         auto_add_transition=video_trans_enable,
                         trans_time=video_trans_time,
                         force_render=True,
+                        fps=video_fps,
                         progress_callback=progress_callback
                     )
                     print(f"[Timer] 步骤1 - 渲染所有片段耗时: {time.perf_counter() - t_step:.2f}s")
@@ -1036,7 +1039,8 @@ def render_complete_full_video(
                     output_file = combine_full_video_direct(
                         video_output_path,
                         auto_add_transition=False,
-                        trans_time=video_trans_time
+                        trans_time=video_trans_time,
+                        video_fps=video_fps
                     )
                     print(f"[Timer] 步骤2 - 视频拼接(流拷贝)耗时: {time.perf_counter() - t_step:.2f}s")
 
@@ -1101,7 +1105,7 @@ def render_complete_full_video(
 
 
 def combine_full_video_direct(video_clip_path, auto_add_transition=False, trans_time=1,
-                              codec=None, bitrate="5000k"):
+                              codec=None, bitrate="5000k", video_fps=60):
     """ 
         拼接指定文件夹下的所有视频片段，生成最终视频文件
         片段需要具有正确的命名格式(0_xxx, 1_xxx, ...)以确保正确排序
