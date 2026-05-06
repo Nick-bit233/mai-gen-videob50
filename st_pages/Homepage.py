@@ -1,5 +1,6 @@
 import streamlit as st
 from utils.PageUtils import change_theme, get_game_type_text, update_music_metadata, DEFAULT_STYLE_CONFIG_FILE_PATH, get_db_manager, clear_all_user_data
+from utils.DataUtils import load_metadata
 from db_utils.DataMigration import old_data_migration
 from utils.themes import THEME_COLORS, DEFAULT_STYLES
 from utils.WebAgentUtils import st_init_cache_pathes
@@ -41,6 +42,10 @@ def save_last_game_type(game_type: str):
             json.dump(data, f, ensure_ascii=False, indent=4)
     except Exception:
         pass  # 静默处理保存失败
+
+def refresh_music_metadata_cache():
+    load_metadata.cache_clear()
+    st.cache_data.clear()
 
 def load_last_game_type() -> str:
     """
@@ -319,6 +324,7 @@ with st.container(border=True):
         if needs_update:
             with st.spinner("正在更新乐曲元数据..."):
                 update_music_metadata()
+                refresh_music_metadata_cache()
             st.success("✅ 乐曲元数据已更新")
         else:
             st.info("ℹ️ 最近已更新过乐曲元数据（24小时内），如有需要可以手动更新")
@@ -329,6 +335,7 @@ with st.container(border=True):
                 if st.button("🔄 手动更新", key="manual_update_metadata", use_container_width=True):
                     with st.spinner("正在更新..."):
                         update_music_metadata()
+                        refresh_music_metadata_cache()
                     st.success("✅ 乐曲元数据已更新")
                     st.rerun()
     except Exception as e:

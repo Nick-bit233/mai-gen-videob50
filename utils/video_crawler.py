@@ -27,11 +27,13 @@ class POTokenGenerationError(RuntimeError):
     """PO Token 自动生成失败时抛出的明确异常。"""
 
 
-def _run_ffmpeg_merge(input_files: list[str], output_file: str):
+def _run_ffmpeg_merge(input_files: list[str], output_file: str, copy_codecs: bool = True):
     cmd = [get_ffmpeg_binary('ffmpeg'), '-y']
     for input_file in input_files:
         cmd.extend(['-i', input_file])
-    cmd.extend(['-vcodec', 'copy', '-acodec', 'copy', output_file])
+    if copy_codecs:
+        cmd.extend(['-vcodec', 'copy', '-acodec', 'copy'])
+    cmd.append(output_file)
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
@@ -190,7 +192,7 @@ async def bilibili_download(bvid, credential, output_name, output_path, high_res
         # FLV/MP4 流下载（音视频合并）
         temp_flv = _create_temp_media_file(output_path, ".flv")
         await download_url_from_bili(streams[0].url, temp_flv, "FLV/MP4 音视频")
-        _run_ffmpeg_merge([temp_flv], output_file)
+        _run_ffmpeg_merge([temp_flv], output_file, copy_codecs=False)
         # 删除临时文件
         os.remove(temp_flv)
         print(f"下载完成，存储为: {output_name}.mp4")
