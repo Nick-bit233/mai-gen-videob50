@@ -512,12 +512,9 @@ def create_video_segment(
     override_content_bg = style_config['options'].get('override_content_default_bg', False)
     using_video_content_bg = style_config['options'].get('content_use_video_bg', False)
 
-    # black_video仅作为纯黑色背景，避免透明素材的遮挡问题
-    black_clip = VideoFileClip("./static/assets/bg_clips/black_bg.mp4")
-    # 移除音频以避免循环时的索引错误
-    black_clip = black_clip.without_audio()
-    black_clip = black_clip.with_effects([vfx.Loop(duration=clip_config['duration']), 
-                                      vfx.Resize(width=resolution[0])])
+    # 这里仅需要一个纯黑底，直接生成静态帧可绕开 MoviePy 偶发的首帧读取失败。
+    black_frame = np.zeros((resolution[1], resolution[0], 3), dtype=np.uint8)
+    black_clip = ImageClip(black_frame).with_duration(clip_config['duration'])
     
     # 检查图片资源是否存在
     # 'main_image' == achievement_image
@@ -584,10 +581,17 @@ def get_video_preview_frame(game_type, clip_config, style_config, resolution, pa
         preview_clip = create_info_segment(clip_config, style_config, resolution)
     elif part == "content":
         preview_clip = create_video_segment(game_type, clip_config, style_config, resolution)
-    
-    frame = preview_clip.get_frame(t=1)
-    pil_img = Image.fromarray(frame.astype("uint8"))
-    return pil_img
+    else:
+        raise ValueError(f"不支持的预览片段类型: {part}")
+
+    try:
+        # 预览时取 1 秒帧；若片段更短，则钳制到片段末尾前，避免触发 MoviePy 的误导性首帧错误。
+        preview_time = max(0, min(1, preview_clip.duration - (1 / 30)))
+        frame = preview_clip.get_frame(t=preview_time)
+        pil_img = Image.fromarray(frame.astype("uint8"))
+        return pil_img
+    finally:
+        preview_clip.close()
 
 
 
@@ -651,7 +655,8 @@ def create_full_video(game_type: str, style_config: dict, resolution: tuple,
         if main_configs.index(clip_config) == len(main_configs) - 1 and full_last_clip:
             start_time = clip_config['start']
             # 获取原始视频的长度（不是配置文件中配置的duration）
-            full_clip_duration = VideoFileClip(clip_config['video']).duration - 5
+            with VideoFileClip(clip_config['video']) as source_clip:
+                full_clip_duration = source_clip.duration - 5
             # 修改配置文件中的duration，因此下面创建视频片段时，会使用加长版duration
             clip_config['duration'] = full_clip_duration - start_time
             clip_config['end'] = full_clip_duration
