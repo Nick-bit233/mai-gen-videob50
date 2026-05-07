@@ -8,127 +8,118 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 ## 更新速览
 
-`v1.0 (alpha test)` 预览版本现已更新：
-- ✨ **重大更新**：现已支持中二节奏（CHUNITHM）B30视频生成！您可以从水鱼查分器和落雪查分器获取中二节奏数据
-    - 中二节奏的自定义分表和国际服数据查询还在施工中，目前可能无法正常工作
-- 🛠️ 数据库重构：使用本地Sqlite3数据库替换原基于文件的数据存储系统，在调取资源时更加灵活，并兼容分表数据的未来更新
-- 🎮 界面更新：统一的视频生成流程，根据游戏类型自动切换显示 B30（中二侧）或 B50（maimai侧）
-- 🔍 搜索优化：支持 YouTube Data API v3，并优化更加快捷的手动搜索流程
-- 🐛 界面优化：优化前端界面，改进分表填写和媒体处理逻辑，提升用户体验
+`v1.2.1` Bug修复：
+- 🛠️ 修复了在某些系统环境下，生成视频时出现`MoviePy error: failed to read the first frame of video file black_bg.mp4 `的错误
+- 🛠️ 修复了在macOS下，数据库路径解析和命令行工具调用不稳定的问题 @[RararXD](https://github.com/RararXD)
+- 🛠️ 修复了在勾选“启用gpu加速合成”后生成视频，得到的完整视频中音画不同步的问题
+- 其他若干有关UI表现bug修复，详见release日志
 
-我们经过短暂测试后将提供release包，目前请使用源代码安装。无需更新runtime，可以直接替换v0.6.5版本的所有源代码
+以下贡献来自@[Blueteemo](https://github.com/Blueteemo):
 
-> 本预览版本的中二落雪查分器支持，以及YouTube Data API v3和部分界面重构支持，由[caiccu](https://github.com/CAICCU)提供
+- 🛠️ 修复了在勾选“启用gpu加速合成”后，无法正确检测部分NVENC编码器的问题
+- 🛠️ 修复了Windows路径中包含中文时，`cv2.imread()` 无法正确读取文件的问题
+- 🎚️ 现在允许设置输出视频的帧率，默认输出视频帧率提高到60fps
+
+此版本没有运行库更新，仍然可以使用v1.2版本的运行环境。
+
+
+`v1.2` 开发版本更新：
+- 🚀 **GPU 加速渲染（实验功能）**：新增基于 Taichi 的 GPU 加速渲染管线，大幅提升视频合成速度，预计加速比在x3以上：
+    - 自动检测最佳 GPU 后端：CUDA（NVIDIA）、Vulkan、Metal（macOS）、OpenGL，不可用时自动回退 CPU
+    - 默认检测GPU硬件视频编码器进行拼接，优先使用N卡NVIDIA NVENC
+- 🎚️ **自定义模式优化**：现在支持在自定义乐曲元数据中使用任意字符串格式的定数字段
+- 🛠️ **Bug修复**：修复中二模式中无法加载自定义数据的问题，修复获取多个存档时生成图片背景和乐曲不一致的问题，另修复若干小型问题，详见release日志。
+
+注意：升级到v1.2版本需要更新依赖运行库，请将新版本runtime目录的所有文件复制并覆盖原有文件。GPU 加速需要安装 `taichi` 库（`pip install taichi`），此项不会自动安装，请按照主页引导进行安装，未安装时将自动使用 CPU 渲染。
+
+如果使用源代码安装，请注意v1.2版本推荐使用ffmpeg版本==7.1，ffmpeg版本可能影响GPU加速时的硬件编码器兼容性。
 
 ---
 
-`v0.6.5`版本更新：
-- 修复：从舞萌2025版本，成绩图片中的等级+号显示，由每个等级的定数.7及以上调整为.6及以上
-- 修复：自动识别下载的视频源以对齐模板的位置，以避免视频没有嵌入到正确位置的问题。
+`v1.1` 开发版本更新：
+- ✨ **文字渲染优化**：现在支持多语言智能换行、描边和（基于Unicode的）Emoji 渲染
+- ✨ **手动填写模式**：在「编辑自定义分表」页面新增手动填写模式，允许用户完全自定义乐曲元数据和成绩信息
+    - 支持上传自定义曲绘（仅 maimai）
+    - 卡片式预览列表，直观展示曲绘和记录信息
+- 🛠️ **曲绘管理优化**：现在将自动在后台抓取存档曲绘，生成成绩图片时，自定义曲绘优先级会大于默认远端获取。同时，修复了若干UI体验的Bug
 
+---
 
 ## 快速开始
 
-- 对于大多数无编程基础的用户，请**从右侧Release页面下载最新的**打包版本。
-- 注意！从`v0.5-beta`版本开始，运行环境包已经和本体分离，要启动应用，请进行以下操作：
-    - 下载本体Release包和运行环境包（`runtime_v<版本号>.zip`），并解压
-    - 将运行环境包中的**全部文件**，复制到本体Release包解压后的目录
+- 获取打包版本：**从右侧Release页面下载最新版本**。
+- 您需要下载两个压缩包，运行环境包和本体分离，进行以下操作：
+    - 下载本体压缩包（`maigen_release_v<版本号>.zip`）和运行环境包（`runtime_v<版本号>.zip`），并解压
+    - 将**运行环境包**中的**全部文件**，复制到**本体包解压后的目录**，覆盖同名文件
     - 双击`start.bat`文件启动应用。
     - 请不要使用旧版本的runtime运行环境，其缺少新版本的依赖
 - 请注意：**打包版本仅支持Windows10及以上操作系统**
+- `macOS` 用户请使用源代码方式启动，当前仓库代码可运行在 macOS 上，但 Release 打包运行环境仍仅提供 Windows 版本。
 - 首次启动时，如果没有立刻弹出浏览器窗口，请检查控制台，如果要求输入Email，请直接回车跳过即可。
 - 遇到问题请参考[常见问题](#常见问题)一节。
 
-> 如果你具有基本的计算机和python知识，可以独立（或者GPT辅助）完成环境配置和脚本操作，可以直接clone仓库代码，参考[使用说明](#使用说明（从源代码启动）)部分开始使用。
+> 如果你具有基本的计算机和python知识，可以独立（或者LLM辅助）完成环境配置和脚本操作，可以直接clone仓库代码，参考[安装说明](#安装说明（从源代码启动）)部分开始使用。
 
 ## 效果预览
 
 - 用户界面（支持主题换色）
 
-| ![alt text](md_res/page_fes.png) | ![alt text](md_res/page_bud.png) | ![alt text](md_res/page_pri.png) |
+| <img src="md_res/home_maimai_PRI.jpg" width="240" alt="maimai Prism"> | <img src="md_res/home_maimai_CIR.jpg" width="240" alt="maimai Circle"> | <img src="md_res/home_chunithm_VER.jpg" width="240" alt="Chunithm Verse"> |
 |:---:|:---:|:---:|
-| FES | BUD | PRI |
+| maimai Prism | maimai  Circle | Chunithm Verse |
 
-生成视频效果展示：[【舞萌2024/工具发布】还在手搓b50视频？我写了一个自动生成器！](https://www.bilibili.com/video/BV1bJi2YVEiE)
+生成视频效果展示：
+- [【舞萌2024/工具发布】还在手搓b50视频？我写了一个自动生成器！](https://www.bilibili.com/video/BV1bJi2YVEiE)
 
-
-中二节奏生成效果：[【中二节奏2026】小伙时隔半个月成功抵达虹分，这是他分表发生的变化](https://www.bilibili.com/video/BV1m9yVBfExq)
-
-使用教程视频：[【舞萌2024】新版B50视频生成器来啦！支持一键启动/站内下载/全面升级用户界面~](https://www.bilibili.com/video/BV1G2kBY5Edq)
-
-
+- [【中二节奏2026】小伙时隔半个月成功抵达虹分，这是他分表发生的变化](https://www.bilibili.com/video/BV1m9yVBfExq)
 
 - 生成视频帧效果
 
-<img src="md_res/image.png" width="600" alt="preview">
+| <img src="md_res/preview_maimai.png" width="400" alt="maimai Prism"> | <img src="md_res/preview_chunithm.jpg" width="400" alt="Chunithm"> |
+|:---:|:---:|
+| maimai  | Chunithm |
 
 
 ## 特性
 
-本工具的原理是：
-
-- 从查分器获取你的B50/B30数据，并保存在本地。
-
-- 从流媒体上搜索并下载谱面确认视频，并保存在本地。
-
-- 用户（你）编辑视频里要展示的内容，包括片段长度、评论等。
-
-- 自动根据已缓存的素材合成视频。
-
-### 支持的游戏类型
-
-- **B50（maimai侧）**：舞萌DX Best 50 视频生成
-- **B30（中二侧）**：中二节奏 Best 30 视频生成
-
 ### 查分器源支持情况
 
-#### maimai（B50）数据源：
 - [x] [水鱼查分器](https://www.diving-fish.com/maimaidx/prober/)：请注意在个人选项中关闭掩码，并允许公开获取你的B50数据。
 
-- [x] [国际服Maimai DX NET](https://maimaidx-eng.com/maimai-mobile/home/ratingTargetMusic/)
+- [x] [落雪查分器](https://maimai.lxns.net/)：直接通过好友码获取（请在账户设置中打开相关权限）。如果您不愿意授权开发者读取，可选择填入落雪后台生成的个人 API KEY 拉取数据。
 
-- [x] [日服Maimai DX NET](https://maimaidx.jp/maimai-mobile/home/ratingTargetMusic/) (缺乏测试样本)
+> 注：以下源支持已过期，无法保证可用性
+
+- [x] Maimai DX NET： [国际服](https://maimaidx-eng.com/maimai-mobile/home/ratingTargetMusic/)/[日服](https://maimaidx.jp/maimai-mobile/home/ratingTargetMusic/) 
 
 - [x] [DXrating](https://dxrating.net/rating)：支持国服/国际服/日服
 
-    （国际服/日服官网以及DXrating网站导入数据需要通过下载网页或导出源码，点此查看[国际服/日服数据获取插件使用教程](docs/DX_NET_Guide.md)）
+国际服/日服官网以及DXrating网站导入数据需要通过下载网页或导出源码，点此查看[国际服/日服数据获取插件使用教程](docs/DX_NET_Guide.md)）
 
-#### chunithm（B30）数据源：
-- [x] [落雪查分器](https://maimai.lxns.net/)：支持中二节奏B30数据获取
 
-### 流媒体源支持情况：
+### 流媒体源支持情况
 
 - [x] [youtube](https://www.youtube.com/)：支持 YouTube Data API v3 和 pytubefix 两种搜索方式
 
 - [x] [bilibili](https://www.bilibili.com/)
 
-### 已实现特性：
+### 已实现特性
 
 - [x] 可交互的全流程界面（streamlit）
 
 - [x] 支持一键更换页面主题配色
 
-- [x] 更好的B50/B30数据存档系统，可以保存多个历史副本
+- [x] 更好的存档系统，可以保存多个历史副本，已经对应媒体信息
 
-- [x] 支持自行筛选的B50/B30数据、自定义视频生成的列表（支持从水鱼自动获取AP B50）
+- [x] 支持自行筛选分表数据、自定义视频生成的列表（支持自动获取AP B50）
 
 - [x] 支持自定义视频背景图片、字体和字号等个性化功能
 
 - [x] 支持中二节奏B30视频生成
 
-- [x] 多策略视频搜索系统，智能匹配最相关的谱面视频
-
-- [x] 自动处理歌曲名称中的特殊字符，提高搜索准确率
-
-- [x] 改进视频预览错误处理，自动处理媒体文件存储错误
-
-### 计划特性：
-
-- [ ] 支持音击B45视频生成
-
 ---
 
-## 使用说明（从源代码启动）
+## 安装说明（从源代码启动）
 
 1. 安装python环境和依赖，推荐使用 `conda`。注意，python版本需要3.10以上。
 
@@ -154,28 +145,20 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
         使用`sudo apt-get install ffmpeg`安装ffmpeg。
 
+    - macOS:
+
+        推荐先安装 [Homebrew](https://brew.sh/)，然后执行 `brew install ffmpeg`。
+
+        如果后续需要使用 ffmpeg-concat 的高级转场模式，还需要额外安装 Node.js：`brew install node`
+
 4. 使用下面的命令启动streamlit网页应用
 
     ```bash
     streamlit run st_app.py
     ```
-    在网页运行程序时，请保持终端窗口打开，其中可能会输出有用的调试信息。
+    在网页运行程序时，请保持终端窗口打开，依照页面指引使用即可
 
-5. 在浏览器中打开应用后，你可以看到左侧导航栏分为：
-   - **首页**：应用主页，包含系统状态和主题设置，可在首页切换游戏类型（B30/B50）
-   - **视频生成**：统一的视频生成流程，根据当前选择的游戏类型自动显示 B30（中二节奏）或 B50（舞萌DX）相关功能（获取/管理数据、生成图片、搜索视频、编辑视频、合成视频等）
-
-#### 其他注意事项
-
-- **YouTube搜索配置**：
-  - 推荐使用 YouTube Data API v3 进行搜索（更稳定可靠）
-  - 在"搜索谱面确认视频信息"页面，勾选"使用 YouTube Data API v3 搜索"并填入你的 API Key
-  - 如果没有 API Key，也可以使用传统的 pytubefix 方式，但可能遇到风控问题
-  - 如果使用 pytubefix 且遇到风控，请参考：[使用自定义OAuth或PO Token](docs/UseTokenGuide.md)
-
-- **数据源配置**：
-  - 如果你使用国际服/日服，或使用DXrating网站作为B50数据源，在使用前请参考：[导入国际服/日服B50数据](docs/DX_NET_Guide.md)完成前置数据获取步骤。
-  - 对于中二节奏B30，推荐使用落雪查分器获取数据。
+    > macOS 建议直接使用当前虚拟环境对应的解释器执行依赖安装，例如：`python -m pip install -r requirements.txt`
 
 ---
 
@@ -218,7 +201,12 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
     ```
     说明你使用的ip地址可能被youtube识别为机器人导致封禁，最简单的办法是尝试更换代理ip后重试。
 
-    如果更改代理仍然无法解决问题，请尝试配置`PO_TOKEN`或`OAUTH_TOKEN`后抓取视频，这部分需要额外的环境配置和手动操作，请参考[使用自定义OAuth或PO Token](UseTokenGuide.md)。
+    如果更改代理仍然无法解决问题，请尝试配置`PO_TOKEN`或`OAUTH_TOKEN`后抓取视频，参考[使用自定义OAuth或PO Token](UseTokenGuide.md)。
+
+    如果仍然被风控请考虑使用 YouTube Data API v3 进行搜索（更稳定可靠）
+
+        - 前往youtube平台申请个人API Key
+        - 在"搜索谱面确认视频信息"页面，勾选"使用 YouTube Data API v3 搜索"并填入你的 API Key
 
     - 使用bilibili下载器时，被风控将输出如下错误：
 
@@ -228,6 +216,8 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
     说明你未使用bilibili账号登录，或登录后遭到风控。
 
     请尝试登陆账号、更换网络运营商（ISP）后重试。若仍出现此问题，目前没有较好的解决办法，请考虑等待24h后再试。
+
+    PS：您也可以跳过自动搜索步骤，使用页面中提供的快捷跳转链接，手动在浏览器中搜索视频，将链接粘贴到输入框中。
 
 - 网络链接问题
 
@@ -249,75 +239,23 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
     通常只是网络波动，重新尝试搜索/下载即可。
 
-- 下载视频期间未报错，但是没有视频文件：
-  
-    - 请检查ffmpeg环境是否正确配置。
-
-- 手动输入视频BV号或ID进行搜索时出现红色报错：
-
-    - 从v0.5.1版本开始，请使用完整的bv号获取视频，如果视频号无效请按照报错说明调整输入。
-
 ### 配置填写相关
 
-- Q：加载页面4-1时，已经生成和图片和下载的视频没有正常显示
+- Q：加载页面4-1时，提示 "找不到对应的图片/视频文件" 
 
-    请检查是否完成了第1-3步中的图片生成以及视频下载等全步骤。
-    
-    如果确认已经完成并可以在本地文件夹中找到图片和视频，则按照以下步骤操作：
-
-    - 进入页面下方`额外设置和配置文件管理` 中的 `危险区域`一栏
-    - 点击`强制刷新视频配置文件`按钮
-
-    （注意：此操作将会重置你已经填写的所有评论，如果你在还未填写任何评论的时候遇到该问题，可以进行该操作。否则，请参考下一问）
-
-    <img src="md_res/qa_2.png" width="500" alt="qa2">
-
-- Q：视频预览时出现 "MediaFileStorageError" 或 "No media file with id" 错误
-
-    这通常是由于 Streamlit 的媒体文件引用失效导致的，可能的原因包括：
-    - 文件路径在会话之间发生变化
-    - 文件被移动或删除后，旧的引用仍然存在
-    - Streamlit 的媒体文件缓存过期
+    如果您在完成视频生成前清理了本地下载的缓存文件，可能出现此问题
 
     解决方法：
-    - **刷新页面**：最简单的方法是刷新当前页面，让 Streamlit 重新加载媒体文件
-    - **重新加载存档**：如果刷新无效，请返回首页重新加载存档
+    - **刷新页面**：最简单的方法是刷新当前页面，重新加载媒体文件
     - **检查文件路径**：确认视频文件确实存在于本地，且路径正确
-    - **重新下载视频**：如果文件确实丢失，请返回第3步重新下载视频
-
-    从 `v0.8` 版本开始，系统已自动处理此类错误，并会显示友好的提示信息。
-
-
-- Q：我先填写了部分评论，但是后来B50/B30数据更新了，怎么更新评论？
-
-    视频配置信息不会随B50/B30数据的更新而自动更新，建议推分后建立一个新的存档。如果确实需要复制部分旧存档的评论，请参考如下步骤：
-
-    - 首先新建存档更新数据，在第1-3步将你的B50/B30数据和视频搜索数据都更新到最新。
-
-    - 保持当前编辑的页面不动，复制浏览器中的地址，打开一个新的页面，以加载历史存档。
-    
-    - 进入页面4-1并对比两个页面的信息以复制粘贴评论内容，手动还原评论和时长配置
+    - **重新下载视频**：如果文件确实丢失，请返回第1步重新生成图片，或第3步重新下载视频
 
 - Q：我不小心更新了B50/B30数据，但是我还想要使用旧的数据生成视频
 
-    - 如果您使用的是`v0.4.0`以上的版本，每次更新数据（强制覆盖除外）将会自动新建存档，只需在首页加载历史存档继续编辑即可。
+    - 您在每次查询查分器数据时会自动新建存档，只需在首页加载历史存档继续编辑即可。
     
 
 ### 视频生成相关
-
-- Q：视频生成过程中中断，并提示无法读取某视频文件
-
-    ```
-    ffmpeg_read: ...\videos\downloads\xxx-x-xx.mp4, 3 bytes wanted but 6 bytes read at frame index 0 (ouf of a total of xx frames) 0.00 sec, Using the last valid frame instead.
-    ```
-
-    请检查错误信息中输出的视频名称（如`xxxx-x-xx.mp4`），在`./videos/downloads`文件夹下检查是否存在该文件，且该视频是否可以正常播放。
-
-    如果该视频无法播放，可能意味着下载过程中视频损坏。请删除该视频文件，重新进入第3步下载。
-    
-    如果重新下载后依然得到损坏的视频，那么该视频的在线媒体流可能存在问题，请考虑回到第2步，更换其他链接源。
-    
-    > 亦可手动获取对应的正确视频，替换到`./videos/downloads`文件夹下，请注意保持文件名一致。
 
 - Q：**视频生成过程中中断，报错中出现如下内存错误**
 
@@ -337,12 +275,25 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 - Q：视频生成速度缓慢
 
-    合并完整视频的时间取决于你设置的预览时长和设备的性能，在每个片段10s的情况下，生成完整视频大概需要60-100分钟。
+    合并完整视频的时间取决于你设置的预览时长和设备的性能，在每个片段10s的情况下，生成完整视频至少需要60分钟。
 
-    本工具的性能瓶颈主要是CPU性能，由于依赖的第三方库特性，**目前无法实现GPU加速渲染**，敬请谅解。
+    如果未启用 GPU 加速，本工具的性能瓶颈主要是 CPU 性能。建议在 `global_config.yaml` 中设置 `USE_GPU_ACCEL: true` 或在「合成完整视频」页面勾选 GPU 加速以显著提升渲染速度。
     
-    如果设备性能不佳，请考虑缩减视频时长，或降低视频分辨率（不推荐，可能需要手动调整字号以防止文字错位）
+    如果您的设备不支持 GPU 加速，该时间可能会延长到3小时甚至以上，请考虑缩减视频时长，或降低视频分辨率（不推荐，可能需要手动调整字号以防止文字错位）
 
+- Q：视频生成过程中中断，并提示无法读取某视频文件
+
+    ```
+    ffmpeg_read: ...\videos\downloads\xxx-x-xx.mp4, 3 bytes wanted but 6 bytes read at frame index 0 (ouf of a total of xx frames) 0.00 sec, Using the last valid frame instead.
+    ```
+
+    请检查错误信息中输出的视频名称（如`xxxx-x-xx.mp4`），在`./videos/downloads`文件夹下检查是否存在该文件，且该视频是否可以正常播放。
+
+    如果该视频无法播放，可能意味着下载过程中视频损坏。请删除该视频文件，重新进入第3步下载。
+    
+    如果重新下载后依然得到损坏的视频，那么该视频的在线媒体流可能存在问题，请考虑回到第2步，更换其他链接源。
+    
+    > 您还可以考虑在4-1页面中手动上传本地文件，以替换无法解码的流媒体文件。
 
 - Q：生成视频最后出现如下控制台错误
 
@@ -353,7 +304,6 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
     ```
 
     这是因为ffmpeg没有正常关闭视频文件导致的，但该问题不影响最终视频生成，可以忽略。
-
 ---
 
 ## 参数与配置文件结构
@@ -368,11 +318,7 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 - `NO_BILIBILI_CREDENTIAL` ：使用bilibili下载器时，是否禁用bilibili账号登录，默认为`false`。
 
-    > 注意：使用bilibili下载器默认需要账号登录。不使用账号登录可能导致无法下载高分辨率视频，或受到风控
-
 - `USE_CUSTOM_PO_TOKEN, USE_AUTO_PO_TOKEN, USE_OAUTH, CUSTOMER_PO_TOKEN` ：设置使用youtube下载器抓取视频时的额外验证Token。
-
-    > 请参考文档[使用自定义OAuth或PO Token](UseTokenGuide.md)。
 
 - `USE_YOUTUBE_API` ：是否使用 YouTube Data API v3 进行搜索，默认为`false`。推荐设置为`true`以获得更稳定的搜索体验。
 
@@ -403,9 +349,20 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 - [落雪查分器](https://maimai.lxns.net/) 提供中二节奏数据接口
 
+- [Dxrating](https://github.com/gekichumai/dxrating) 在线网页查分工具
+
+- [otoge DB](https://github.com/zvuc/otoge-db) Online DB viewer for songs in Ongeki, Chunithm, maimai
+
+- 中二落雪查分器支持，YouTube Data API v3和部分界面重构支持，由[caiccu](https://github.com/CAICCU)参与贡献
+
+- 中二视频渲染改进分支，由[〖天蓝〗](https://github.com/MetallicAllex)制作，您仍然可以使用此分支以获得由其开发的特色功能，查看[这里](https://github.com/MetallicAllex/chu-gen-videob30/tree/get_userdata_FC)
+
 - [Tomsens Nanser](https://space.bilibili.com/255845314) 提供图片生成素材模板以及代码实现
 
 - [bilibili-api](https://github.com/Nemo2011/bilibili-api)
 
----
+# Credits
 
+- This repository fetches Unicode-defined emoji from [twemoji](https://github.com/jdecked/twemoji?tab=readme-ov-file)
+
+---

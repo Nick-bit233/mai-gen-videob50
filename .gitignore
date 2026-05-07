@@ -14,6 +14,7 @@ videos/
 
 # Test data and scripts
 tests/
+test_output/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -191,10 +192,17 @@ test_html.txt
 test_dxrating.txt
 develop_token.txt
 
-# streamlit temp resources
+# system downloaded temp assets / user uploaded resources
 static/thumbnails
 static/user
+static/assets/jackets
+static/assets/custom_jackets
 
 # database files
 *.db
+*.bak
 *.sqlite
+
+# dsstore
+*.DS_Store
+.DS_Store

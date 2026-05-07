@@ -4,11 +4,9 @@ import json
 import traceback
 from datetime import datetime
 from utils.user_gamedata_handlers import fetch_user_gamedata, update_b50_data_int
-from utils.PageUtils import get_db_manager, process_username, get_game_type_text
+from utils.PageUtils import process_username, get_game_type_text
 from db_utils.DatabaseDataHandler import get_database_handler
 from utils.PathUtils import get_user_base_dir
-from utils.lxns_metadata_loader import update_chunithm_metadata_from_lxns
-import glob
 
 # Get a handler for database operations
 db_handler = get_database_handler()
@@ -18,6 +16,7 @@ level_label_lists = {
 }
 
 def view_b50_data(username: str, archive_name: str):
+    # TODO：完全重构此预览部分，使用更好的视觉和统一的数据源
     """Displays the records of a selected archive in a read-only table."""
     result = db_handler.load_archive_as_old_b50_config(username, archive_name)
     
@@ -36,14 +35,8 @@ def view_b50_data(username: str, archive_name: str):
         return
     
     # 根据游戏类型设置对话框标题和数据名称
-    if game_type == "chunithm":
-        dialog_title = "B30数据查看"
-        data_name = "B30"
-        rating_label = "Rating"
-    else:
-        dialog_title = "B50数据查看"
-        data_name = "B50"
-        rating_label = "DX Rating"
+    dialog_title = "分表数据查看"
+    rating_label = "Rating"
     
     # 使用动态标题创建对话框（Streamlit不支持动态标题，所以我们需要在内容中显示）
     st.markdown(f"### {dialog_title}")
@@ -55,26 +48,29 @@ def view_b50_data(username: str, archive_name: str):
 
     # 处理不同游戏类型的数据格式
     if game_type == "maimai":
-        st.markdown(f"""**{rating_label}**: {b50_data.get('rating_mai', 0)}""", unsafe_allow_html=True)
+        rating = b50_data.get('rating_mai', 0)
+        if not rating:
+            rating = 0
+        st.markdown(f"""**{rating_label}**: {rating}""", unsafe_allow_html=True)
         show_records = b50_data.get('records', [])
     elif game_type == "chunithm":
         # Chunithm数据直接是列表格式（来自load_archive_for_image_generation）
         if isinstance(b50_data, list):
             show_records = b50_data
-            # 移除jacket字段（PIL Image对象），因为dataframe无法显示
-            for record in show_records:
-                if 'jacket' in record:
-                    del record['jacket']
             # 从archive获取rating
             archive_id = db_handler.load_save_archive(username, archive_name)
             if archive_id:
                 archive = db_handler.db.get_archive(archive_id)
-                rating = archive.get('rating_chu', 0.0) if archive else 0.0
+                rating = archive.get('rating_chu', 0.0)
+                if not rating:
+                    rating = 0.0
                 st.markdown(f"""**{rating_label}**: {rating:.2f}""", unsafe_allow_html=True)
         else:
             # 兼容旧格式
             show_records = b50_data.get('records', []) if isinstance(b50_data, dict) else []
             rating = b50_data.get('rating_chu', 0.0) if isinstance(b50_data, dict) else 0.0
+            if not rating:
+                rating = 0.0
             st.markdown(f"""**{rating_label}**: {rating:.2f}""", unsafe_allow_html=True)
     else:
         show_records = []
@@ -96,7 +92,7 @@ def view_b50_data(username: str, archive_name: str):
                     st.json(records[0])
         return
 
-    st.info(f"本窗口为只读模式。如需修改，请前往\"编辑/创建自定义{data_name}存档\"页面。")
+    st.info(f"本窗口为只读模式。如需修改，请前往\"编辑/创建自定义分表存档\"页面。")
 
     # 处理level_label
     for record in show_records:
@@ -153,44 +149,56 @@ def view_b50_data(username: str, archive_name: str):
     elif game_type == "chunithm":
         # 使用math.floor截断ra到两位小数，格式化rank
         import math
-        from utils.PageUtils import format_chunithm_rank
         for record in show_records:
             if 'ra' in record and isinstance(record['ra'], (int, float)):
                 record['ra'] = math.floor(record['ra'] * 100) / 100.0
             # 确保play_count字段存在（可能是playCount）
             if 'play_count' not in record and 'playCount' in record:
                 record['play_count'] = record['playCount']
-            # 格式化rank显示
-            if 'rank' in record:
-                record['rank_display'] = format_chunithm_rank(record['rank'])
-            else:
-                record['rank_display'] = ''
-            # 确保xv_ds字段存在（如果不存在则设为0.0）
-            if 'xv_ds' not in record:
-                record['xv_ds'] = 0.0
         
         st.dataframe(
             show_records,
             column_order=["clip_name",  "title", "artist", "level_label",
-                        "ds", "xv_ds", "note_designer", "score", "rank_display", "combo_type", "chain_type", "ra", "play_count"],
+                          "ds", "score", "combo_type", "chain_type", "ra", "play_count"],
             column_config={
                 "clip_name": "抬头标题",
                 "title": "曲名",
                 "artist": "曲师",
                 "level_label": st.column_config.TextColumn("难度", width=80),
                 "ds": st.column_config.NumberColumn("定数", format="%.1f", width=60),
-                "xv_ds": st.column_config.NumberColumn("新定数", format="%.1f", width=60),
-                "note_designer": "谱师",
                 "score": st.column_config.NumberColumn("分数", format="%d"),
-                "rank_display": st.column_config.TextColumn("RANK", width=60),
-                "combo_type": st.column_config.TextColumn("FC标", width=80),
+                "combo_type": st.column_config.TextColumn("FullCombo标", width=80),
                 "chain_type": st.column_config.TextColumn("FullChain标", width=100),
                 "ra": st.column_config.NumberColumn("单曲Ra", format="%.2f", width=75),
                 "play_count": st.column_config.NumberColumn("游玩次数", format="%d")
             }
         )
 
-st.header("从第三方查分器获取分表")
+@st.dialog("落雪查分器配置说明")
+def lxns_api_instructions():
+    """Displays instructions for obtaining and using the Luoxue Score Checker personal API key."""
+    st.markdown("""
+    
+    首先，打开[落雪查分器官网](https://maimai.lxns.net/)并登录您的账号。
+                
+    ### 如何获取好友码？
+                
+    1. 进入“账号详情”页面。
+    2. 在页面中找到“好友码”一栏，复制您的好友码，粘贴到输入框即可。
+    """)
+
+    st.warning("关于个人API密钥：通常情况下，您不需要使用个人API密钥即可从落雪查分器获取数据，\
+               如果常规查询失败或遇到访问限制时，参考下方说明使用个人API密钥。")
+
+    st.markdown("""
+    ### 如何获取落雪查分器的个人API密钥？
+
+    1. 进入“账号详情”页面。
+    2. 找到“第三方应用”选项，点击下方生成个人 API 密钥按钮，生成并复制个人API密钥。
+    3. 将该密钥粘贴到输入框中，点击保存凭证按钮。
+    
+    **注意**：请妥善保管您的API密钥，不要泄露给他人，本项目仅将此密钥保存在本地，不会上传或分享给任何第三方。
+    """)
 
 @st.dialog("删除存档确认")
 def confirm_delete_archive(username: str, archive_name: str):
@@ -208,11 +216,14 @@ def confirm_delete_archive(username: str, archive_name: str):
     if st.button("取消"):
         st.rerun()
 
-def handle_new_data(username: str, source: str, raw_file_path: str, params: dict = None, parser: str = "json"):
+def handle_new_data(username: str, source: str, params: dict = None, parser: str = "json"):
     """
     Fetches new data from a source, then creates a new archive in the database.
     This function is a placeholder for the actual data fetching logic.
     """
+    st.session_state.data_created_step1 = False
+    # 原始数据缓存路径
+    raw_file_path = f"{get_user_base_dir(username)}/{username}_{source}_raw_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     try:
         # 重构：查分，并创建存档，原始数据缓存于raw_file_path
         if source == "intl":
@@ -228,13 +239,13 @@ def handle_new_data(username: str, source: str, raw_file_path: str, params: dict
                 source=source,
                 username=username,
                 params=params,
-        )
+            )
         else:
             st.error(f"不支持的数据源: {source}")
             return
         
-        ## debug: 存储new_archive_data
-        # debug_path = f"./b50_datas/debug_new_archive_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        # debug: 存储new_archive_data
+        # debug_path = f"./b50_datas/debug_new_archive_{source}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         # with open(debug_path, "w", encoding="utf-8") as f:
         #     json.dump(new_archive_data, f, ensure_ascii=False, indent=4)
 
@@ -267,12 +278,10 @@ def handle_new_data(username: str, source: str, raw_file_path: str, params: dict
         
         st.session_state.archive_name = archive_name
         print(f"成功创建新存档: {archive_name}， ID: {archive_id}，保存了 {len(saved_records)} 条记录")
-        st.success(f"成功创建新存档: {archive_name}（{len(saved_records)} 条记录）")
-        st.session_state.data_updated_step1 = True
+        st.session_state.data_created_step1 = True
         st.rerun()
 
     except Exception as e:
-        st.session_state.data_updated_step1 = False
         st.error(f"创建新存档时发生错误: {e}")
         st.expander("错误详情").write(traceback.format_exc())
 
@@ -282,11 +291,10 @@ def handle_new_data(username: str, source: str, raw_file_path: str, params: dict
 
 # Start with getting G_type from session state
 G_type = st.session_state.get('game_type', 'maimai')
-data_name = "B30" if G_type == "chunithm" else "B50"
 
 # 页面头部
-st.header(f"📊 获取和管理{data_name}数据")
-st.markdown(f"**当前模式**: {get_game_type_text(G_type)} 视频生成模式")
+st.header(f"📊 获取和管理分表数据")
+st.markdown(f"> 您正在使用 **{get_game_type_text(G_type)}** 视频生成模式。")
 
 # --- 1. Username Input ---
 st.markdown("### 👤 用户设置")
@@ -310,26 +318,24 @@ with st.container(border=True):
                 raw_username, safe_username = process_username(input_username)
                 st.session_state.username = raw_username
                 st.session_state.safe_username = safe_username
-                
+     
                 # Set user in database
                 db_handler.set_current_user(raw_username)
-                
-                st.success(f"✅ 用户名 **{raw_username}** 已设定！")
                 st.session_state.config_saved = True
                 st.rerun()
     
     # 显示当前用户名状态
     if st.session_state.get("username"):
         st.info(f"当前用户名: **{st.session_state.get('username')}**")
+    if st.session_state.get("username") != st.session_state.get("safe_username"):
+        st.warning(f"⚠️ 您的用户名包含特殊字符，在查找文件目录时请使用此名称：**{st.session_state.get('safe_username')}**")
 
 # Only proceed if a username has been set
 if st.session_state.get('config_saved', False):
     username = st.session_state.username
-    safe_username = st.session_state.safe_username
 
     # Create user base directory if not exists
-    # 备注：根据游戏类型使用不同的目录（b50_datas 或 chunithm_datas），目录现只用于缓存raw.json等文件，数据管理迁移至数据库
-    user_base_dir = get_user_base_dir(safe_username, game_type=G_type)
+    user_base_dir = get_user_base_dir(username)
     os.makedirs(user_base_dir, exist_ok=True)
 
     tab1, tab2 = st.tabs(["🗃️ 管理已有存档", "📦 创建新存档"])
@@ -429,7 +435,7 @@ if st.session_state.get('config_saved', False):
             with col2:
                 if st.button("👀 查看数据", key=f"view_data_{selected_archive_name}", use_container_width=True):
                     # 使用dialog装饰器包装函数
-                    @st.dialog(f"{data_name}数据查看", width="large")
+                    @st.dialog(f"分表数据查看", width="large")
                     def show_data_dialog():
                         view_b50_data(username, selected_archive_name)
                     show_data_dialog()
@@ -439,211 +445,139 @@ if st.session_state.get('config_saved', False):
 
     # --- 3. Create New Archives ---
     with tab2:
-        st.info(f"💡 从外部数据源获取您的{data_name}成绩，并创建一个新的本地存档。")
+        st.info(f"💡 从外部数据源获取您的分表成绩，并创建一个新的本地存档。")
         st.caption(f"当前用户名: **{username}**")
         
         # Data from FISH (CN Server)
         with st.expander("🌊 从水鱼查分器获取（国服）", expanded=True):
-            st.markdown(f"**数据源**: 水鱼查分器 | **用户名**: {username}")
+            st.markdown(f"**数据源**: [水鱼查分器](https://www.diving-fish.com/maimaidx/prober) | **用户名**: {username}")
             
             if G_type == "maimai":
-                b50_raw_file = f"{user_base_dir}/maimai_b50_raw.json"
                 col_fish1, col_fish2 = st.columns(2)
                 with col_fish1:
                     if st.button("📥 获取 B50 数据", key="fish_maimai_b50", use_container_width=True, type="primary"):
                         with st.spinner("正在从水鱼查分器获取B50数据..."):
                             handle_new_data(username, source="fish", 
-                                            raw_file_path=b50_raw_file,
                                             params={"type": "maimai", "query": "best"})
                 with col_fish2:
                     if st.button("⭐ 获取 AP B50 数据", key="fish_maimai_ap", use_container_width=True):
                         with st.spinner("正在从水鱼查分器获取AP B50数据..."):
                             handle_new_data(username, source="fish",
-                                            raw_file_path=b50_raw_file,
                                             params={"type": "maimai", "query": "all", "filter": {"tag": "ap", "top": 50}})
             
             elif G_type == "chunithm":
-                b50_raw_file = f"{user_base_dir}/chunithm_b50_raw.json"
-                st.warning("⚠️ 注意：水鱼中二节奏国服数据源目前无法获取N20数据，将默认仅获取B30数据。")
-                if st.button("📥 获取 B30 数据", key="fish_chunithm_b30", use_container_width=True, type="primary"):
-                    with st.spinner("正在从水鱼查分器获取B30数据..."):
+                if st.button("📥 获取 B50 数据", key="fish_chunithm_b50", use_container_width=True, type="primary"):
+                    with st.spinner("正在从水鱼查分器获取B50数据..."):
                         handle_new_data(username, source="fish", 
-                                        raw_file_path=b50_raw_file,
                                         params={"type": "chunithm", "query": "best"})
+                # TODO: 添加中二仅获取b30的选项
             else:
                 st.error(f"❌ 错误的游戏类型: {G_type}，请返回首页刷新重试。")
 
         # Data from Luoxue Score Checker (落雪查分器)
-        with st.expander("从落雪查分器获取（中二节奏）"):
-            if G_type == "chunithm":
-                # 加载保存的凭证
-                lxns_credentials_file = f"{user_base_dir}/lxns_credentials.json"
-                saved_friend_code = ""
-                saved_api_key = ""
-                
-                if os.path.exists(lxns_credentials_file):
-                    try:
-                        with open(lxns_credentials_file, 'r', encoding='utf-8') as f:
-                            credentials = json.load(f)
-                            saved_friend_code = credentials.get('friend_code', '')
-                            saved_api_key = credentials.get('api_key', '')
-                    except:
-                        pass
-                
-                friend_code_input = st.text_input(
-                    "好友码",
-                    value=saved_friend_code,
-                    help="您的中二节奏好友码"
-                )
+        with st.expander(":snowflake: 从落雪查分器获取"):
+
+            # 加载保存的凭证（个人api密钥）
+            lxns_credentials_file = f"{user_base_dir}/lxns_credentials.json"
+            saved_friend_code = ""
+            saved_api_key = ""
+            
+            if os.path.exists(lxns_credentials_file):
+                try:
+                    with open(lxns_credentials_file, 'r', encoding='utf-8') as f:
+                        credentials = json.load(f)
+                        saved_friend_code = credentials.get('friend_code', '')
+                        saved_api_key = credentials.get('api_key', '')
+                except:
+                    pass
+            
+            friend_code_input = st.text_input(
+                "好友码",
+                value=saved_friend_code,
+                help="您的落雪查分器好友码，填写后点击下方保存凭证，后续使用则无需重复填写。"
+            )
+            local_user_api = st.checkbox(
+                "使用个人API密钥",
+                value=False,
+                help="启用后需要使用落雪查分器的个人API密钥进行数据获取，建议在常规查询失败时使用。"
+            )
+            if local_user_api:
                 api_key_input = st.text_input(
                     "API密钥",
                     value=saved_api_key,
                     type="password",
-                    help="落雪查分器开发者API密钥，需要 allow_third_party_fetch_scores 权限"
+                    help="落雪查分器的个人API密钥，您在这里填写过一次后，此密钥将会保存在对于用户名的本地文件中, 后续使用无需重复填写。"
                 )
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("保存凭证", key="save_lxns_credentials"):
-                        if friend_code_input and api_key_input:
-                            credentials = {
-                                "friend_code": friend_code_input,
-                                "api_key": api_key_input
-                            }
-                            with open(lxns_credentials_file, 'w', encoding='utf-8') as f:
-                                json.dump(credentials, f, ensure_ascii=False, indent=2)
-                            st.success("凭证已保存！")
-                        else:
-                            st.warning("请填写完整的好友码和API密钥")
-                
-                if friend_code_input and api_key_input:
-                    b50_raw_file = f"{user_base_dir}/chunithm_b30_raw.json"
-                    st.info("落雪查分器可以获取B30和N20数据，将默认仅获取B30数据。")
-                    if st.button("获取 B30 数据", key="lxns_chunithm_b30"):
-                        handle_new_data(username, source="lxns",
-                                        raw_file_path=b50_raw_file,
-                                        params={
-                                            "type": "chunithm",
-                                            "query": "best",
-                                            "friend_code": friend_code_input,
-                                            "api_key": api_key_input
-                                        })
-                else:
-                    st.info("请先填写好友码和API密钥。")
-                    st.markdown("""
-                    **如何获取API密钥：**
-                    1. 访问 [落雪查分器开发者中心](https://maimai.lxns.net/docs/developer-guide)
-                    2. 注册并创建API密钥
-                    3. 确保API密钥具有 `allow_third_party_fetch_scores` 权限
-                    """)
-                
-                # 获取歌曲列表功能
-                st.divider()
-                st.markdown("#### 📚 更新歌曲列表Metadata")
-                st.info("从落雪查分器获取最新的中二节奏曲目列表，用于搜索和添加歌曲功能。")
-                
-                # 检查当前metadata文件状态
-                metadata_file = "./music_metadata/chunithm/lxns_songs.json"
-                metadata_exists = os.path.exists(metadata_file)
-                
-                if metadata_exists:
-                    try:
-                        with open(metadata_file, 'r', encoding='utf-8') as f:
-                            metadata = json.load(f)
-                        song_count = len(metadata.get('songs', []))
-                        st.success(f"✓ 当前已有 {song_count} 首歌曲的metadata")
-                    except:
-                        st.warning("⚠️ metadata文件存在但无法读取")
-                else:
-                    st.warning("⚠️ 未找到metadata文件，请先获取歌曲列表")
-                
-                # API密钥输入（用于获取歌曲列表，可以与上面的不同）
-                st.markdown("**获取歌曲列表（可选API密钥）**")
-                st.caption("获取歌曲列表通常不需要API密钥，但如果API限制访问，可以填写API密钥")
-                
-                song_list_api_key = st.text_input(
-                    "API密钥（可选）",
-                    value=saved_api_key if saved_api_key else "",
-                    type="password",
-                    help="用于获取歌曲列表的API密钥（可选，通常不需要）",
-                    key="song_list_api_key"
-                )
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("🔄 更新歌曲列表", key="update_song_list", type="primary"):
-                        progress_bar = st.progress(0)
-                        status_text = st.empty()
-                        
-                        try:
-                            status_text.info("正在从落雪查分器API获取曲目列表...")
-                            progress_bar.progress(20)
-                            
-                            from utils.lxns_metadata_loader import fetch_song_list_from_lxns, save_lxns_metadata_to_file
-                            
-                            # 获取数据
-                            data = fetch_song_list_from_lxns(
-                                api_key=song_list_api_key if song_list_api_key else None,
-                                version=None,
-                                notes=False
-                            )
-                            
-                            progress_bar.progress(60)
-                            
-                            if data is None:
-                                st.error("✗ 获取曲目列表失败，请检查网络连接和API密钥")
-                                progress_bar.empty()
-                                status_text.empty()
-                            else:
-                                status_text.info("正在保存曲目列表到本地文件...")
-                                progress_bar.progress(80)
-                                
-                                # 保存数据
-                                success = save_lxns_metadata_to_file(data)
-                                
-                                progress_bar.progress(100)
-                                
-                                if success:
-                                    songs_count = len(data.get('songs', []))
-                                    genres_count = len(data.get('genres', []))
-                                    versions_count = len(data.get('versions', []))
-                                    
-                                    st.success(f"✓ 歌曲列表更新成功！\n- 曲目数量: {songs_count}\n- 分类数量: {genres_count}\n- 版本数量: {versions_count}")
-                                    progress_bar.empty()
-                                    status_text.empty()
-                                    st.rerun()
-                                else:
-                                    st.error("✗ 保存文件失败，请检查文件权限")
-                                    progress_bar.empty()
-                                    status_text.empty()
-                        except Exception as e:
-                            st.error(f"✗ 更新失败: {e}")
-                            progress_bar.empty()
-                            status_text.empty()
-                            with st.expander("错误详情"):
-                                st.code(traceback.format_exc())
-                
-                with col2:
-                    if metadata_exists:
-                        if st.button("🗑️ 清除缓存", key="clear_metadata_cache"):
-                            try:
-                                # 清除Streamlit缓存
-                                st.cache_data.clear()
-                                st.success("✓ 缓存已清除，请刷新页面")
-                            except:
-                                st.warning("无法清除缓存，请手动刷新页面")
-                
-                st.markdown(f"""
-                **说明：**
-                - 歌曲列表用于在"编辑/创建自定义{data_name}存档"页面中搜索和添加歌曲
-                - 建议定期更新以获取最新的曲目信息
-                - 更新可能需要一些时间，请耐心等待
-                """)
             else:
-                st.warning("落雪查分器目前仅支持中二节奏数据获取。")
+                api_key_input = saved_api_key  # 如果不使用个人API密钥，则保持为空或之前保存的值
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("保存凭证", key="save_lxns_credentials"):
+                    if friend_code_input:
+                        credentials = {
+                            "friend_code": friend_code_input,
+                            "api_key": api_key_input
+                        }
+                        with open(lxns_credentials_file, 'w', encoding='utf-8') as f:
+                            json.dump(credentials, f, ensure_ascii=False, indent=2)
+                        st.success("凭证已保存！")
+                    else:
+                        st.warning("最少需要填写好友码才能保存凭证。")
+            with col2:
+                if st.button("落雪查分器使用指南", key="read_lxns_api_instructions"):
+                    lxns_api_instructions()
+
+            st.divider() 
+            
+            if friend_code_input:
+                if G_type == "maimai":
+                    col1_lxns, col2_lxns = st.columns(2)
+                    with col1_lxns: 
+                        if st.button("📥 获取 B50 数据", key="lxns_maimai_b50", use_container_width=True, type="primary"):
+                            with st.spinner("正在从落雪查分器获取B50数据..."):
+                                handle_new_data(username, source="lxns",
+                                                params={
+                                                    "type": "maimai",
+                                                    "query": "best",
+                                                    "friend_code": friend_code_input,
+                                                    "local_user_api": local_user_api,
+                                                    "api_key": api_key_input if local_user_api else None
+                                                })
+                    with col2_lxns:
+                        if st.button("⭐ 获取 AP B50 数据", key="lxns_maimai_ap", use_container_width=True):
+                            query_type = "all" if local_user_api else "best_ap"  # 如果使用开发者API，指定特殊的查询类型（有待测试AP B50的查询接口）
+                            query_filter = {"tag": "ap", "top": 50} if query_type == "all" else {}
+                            with st.spinner("正在从落雪查分器获取AP B50数据..."):
+                                handle_new_data(username, source="lxns",
+                                                params={
+                                                    "type": "maimai",
+                                                    "query": query_type,
+                                                    "filter": query_filter,
+                                                    "friend_code": friend_code_input,
+                                                    "local_user_api": local_user_api,
+                                                    "api_key": api_key_input if local_user_api else None
+                                                    
+                                                })
+
+                elif G_type == "chunithm":
+                    if st.button("📥 获取 B50 数据", key="lxns_chunithm_b50", use_container_width=True, type="primary"):
+                        with st.spinner("正在从落雪查分器获取B50数据..."):
+                            handle_new_data(username, source="lxns",
+                                            params={
+                                                "type": "chunithm",
+                                                "query": "best",
+                                                "friend_code": friend_code_input,
+                                                "local_user_api": local_user_api,
+                                                "api_key": api_key_input if local_user_api else None
+                                            })
+            else:
+                st.warning("请先填写好友码后再获取数据。")
+                
 
         # Data from DX Web (INTL/JP Server)
         with st.expander("从 DX Rating Net 导入（国际服/日服）"):
+            st.warning("⚠️ 国际服/日服数据还未适配到新版本，可能无法正常使用。")
             if G_type == "maimai":
                 st.write("请将maimai DX NET(官网)获取的源代码，或 DX Rating 网站导出的JSON代码粘贴到下方。")
                 data_input = st.text_area("粘贴源代码或JSON", height=200)
@@ -651,21 +585,22 @@ if st.session_state.get('config_saved', False):
                 if st.button("从粘贴内容创建新存档"):
                     if data_input:
                         file_type = "json" if data_input.strip().startswith("[{") else "html"
-                        b50_raw_file = f"{user_base_dir}/b50_raw.{file_type}"
                         handle_new_data(username, source="intl",
-                                        raw_file_path=b50_raw_file,
                                         params={"type": "maimai", "query": "best"}, parser=file_type)
                     else:
                         st.warning("输入框内容为空。")
             else:
-                st.warning(f"暂未支持从国际服/日服数据导入中二节奏数据，如有需要请在左侧导航栏使用自定义{data_name}功能手动配置。")
+                st.warning(f"暂未支持从国际服/日服数据导入中二节奏数据，如有需要请在左侧导航栏使用自定义分表功能手动配置。")
 
     # --- Navigation ---
     st.divider()
     if st.session_state.get('data_updated_step1', False) and st.session_state.get('archive_name'):
+        if st.session_state.get('data_created_step1', False):
+            st.success(f"已成功创建新存档：**{st.session_state.get('archive_name')}**！")
+        elif st.session_state.get('data_updated_step1', False):
+            st.success(f"已加载存档：**{st.session_state.get('archive_name')}**！")
+
         with st.container(border=True):
-            st.success(f"✅ 当前已加载存档: **{st.session_state.archive_name}**")
-            st.markdown("---")
             col_nav1, col_nav2 = st.columns([3, 1])
             with col_nav1:
                 st.write("确认存档无误后，请点击右侧按钮进入下一步。")

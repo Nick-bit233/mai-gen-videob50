@@ -2,9 +2,95 @@ import json
 import os.path
 import traceback
 
-from utils.DataUtils import download_image_data, CHART_TYPE_MAP_MAIMAI
-from utils.PageUtils import load_music_metadata
+from utils.ChartUtils import try_parse_difficulty
 from PIL import Image, ImageDraw, ImageFont
+
+
+# =============================================================================
+# 曲绘处理函数
+# =============================================================================
+
+def process_custom_jacket(uploaded_file, save_dir: str = "static/assets/custom_jackets") -> tuple:
+    """
+    处理用户上传的自定义曲绘
+    
+    Args:
+        uploaded_file: Streamlit UploadedFile 对象
+        save_dir: 保存目录路径
+    
+    Returns:
+        tuple: (success: bool, result: str)
+            - success=True 时，result 为保存的文件路径
+            - success=False 时，result 为错误信息
+    """
+    try:
+        # 确保保存目录存在
+        os.makedirs(save_dir, exist_ok=True)
+        
+        # 读取图片
+        img = Image.open(uploaded_file)
+        
+        # 转换为 RGBA
+        if img.mode != 'RGBA':
+            img = img.convert('RGBA')
+        
+        # 检查比例并裁剪为正方形
+        width, height = img.size
+        if width != height:
+            # 裁剪为正方形（取中心）
+            size = min(width, height)
+            left = (width - size) // 2
+            top = (height - size) // 2
+            img = img.crop((left, top, left + size, top + size))
+        
+        # 缩放到 400x400
+        img = img.resize((400, 400), Image.LANCZOS)
+        
+        # 生成唯一文件名（使用原始文件名 + 时间戳）
+        import time
+        original_name = os.path.splitext(uploaded_file.name)[0]
+        timestamp = int(time.time() * 1000)
+        filename = f"{original_name}_{timestamp}.png"
+        # 清理文件名中的特殊字符
+        filename = "".join(c for c in filename if c.isalnum() or c in ('_', '-', '.'))
+        
+        save_path = os.path.join(save_dir, filename)
+        img.save(save_path, "PNG")
+        
+        return True, save_path
+        
+    except Exception as e:
+        return False, str(e)
+
+
+def get_jacket_preview(uploaded_file, max_size: int = 150) -> Image.Image:
+    """
+    从上传的文件生成预览图
+    
+    Args:
+        uploaded_file: Streamlit UploadedFile 对象
+        max_size: 预览图最大尺寸
+    
+    Returns:
+        PIL.Image.Image: 预览图
+    """
+    try:
+        img = Image.open(uploaded_file)
+        if img.mode != 'RGBA':
+            img = img.convert('RGBA')
+        
+        # 保持比例缩放
+        width, height = img.size
+        if width > height:
+            new_width = max_size
+            new_height = int(height * max_size / width)
+        else:
+            new_height = max_size
+            new_width = int(width * max_size / height)
+        
+        return img.resize((new_width, new_height), Image.LANCZOS)
+    except Exception:
+        return None
 
 # 重构note：成绩图生成模块不再主动获取外部资源（如下载封面、获取谱面详细信息等），而是依赖传入数据
 # 以此减少模块间耦合，简化调用流程，由调用方负责准备所需数据
@@ -16,42 +102,67 @@ class MaiImageGenerater:
         self.font_path = self.asset_paths.get("ui_font", "static/assets/fonts/FOT_NewRodin_Pro_EB.otf")
 
 
-    def DsLoader(self, level: int = 0, Ds: float = 0.0):
-        if Ds >= 20 or Ds < 1:
-            raise Exception("定数无效")
+    def DsLoader(self, level: int = 0, Ds=0.0):
+        """
+        加载定数显示图片
+        
+        Args:
+            level: 难度等级 (0-4)，用于选择数字颜色
+            Ds: 定数值，可以是 float 或字符串（如 14.9, "?", "暂无"）
+        
+        Returns:
+            PIL.Image: 定数显示图片
+        """
+        # 尝试解析为数字
+        ds_val = try_parse_difficulty(Ds)
+        
+        if ds_val is not None:
+            # 数字定数，使用原有的数字图片渲染逻辑
+            if ds_val >= 20 or ds_val < 1:
+                raise Exception("定数无效")
 
-        __ds = str(Ds)
+            __ds = str(ds_val)
 
-        # 根据小数点拆分字符串
-        if '.' in __ds:
-            IntegerPart, DecimalPart = __ds.split('.')
+            # 根据小数点拆分字符串
+            if '.' in __ds:
+                IntegerPart, DecimalPart = __ds.split('.')
+            else:
+                IntegerPart, DecimalPart = __ds, '0'
+            Background = Image.new('RGBA', (180, 120), (0, 0, 0, 0))
+            Background.convert("RGBA")
+
+            # 加载数字
+            if len(IntegerPart) == 1:
+                with Image.open(f'{self.image_root_path}/Numbers/{str(level)}/{IntegerPart}.png') as Number:
+                    Background.paste(Number, (48, 60), Number)
+            else:
+                with Image.open(f'{self.image_root_path}/Numbers/{str(level)}/1.png') as FirstNumber:
+                    Background.paste(FirstNumber, (18, 60), FirstNumber)
+                with Image.open(f'{self.image_root_path}/Numbers/{str(level)}/{IntegerPart[1]}.png') as SecondNumber:
+                    Background.paste(SecondNumber, (48, 60), SecondNumber)
+            if len(DecimalPart) == 1:
+                with Image.open(f'{self.image_root_path}/Numbers/{str(level)}/{DecimalPart}.png') as Number:
+                    Number = Number.resize((32, 40), Image.LANCZOS)
+                    Background.paste(Number, (100, 79), Number)
+            else:
+                raise Exception("定数无效")
+
+            # 加载加号
+            if int(DecimalPart) >= 6:
+                with Image.open(f"{self.image_root_path}/Numbers/{str(level)}/plus.png") as PlusMark:
+                    Background.paste(PlusMark, (75, 50), PlusMark)
+
+            return Background
         else:
-            IntegerPart, DecimalPart = __ds, '0'
-        Background = Image.new('RGBA', (180, 120), (0, 0, 0, 0))
-        Background.convert("RGBA")
-
-        # 加载数字
-        if len(IntegerPart) == 1:
-            with Image.open(f'{self.image_root_path}/Numbers/{str(level)}/{IntegerPart}.png') as Number:
-                Background.paste(Number, (48, 60), Number)
-        else:
-            with Image.open(f'{self.image_root_path}/Numbers/{str(level)}/1.png') as FirstNumber:
-                Background.paste(FirstNumber, (18, 60), FirstNumber)
-            with Image.open(f'{self.image_root_path}/Numbers/{str(level)}/{IntegerPart[1]}.png') as SecondNumber:
-                Background.paste(SecondNumber, (48, 60), SecondNumber)
-        if len(DecimalPart) == 1:
-            with Image.open(f'{self.image_root_path}/Numbers/{str(level)}/{DecimalPart}.png') as Number:
-                Number = Number.resize((32, 40), Image.LANCZOS)
-                Background.paste(Number, (100, 79), Number)
-        else:
-            raise Exception("定数无效")
-
-        # 加载加号
-        if int(DecimalPart) >= 6:
-            with Image.open(f"{self.image_root_path}/Numbers/{str(level)}/plus.png") as PlusMark:
-                Background.paste(PlusMark, (75, 50), PlusMark)
-
-        return Background
+            # 非数字定数，使用文字渲染
+            ds_str = str(Ds) if Ds else "?"
+            Background = Image.new('RGBA', (180, 120), (0, 0, 0, 0))
+            
+            # 使用 TextDraw 渲染文字
+            font_size = 48 - - max(8, (len(ds_str) - 1) * 8)  # 字符数超过2时，每多一个字符字体缩小8
+            Background = self.TextDraw(Background, ds_str, (60, 90), stroke_width=2, stroke_fill=(0, 0, 0), font_size=font_size)
+            
+            return Background
 
     def TypeLoader(self, Type: int = 0):
         _type = Type  # 0 for SD, 1 for DX
@@ -134,14 +245,16 @@ class MaiImageGenerater:
             case _:
                 return Image.new('RGBA', (80, 80), (0, 0, 0, 0))
 
-    def TextDraw(self, Image, Text: str = "", Position: tuple = (0, 0)):
+    def TextDraw(self, Image, Text: str = "", Position: tuple = (0, 0), 
+                 fill_color=(255, 255, 255), font_path=None, font_size=32,
+                 stroke_width=0, stroke_fill=(0, 0, 0), align="left") -> Image.Image:
         # 文本居中绘制
 
         # 载入文字元素
         Draw = ImageDraw.Draw(Image)
-        FontPath = self.font_path
-        FontSize = 32
-        FontColor = (255, 255, 255)
+        FontPath = font_path if font_path else self.font_path
+        FontSize = font_size
+        FontColor = fill_color
         Font = ImageFont.truetype(FontPath, FontSize)
 
         # 获取文本的边界框
@@ -152,7 +265,7 @@ class MaiImageGenerater:
         # 计算文本左上角位置，使文本在中心点居中
         TextPosition = (Position[0] - TextWidth // 2, Position[1] - TextHeight // 2)
         # 绘制
-        Draw.text(TextPosition, Text, fill=FontColor, font=Font)
+        Draw.text(TextPosition, Text, fill=FontColor, font=Font, stroke_width=stroke_width, stroke_fill=stroke_fill, align=align)
         return Image
 
     def count_dx_stars(self, user_dx_score, max_dx_score):
@@ -262,8 +375,8 @@ class MaiImageGenerater:
                 TempImage = self.TextDraw(TempImage, StarText, TextCentralPosition)
 
                 # 游玩次数（暂无获取方式，b50data中若有手动填写即可显示）
-                if "playCount" in record_detail:
-                    PlayCount = int(record_detail["playCount"])
+                if "play_count" in record_detail:
+                    PlayCount = int(record_detail["play_count"])
                 else:
                     PlayCount = 0
                 if PlayCount >= 1:
@@ -295,29 +408,62 @@ class ChuniImageGenerater:
         with Image.open(f"{self.image_root_path}/Frames/{level_index}.png") as _frame:
             return _frame.copy()
 
-    def LevelLoader(self, ds_cur: float, ds_next: float = 0.0):
-        # TODO: FLAG依据判断以哪个版本的定数为准
-        ds = ds_cur if ds_cur > 1 else ds_next
-        # 根据小数点拆分字符串
-        __ds = str(ds)
-        if '.' in __ds:
-            level, decimal = __ds.split('.')
-        else:
-            level, decimal = __ds, '0'
-        level_number_img = Image.new('RGBA', (108, 88), (0, 0, 0, 0))
+    def LevelLoader(self, ds_cur, ds_next=None):
+        """
+        加载等级显示图片
+        
+        Args:
+            ds_cur: 当前版本定数，可以是 float 或字符串
+            ds_next: 下一版本定数，可以是 float 或字符串（可选）
+        
+        Returns:
+            PIL.Image: 等级显示图片
+        """
+        # 处理 ds_next 为 None 的情况
+        if ds_next is None:
+            ds_next = 0.0
+        
+        # 尝试解析为数字
+        ds_cur_val = try_parse_difficulty(ds_cur)
+        ds_next_val = try_parse_difficulty(ds_next)
+        
+        # 如果当前版本定数无法解析，尝试使用下一版本
+        ds = ds_cur_val if ds_cur_val is not None and ds_cur_val > 1 else ds_next_val
+        
+        if ds is not None:
+            # 数字定数，使用数字渲染逻辑
+            # 根据小数点拆分字符串
+            __ds = str(ds)
+            if '.' in __ds:
+                level, decimal = __ds.split('.')
+            else:
+                level, decimal = __ds, '0'
+            level_number_img = Image.new('RGBA', (108, 88), (0, 0, 0, 0))
 
-        # 绘制数字
-        level_number_img = self.TextDraw(level_number_img, level, (54, 46), 
-                                         font_path=self.level_font_path,
-                                         font_size=60, font_color=(255, 255, 255), h_align="center")
-
-        if int(decimal) >= 6:
-            # 绘制加号
-            level_number_img = self.TextDraw(level_number_img, '+', (92, 8), 
+            # 绘制数字
+            level_number_img = self.TextDraw(level_number_img, level, (54, 46), 
                                              font_path=self.level_font_path,
-                                             font_size=42, font_color=(255, 255, 255), h_align="center")
+                                             font_size=60, font_color=(255, 255, 255), h_align="center")
 
-        return level_number_img
+            if int(decimal) >= 5:
+                # 绘制加号
+                level_number_img = self.TextDraw(level_number_img, '+', (92, 8), 
+                                                 font_path=self.level_font_path,
+                                                 font_size=42, font_color=(255, 255, 255), h_align="center")
+
+            return level_number_img
+        else:
+            # 非数字定数，使用文字渲染
+            # 优先显示当前版本定数字符串
+            ds_str = str(ds_cur) if ds_cur else "?"
+            
+            # 限制显示长度，过长的字符串缩小字体
+            level_number_img = Image.new('RGBA', (108, 88), (0, 0, 0, 0))
+            font_size = 60 - (max(10, len(ds_str) - 2) * 10)  # 字符数超过2时，每多一个字符字体缩小10
+            level_number_img = self.TextDraw(level_number_img, ds_str, (54, 46), 
+                                             font_path=self.level_font_path,
+                                             font_size=font_size, font_color=(255, 255, 255), h_align="center")
+            return level_number_img
         
     def ScoreLoader(self, score: int = 0):
         if score < 0 or score > 1010000:
@@ -423,10 +569,10 @@ class ChuniImageGenerater:
                 
     def ChainStatusLoader(self, chain_status: str = ""):
         match chain_status:
-            case _ if chain_status == 'fc':
+            case _ if chain_status == 'fc':  # 金full chain
                 with Image.open(f"{self.image_root_path}/ComboStatus/21.png") as _chainStatus:
                     return _chainStatus.copy()
-            case _ if chain_status == 'fcr':
+            case _ if chain_status == 'fcr': # 铂金full chain
                 with Image.open(f"{self.image_root_path}/ComboStatus/22.png") as _chainStatus:
                     return _chainStatus.copy()
             case _:
@@ -545,13 +691,17 @@ class ChuniImageGenerater:
                 ds_next_pos = (1756, 1018)
                 ds_cur = record_detail["ds_cur"]
                 ds_next = record_detail["ds_next"]
-                ds_cur_text = str(ds_cur)
-                if not ds_cur or ds_cur <= 0.0:  # 不在当前版本的谱面，使用0来标记无定数
-                    ds_cur_text = "--"
-                if not ds_next or ds_next <= 0.0:  # 未有新版本数据的谱面，使用0来标记无定数
-                    ds_next_text = "--"
+                # 使用 try_parse_difficulty 安全解析定数（可能为字符串如"--"）
+                ds_cur_numeric = try_parse_difficulty(ds_cur)
+                ds_next_numeric = try_parse_difficulty(ds_next)
+                if ds_cur_numeric is not None and ds_cur_numeric > 0.0:
+                    ds_cur_text = str(ds_cur)
                 else:
-                    ds_next_text = modified_ds_next(ds_cur, ds_next)
+                    ds_cur_text = "--"
+                if ds_next_numeric is not None and ds_next_numeric > 0.0:
+                    ds_next_text = modified_ds_next(ds_cur_numeric, ds_next_numeric)
+                else:
+                    ds_next_text = "--"
                 _temp_img = self.TextDraw(_temp_img, ds_cur_text , ds_cur_pos,
                                           font_path=self.title_font_path, 
                                           font_size=45, font_color=(77, 77, 77), h_align="center")
@@ -595,8 +745,8 @@ class ChuniImageGenerater:
                                           font_size=36, font_color=(26, 0, 84), h_align="left")
                 
                 # 游玩次数（暂无获取方式，b50data中若有手动填写即可显示）
-                if "playCount" in record_detail:
-                    play_count = int(record_detail["playCount"])
+                if "play_count" in record_detail:
+                    play_count = int(record_detail["play_count"])
                 else:
                     play_count = 0
                 if play_count >= 1:
@@ -683,40 +833,3 @@ def check_mask_waring(acc_string, cnt, warned=False):
             print(f"Warning： 检测到多个仅有一位小数精度的成绩，请尝试取消查分器设置的成绩掩码以获取精确成绩。特殊情况请忽略。")
             warned = True
     return cnt, warned
-
-@DeprecationWarning
-def load_music_jacket(music_tag):
-    """从本地查找或从线上下载乐曲封面。仅用于maimaiDX。"""
-    if type(music_tag) == int:
-        image_path = f"jackets/maimaidx/Jacket_{music_tag}.jpg"
-    elif type(music_tag) == str:
-        # 判断music_tag字符串是否为正整数
-        if music_tag.isdigit():
-            music_id = int(music_tag)
-            image_path = f"jackets/maimaidx/Jacket_{music_id}.jpg"
-        else:
-            image_path = f"jackets/maimaidx/Jacket_N_{music_tag}.jpg"
-    else:
-        raise ValueError("music_tag must be an integer or string.")
-    try:
-        # print(f"正在获取乐曲封面{image_path}...")
-        jacket = download_image_data(image_path)
-        # 返回 RGBA 模式图像，并强制缩放到400*400px
-        return jacket.convert("RGBA").resize((400, 400), Image.LANCZOS)
-    # 抛出异常，默认封面由上层处理
-    except FileNotFoundError:
-        print(f"乐曲封面{image_path}不存在")
-        return None
-
-@DeprecationWarning
-def find_single_song_metadata(all_metadata, record_detail):
-    for music in all_metadata:
-        if music['id'] is not None and music['id'] == str(record_detail['song_id']):
-            return music
-        else:
-            # 对于未知id的新曲，必须使用曲名和谱面类型匹配
-            song_name = record_detail['title']
-            song_type = record_detail['type']
-            if song_name == music['name'] and CHART_TYPE_MAP_MAIMAI[song_type] == music['type']:
-                return music
-    return None

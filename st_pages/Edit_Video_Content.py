@@ -3,7 +3,7 @@ import os
 import traceback
 from datetime import datetime
 from utils.PageUtils import load_style_config, open_file_explorer, get_video_duration, read_global_config, get_game_type_text
-from utils.PathUtils import get_user_base_dir, get_user_media_dir
+from utils.PathUtils import get_user_media_dir
 from utils.DataUtils import get_valid_time_range
 from utils.VideoUtils import render_one_video_clip, get_video_preview_frame
 from db_utils.DatabaseDataHandler import get_database_handler
@@ -40,6 +40,7 @@ def try_update_default_configs(video_configs, archive_id=None):
 
 # streamlit component functions
 def update_preview(preview_placeholder, config, current_index):
+
     @st.dialog("删除视频确认")
     def delete_video_dialog(c_id, v_path):
         st.warning("确定要删除这个视频吗？此操作不可撤销！")
@@ -59,9 +60,12 @@ def update_preview(preview_placeholder, config, current_index):
         achievement_image_path = item['main_image']
         video_path = item['video']
 
-        # 检查是否存在图片和视频：
-        if not os.path.exists(achievement_image_path):
-            st.error(f"图片文件不存在: {achievement_image_path}，请检查前置步骤是否正常完成！")
+        # 检查是否存在已生成成绩图
+        if not achievement_image_path:
+            st.error(f"❌ 检测到存档成绩图缺失，请尝试重新进行 1.生成成绩图片 步骤！")
+            return
+        elif not os.path.exists(achievement_image_path):
+            st.error(f"❌ 检测到存档成绩图路径不存在: {achievement_image_path}，请尝试重新进行 1.生成成绩图片 步骤！")
             return
 
         # 显示当前视频片段的内容
@@ -83,7 +87,7 @@ def update_preview(preview_placeholder, config, current_index):
             st.image(achievement_image_path, caption="成绩图片")
         with main_col2:
             if not video_path:
-                st.warning("⚠️ 未找到视频路径信息，请检查下载步骤是否正常完成！")
+                st.warning("⚠️ 未找到视频路径信息，请检查步骤2与3是否正常完成！")
             else:
                 # 确保使用绝对路径
                 if not os.path.isabs(video_path):
@@ -91,7 +95,7 @@ def update_preview(preview_placeholder, config, current_index):
                 
                 # 验证文件是否存在
                 if not os.path.exists(video_path):
-                    st.warning(f"⚠️ 视频文件不存在: {video_path}\n请检查下载步骤是否正常完成！")
+                    st.warning(f"⚠️ 视频文件不存在: {video_path}，请检查下载步骤3是否正常完成！")
                 else:
                     try:
                         # 验证文件扩展名
@@ -240,7 +244,7 @@ def update_preview(preview_placeholder, config, current_index):
 # Page layout starts here
 # =============================================================================
 
-st.header("Step 4-1: 视频内容编辑")
+st.header("📝 视频内容编辑")
 
 st.markdown(f"> 您正在使用 **{get_game_type_text(G_type)}** 视频生成模式。")
 
@@ -255,8 +259,7 @@ if not username:
 st.write(f"当前用户名: **{username}**")
 archives = db_handler.get_user_save_list(username, game_type=G_type)
 
-data_name = "B30" if G_type == "chunithm" else "B50"
-with st.expander(f"更换{data_name}存档"):
+with st.expander(f"更换分表存档"):
     if not archives:
         st.warning("未找到任何存档。请先新建或加载存档。")
         st.stop()
@@ -351,22 +354,22 @@ if video_configs:
             on_jump_to_clip(tags.index(clip_selector))
 
     # 上一个和下一个按钮
-    col1, col2, _ = st.columns([1, 1, 2])
+    col1, _, _, col2 = st.columns([1, 1, 1, 1]) # 调整列宽比例，增加中间空白列
     with col1:
-        if st.button("上一个"):
+        if st.button("上一个", width="stretch"):
             if st.session_state.current_index > 0:
                 on_jump_to_clip(st.session_state.current_index - 1)
             else:
                 st.toast("已经是第一个视频片段！")
     with col2:
-        if st.button("下一个"):
+        if st.button("下一个", width="stretch"):
             if st.session_state.current_index < len(tags) - 1:
                 on_jump_to_clip(st.session_state.current_index + 1)
             else:
                 st.toast("已经是最后一个视频片段！")
     
     # 保存配置按钮
-    if st.button("保存配置"):
+    if st.button("保存配置", type="primary", width="stretch"):
         db_handler.save_video_config(video_configs=video_configs, archive_id=archive_id)
         st.success("配置已保存！")
 
@@ -401,7 +404,8 @@ if video_configs:
                         video_file_name=target_video_filename,
                         video_output_path=video_output_path,
                         video_res=v_res,
-                        video_bitrate=v_bitrate_kbps
+                        video_bitrate=v_bitrate_kbps,
+                        video_fps=G_config.get('VIDEO_FPS', 60)
                     )
                 if res['status'] == 'success':
                     st.success(res['info'])
@@ -411,8 +415,8 @@ if video_configs:
             if st.button("打开导出视频所在文件夹"):
                 open_file_explorer(absolute_path)
 
-with st.expander("额外设置"):
-    st.write("DEBUG：如果需要检查原始配置，点击下方按钮读取数据库原始信息。")
+with st.expander("[DEBUG区域]其他操作"):
+    st.write("如果需要检查原始配置，点击下方按钮读取数据库原始信息。")
     if st.button("读取当前存档原始信息", key=f"load_full_config_raw"):
         st.json(db_handler.load_archive_complete_config(username, archive_name))
 

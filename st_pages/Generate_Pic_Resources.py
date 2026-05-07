@@ -18,21 +18,18 @@ G_type = st.session_state.get('game_type', 'maimai')
 
 def st_generate_b50_images(placeholder, user_id, archive_id, save_paths):
     # get data format for image generation scripts
-    # TODO：maimai可能需要在此处下载曲绘资源，需要处理可能的等待时间
-    with st.spinner("正在获取资源数据，请稍等 ……"):
+    # maimai可能需要在此处下载曲绘资源，需要处理可能的等待时间
+    with st.spinner("正在获取资源数据，请稍等（此过程可能需要1-2分钟）……"):
         game_type, records = db_handler.load_archive_for_image_generation(archive_id)
 
     # read style_config - 使用从数据库加载的game_type，而不是session_state的G_type
     style_config = load_style_config(game_type=game_type)
-
-    # 根据游戏类型动态设置数据名称
-    data_name = "B30" if game_type == "chunithm" else "B50"
     
     with placeholder.container(border=True):
-        pb = st.progress(0, text=f"正在生成{data_name}成绩背景图片...")
+        pb = st.progress(0, text=f"正在生成成绩背景图片...")
         for index, record_detail in enumerate(records):
             chart_id = record_detail['chart_id']
-            pb.progress((index + 1) / len(records), text=f"正在生成{data_name}成绩背景图片({index + 1}/{len(records)})")
+            pb.progress((index + 1) / len(records), text=f"正在生成成绩背景图片({index + 1}/{len(records)})")
             record_for_gene_image = deepcopy(record_detail)
             clip_name = record_for_gene_image['clip_name']
             # 标题名称与配置文件中的clip_name一致
@@ -81,19 +78,11 @@ def st_generate_b50_images(placeholder, user_id, archive_id, save_paths):
 # Page layout starts here
 # =============================================================================
 # 根据游戏类型动态设置标题
-data_name = "B30" if G_type == "chunithm" else "B50"
-page_title = f"Step 1: 生成{data_name}成绩背景图片"
-
-st.set_page_config(
-    page_title=page_title,
-    page_icon="🖼️",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+page_title = f"Step 1: 生成成绩背景图片"
 
 # 页面头部
-st.header(f"🖼️ 生成{data_name}成绩背景图片")
-st.markdown(f"**当前模式**: {get_game_type_text(G_type)} 视频生成模式")
+st.header(f"🖼️ 生成成绩背景图片")
+st.markdown(f"> 您正在使用 **{get_game_type_text(G_type)}** 视频生成模式。")
 
 ### Save Archive Management - Start ###
 
@@ -139,8 +128,7 @@ if not archive_id and st.session_state.get('archive_id'):
     archive_name = st.session_state.get('archive_name')
 
 # 根据游戏类型动态设置存档名称
-archive_data_name = "B30" if G_type == "chunithm" else "B50"
-with st.expander(f"🔄 更换{archive_data_name}存档", expanded=False):
+with st.expander(f"🔄 更换分表存档", expanded=False):
     if not archives:
         st.warning("⚠️ 未找到任何存档。请先新建或加载存档。")
         st.stop()
@@ -175,7 +163,7 @@ with st.expander(f"🔄 更换{archive_data_name}存档", expanded=False):
 ### Savefile Management - End ###
 
 if archive_id:
-    current_paths = get_user_media_dir(username, game_type=G_type)
+    current_paths = get_user_media_dir(username, game_type=G_type, archive_id=archive_id)
     image_path = current_paths['image_dir']
     
     st.markdown("### 🎨 生成成绩背景图片")
@@ -215,10 +203,10 @@ if archive_id:
                 open_file_explorer(absolute_path)
         
         # 检查是否已有图片
-        if os.path.exists(image_path):
-            existing_images = [f for f in os.listdir(image_path) if f.endswith('.png')]
-            if existing_images:
-                st.info(f"ℹ️ 检测到已有 {len(existing_images)} 张图片。如需重新生成，请点击上方按钮。")
+        # if os.path.exists(image_path):
+        #     existing_images = [f for f in os.listdir(image_path) if f.endswith('.png')]
+        #     if existing_images:
+        #         st.info(f"ℹ️ 检测到已有 {len(existing_images)} 张图片。如需重新生成，请点击上方按钮。")
     
     st.divider()
     st.markdown("### ➡️ 下一步")

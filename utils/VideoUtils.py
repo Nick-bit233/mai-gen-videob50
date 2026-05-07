@@ -1,12 +1,16 @@
 import os
+import time
 import numpy as np
 import subprocess
 import traceback
+import shutil
 from PIL import Image, ImageFilter
 from moviepy import VideoFileClip, ImageClip, TextClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip, concatenate_videoclips
 from moviepy import vfx, afx
 from utils.VisionUtils import find_circle_center, draw_center_marker
 from utils.PageUtils import remove_invalid_chars
+from utils.TextRenderer import TextRenderer, TextStyle, LayoutConfig
+from utils.AccelRenderer import get_ffmpeg_binary
 from typing import Union, Tuple
 
 
@@ -193,16 +197,6 @@ def create_info_segment(clip_config, style_config, resolution):
     intro_text_bg_path = style_config['asset_paths']['intro_text_bg']
     intro_bgm_path = style_config['asset_paths']['intro_bgm']
 
-    text_size = style_config['intro_text_style']['font_size']
-    inline_max_len = style_config['intro_text_style']['inline_max_chara'] * 2
-    interline_size = style_config['intro_text_style']['interline']
-    horizontal_align = style_config['intro_text_style']['horizontal_align']
-    text_color = style_config['intro_text_style']['font_color']
-    enable_stroke = style_config['intro_text_style']['enable_stroke']
-    if enable_stroke:
-        stroke_color = style_config['intro_text_style']['stroke_color']
-        stroke_width = style_config['intro_text_style']['stroke_width']
-
     bg_image = ImageClip(intro_text_bg_path).with_duration(clip_config['duration'])
     bg_image = bg_image.with_effects([vfx.Resize(width=resolution[0])])
 
@@ -213,21 +207,10 @@ def create_info_segment(clip_config, style_config, resolution):
                                       vfx.MultiplyColor(0.75),
                                       vfx.Resize(width=resolution[0])])
 
-    # 创建文字
-    text_list = get_splited_text(clip_config['text'], text_max_bytes=inline_max_len)
-    txt_clip = TextClip(font=font_path, text="\n".join(text_list),
-                        method = "label",
-                        font_size=text_size,
-                        margin=(20, 20),
-                        interline=interline_size,
-                        text_align=horizontal_align,
-                        vertical_align="top",
-                        color=text_color,
-                        stroke_color = None if not enable_stroke else stroke_color,
-                        stroke_width = 0 if not enable_stroke else stroke_width,
-                        duration=clip_config['duration'])
+    # 创建文字图层
+    text_clip, text_pos = edit_info_text_clip(clip_config, resolution, style_config)
     
-    # 水印已移除
+    # 水印（已移除）
     # addtional_text = "【本视频由mai-genVb50视频生成器生成】"
     # addtional_txt_clip = TextClip(font=font_path, text=addtional_text,
     #                     method = "label",
@@ -236,13 +219,12 @@ def create_info_segment(clip_config, style_config, resolution):
     #                     color="white",
     #                     duration=clip_config['duration']
     # )
-    
-    text_pos = (int(0.16 * resolution[0]), int(0.18 * resolution[1]))
     # addtional_text_pos = (int(0.2 * resolution[0]), int(0.88 * resolution[1]))
+
     composite_clip = CompositeVideoClip([
             bg_video.with_position((0, 0)),
             bg_image.with_position((0, 0)),
-            txt_clip.with_position((text_pos[0], text_pos[1])),
+            text_clip.with_position((text_pos[0], text_pos[1])),
             # addtional_txt_clip.with_position((addtional_text_pos[0], addtional_text_pos[1]))  # 水印已移除
         ],
         size=resolution,
@@ -405,14 +387,22 @@ def edit_game_video_clip(game_type, clip_config, resolution, auto_center_align=F
     return video_clip, video_pos
 
 
-def edit_game_text_clip(game_type, clip_config, resolution, style_config) -> Union[TextClip, tuple]:
+def edit_game_text_clip(game_type, clip_config, resolution, style_config) -> Union[ImageClip, tuple]:
     """
-    抽象出的文字处理函数，返回 (TextClip, position)
+    抽象出的文字处理函数，返回 (ImageClip, position)
+    
+    使用 TextRenderer 将文字渲染为透明 PNG 图片，然后转换为 MoviePy ImageClip。
+    这比直接使用 MoviePy TextClip 提供更好的排版控制和多语言支持。
     """
     # 读取样式配置
     font_path = style_config['asset_paths']['comment_font']
     text_size = style_config['content_text_style']['font_size']
-    inline_max_len = style_config['content_text_style']['inline_max_chara'] * 2
+    # 计算文本区域的最大宽度（基于字符数限制）
+    inline_max_chara = style_config['content_text_style']['inline_max_chara']
+    # 估算：每个中文字符约等于 text_size 像素宽度，乘以字符数得到大概宽度
+    # 然后加上边距，确保不会太窄
+    text_area_width = max(200, inline_max_chara * text_size)
+    
     interline_size = style_config['content_text_style']['interline']
     horizontal_align = style_config['content_text_style']['horizontal_align']
     text_color = style_config['content_text_style']['font_color']
@@ -420,20 +410,35 @@ def edit_game_text_clip(game_type, clip_config, resolution, style_config) -> Uni
     stroke_color = style_config['content_text_style'].get('stroke_color', None) if enable_stroke else None
     stroke_width = style_config['content_text_style'].get('stroke_width', 0) if enable_stroke else 0
 
-    # 创建文字
-    text_list = get_splited_text(clip_config.get('text', ''), text_max_bytes=inline_max_len)
-    txt_clip = TextClip(font=font_path, text="\n".join(text_list),
-                        method="label",
-                        font_size=text_size,
-                        margin=(20, 20),
-                        interline=interline_size,
-                        text_align=horizontal_align,
-                        vertical_align="top",
-                        color=text_color,
-                        stroke_color=None if not enable_stroke else stroke_color,
-                        stroke_width=0 if not enable_stroke else stroke_width,
-                        duration=clip_config.get('duration', 5))
+    # 使用 TextRenderer 渲染文字为图片
+    style = TextStyle(
+        font_path=font_path,
+        font_size=text_size,
+        color=text_color,
+        stroke_color=stroke_color,
+        stroke_width=stroke_width
+    )
     
+    layout = LayoutConfig(
+        width=text_area_width,
+        auto_height=True,
+        padding=(10, 10, 10, 10),
+        line_spacing=interline_size,
+        horizontal_align=horizontal_align,
+        vertical_align="top"
+    )
+    
+    renderer = TextRenderer(style, layout)
+    
+    # 渲染文字为图片
+    text = clip_config.get('text', '')
+    text_image = renderer.render(text)
+    
+    # 转换为 numpy 数组，然后创建 MoviePy ImageClip
+    text_array = np.array(text_image)
+    txt_clip = ImageClip(text_array).with_duration(clip_config.get('duration', 5))
+    
+    # 计算文字位置
     rel_t_pos_map = {
         "maimai": (0.54, 0.54),
         "chunithm": (0.76, 0.227)
@@ -442,6 +447,57 @@ def edit_game_text_clip(game_type, clip_config, resolution, style_config) -> Uni
     text_pos = (int(mul_x * resolution[0]), int(mul_y * resolution[1]))
 
     return txt_clip, text_pos
+
+
+def edit_info_text_clip(clip_config, resolution, style_config) -> Union[ImageClip, tuple]:
+    """
+    专用于开场/结尾信息介绍片段的文字处理函数，返回 (ImageClip, position)
+    
+    该函数与 edit_game_text_clip 类似，但使用开场/结尾特定的样式配置。
+    """
+    # 读取样式配置
+    font_path = style_config['asset_paths']['comment_font']
+    text_size = style_config['intro_text_style']['font_size']
+    inline_max_chara = style_config['intro_text_style']['inline_max_chara']
+    text_area_width = max(400, inline_max_chara * text_size)
+    
+    interline_size = style_config['intro_text_style']['interline']
+    horizontal_align = style_config['intro_text_style']['horizontal_align']
+    text_color = style_config['intro_text_style']['font_color']
+    enable_stroke = style_config['intro_text_style']['enable_stroke']
+    stroke_color = style_config['intro_text_style'].get('stroke_color', None) if enable_stroke else None
+    stroke_width = style_config['intro_text_style'].get('stroke_width', 0) if enable_stroke else 0
+
+    # 使用 TextRenderer 渲染文字为图片
+    style = TextStyle(
+        font_path=font_path,
+        font_size=text_size,
+        color=text_color,
+        stroke_color=stroke_color,
+        stroke_width=stroke_width
+    )
+    
+    layout = LayoutConfig(
+        width=text_area_width,
+        auto_height=True,
+        padding=(10, 10, 10, 10),
+        line_spacing=interline_size * 1.2,
+        horizontal_align=horizontal_align,
+        vertical_align="top"
+    )
+    
+    renderer = TextRenderer(style, layout)
+    
+    # 渲染文字为图片
+    text = clip_config.get('text', '')
+    text_image = renderer.render(text)
+    
+    # 转换为 numpy 数组，然后创建 MoviePy ImageClip
+    text_array = np.array(text_image)
+    txt_clip = ImageClip(text_array).with_duration(clip_config.get('duration', 5))
+    txt_pos = (int(0.16 * resolution[0]), int(0.18 * resolution[1]))
+
+    return txt_clip, txt_pos
 
 
 def create_video_segment(
@@ -457,12 +513,9 @@ def create_video_segment(
     override_content_bg = style_config['options'].get('override_content_default_bg', False)
     using_video_content_bg = style_config['options'].get('content_use_video_bg', False)
 
-    # black_video仅作为纯黑色背景，避免透明素材的遮挡问题
-    black_clip = VideoFileClip("./static/assets/bg_clips/black_bg.mp4")
-    # 移除音频以避免循环时的索引错误
-    black_clip = black_clip.without_audio()
-    black_clip = black_clip.with_effects([vfx.Loop(duration=clip_config['duration']), 
-                                      vfx.Resize(width=resolution[0])])
+    # 这里仅需要一个纯黑底，直接生成静态帧可绕开 MoviePy 偶发的首帧读取失败。
+    black_frame = np.zeros((resolution[1], resolution[0], 3), dtype=np.uint8)
+    black_clip = ImageClip(black_frame).with_duration(clip_config['duration'])
     
     # 检查图片资源是否存在
     # 'main_image' == achievement_image
@@ -529,10 +582,17 @@ def get_video_preview_frame(game_type, clip_config, style_config, resolution, pa
         preview_clip = create_info_segment(clip_config, style_config, resolution)
     elif part == "content":
         preview_clip = create_video_segment(game_type, clip_config, style_config, resolution)
-    
-    frame = preview_clip.get_frame(t=1)
-    pil_img = Image.fromarray(frame.astype("uint8"))
-    return pil_img
+    else:
+        raise ValueError(f"不支持的预览片段类型: {part}")
+
+    try:
+        # 预览时取 1 秒帧；若片段更短，则钳制到片段末尾前，避免触发 MoviePy 的误导性首帧错误。
+        preview_time = max(0, min(1, preview_clip.duration - (1 / 30)))
+        frame = preview_clip.get_frame(t=preview_time)
+        pil_img = Image.fromarray(frame.astype("uint8"))
+        return pil_img
+    finally:
+        preview_clip.close()
 
 
 
@@ -596,7 +656,8 @@ def create_full_video(game_type: str, style_config: dict, resolution: tuple,
         if main_configs.index(clip_config) == len(main_configs) - 1 and full_last_clip:
             start_time = clip_config['start']
             # 获取原始视频的长度（不是配置文件中配置的duration）
-            full_clip_duration = VideoFileClip(clip_config['video']).duration - 5
+            with VideoFileClip(clip_config['video']) as source_clip:
+                full_clip_duration = source_clip.duration - 5
             # 修改配置文件中的duration，因此下面创建视频片段时，会使用加长版duration
             clip_config['duration'] = full_clip_duration - start_time
             clip_config['end'] = full_clip_duration
@@ -758,13 +819,57 @@ def get_combined_ending_clip(ending_clips, combined_start_time, trans_time):
 
 def render_all_video_clips(game_type: str, style_config: dict, main_configs: list,
                            video_output_path: str, video_res: tuple, video_bitrate: str,
+                           video_fps: int = 60,
                            intro_configs: list = None, ending_configs: list = None,
-                           auto_add_transition=True, trans_time=1, force_render=False):
-    """ 渲染所有视频片段，并按照clip_title_name输出到指定路径文件 """
+                           auto_add_transition=True, trans_time=1, force_render=False,
+                           use_gpu_accel: bool = None, progress_callback=None):
+    """ 渲染所有视频片段，并按照clip_title_name输出到指定路径文件。
+        当 use_gpu_accel=True 时使用 Taichi GPU + FFmpeg 硬件编码加速。
+        当 use_gpu_accel=None 时从 global_config 读取配置。
+    """
+    # 检查是否启用 GPU 加速
+    if use_gpu_accel is None:
+        from utils.PageUtils import read_global_config
+        use_gpu_accel = read_global_config().get('USE_GPU_ACCEL', False)
+
+    if use_gpu_accel:
+        try:
+            from utils.TaichiAccel import init_taichi, is_available
+            init_taichi()
+            if is_available():
+                from utils.AccelRenderer import render_all_clips_accel
+                print("=" * 60)
+                print("🚀 使用 GPU 加速渲染模式 (Taichi + FFmpeg 硬件编码)")
+                print("=" * 60)
+                render_all_clips_accel(
+                    game_type=game_type,
+                    style_config=style_config,
+                    main_configs=main_configs,
+                    video_output_path=video_output_path,
+                    video_res=video_res,
+                    video_bitrate=video_bitrate,
+                    intro_configs=intro_configs,
+                    ending_configs=ending_configs,
+                    auto_add_transition=auto_add_transition,
+                    trans_time=trans_time,
+                    force_render=force_render,
+                    fps=video_fps,
+                    progress_callback=progress_callback
+                )
+                return
+            else:
+                print("[VideoUtils] Taichi 初始化失败，回退到 CPU 渲染")
+        except ImportError:
+            print("[VideoUtils] Taichi 未安装，回退到 CPU 渲染")
+
     vfile_prefix = 0
 
-    def modify_and_rend_clip(clip, config, prefix, auto_add_transition, trans_time):
-        clip_title_name = remove_invalid_chars(config['clip_title_name'])  # clip_title_name作为输出文件名的一部分，需要进行清洗，去除不合法字符
+    def modify_and_rend_clip(clip, config, prefix, auto_add_transition, trans_time, override_clip_name=None):
+        if override_clip_name:
+            clip_title_name = override_clip_name
+        else:
+            clip_title_name = config.get('clip_title_name', "clip")
+        clip_title_name = remove_invalid_chars(clip_title_name)  # clip_title_name作为输出文件名的一部分，需要进行清洗，去除不合法字符
         output_file = os.path.join(video_output_path, f"{prefix}_{clip_title_name}.mp4")
 
         # 检查文件是否已经存在
@@ -785,7 +890,7 @@ def render_all_video_clips(game_type: str, style_config: dict, main_configs: lis
             ])
         # 直接渲染clip为视频文件
         print(f"正在合成视频片段: {prefix}_{clip_title_name}.mp4")
-        clip.write_videofile(output_file, fps=30, threads=4, preset='ultrafast', bitrate=video_bitrate)
+        clip.write_videofile(output_file, fps=video_fps, threads=4, preset='ultrafast', bitrate=video_bitrate)
         clip.close()
         # 强制垃圾回收
         del clip
@@ -794,19 +899,19 @@ def render_all_video_clips(game_type: str, style_config: dict, main_configs: lis
     if intro_configs:
         for clip_config in intro_configs:
             clip = create_info_segment(clip_config, style_config, video_res)
-            clip = modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time)
+            modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time, override_clip_name="INTRO")
             vfile_prefix += 1
 
     for clip_config in main_configs:
         clip = create_video_segment(game_type, clip_config, style_config, video_res)
-        clip = modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time)
+        modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time)
 
         vfile_prefix += 1
 
     if ending_configs:
         for clip_config in ending_configs:
             clip = create_info_segment(clip_config, style_config, video_res)
-            clip = modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time)
+            modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time, override_clip_name="ENDING")
             vfile_prefix += 1
 
 
@@ -815,7 +920,8 @@ def render_one_video_clip(
         config: dict, 
         style_config: dict, 
         video_output_path: str, video_res: tuple, video_bitrate: str,
-        video_file_name: str=None
+        video_file_name: str=None,
+        video_fps: int = 60
     ):
     """ 根据一条配置合成单个视频片段，并保存到指定路径的文件 """
     if not video_file_name:
@@ -824,7 +930,7 @@ def render_one_video_clip(
     try:
         clip = create_video_segment(game_type, config, style_config, video_res)
         clip.write_videofile(os.path.join(video_output_path, video_file_name), 
-                             fps=30, threads=4, preset='ultrafast', bitrate=video_bitrate)
+                             fps=video_fps, threads=4, preset='ultrafast', bitrate=video_bitrate)
         clip.close()
         return {"status": "success", "info": f"合成视频片段{video_file_name}成功"}
     except Exception as e:
@@ -840,9 +946,128 @@ def render_complete_full_video(
         video_output_path: str, 
         intro_configs: list=None, ending_configs: list=None,
         video_res: tuple = (1920, 1080), video_bitrate: str = "4000k",
-        video_trans_enable: bool = True, video_trans_time: float = 1.0, full_last_clip: bool = False):
-    """ 根据完整配置合成完整视频，并保存到指定路径的文件 """
+        video_fps: int = 60,
+        video_trans_enable: bool = True, video_trans_time: float = 1.0, full_last_clip: bool = False,
+        use_gpu_accel: bool = None, use_baked_fade: bool = None, progress_callback=None):
+    """ 根据完整配置合成完整视频，并保存到指定路径的文件。
+        当 use_gpu_accel=True 时，先用 GPU 加速渲染所有片段，再用 FFmpeg 拼接。
+        use_baked_fade: True=烘焙黑场过渡+流拷贝, False=xfade+硬件编码, None=读取配置文件
+    """
+    # 检查是否启用 GPU 加速
+    if use_gpu_accel is None:
+        from utils.PageUtils import read_global_config
+        use_gpu_accel = read_global_config().get('USE_GPU_ACCEL', False)
 
+    if use_gpu_accel:
+        try:
+            from utils.TaichiAccel import init_taichi, is_available
+            init_taichi()
+            if is_available():
+                from utils.AccelRenderer import render_all_clips_accel, detect_hw_encoder
+                print("=" * 60)
+                print("🚀 使用 GPU 加速完整视频生成模式")
+                print("=" * 60)
+                t_total_start = time.perf_counter()
+
+                # 检测硬件编码器
+                hw_codec, hw_codec_name = detect_hw_encoder()
+
+                # 判断转场模式：
+                #   use_baked_fade=True  → 烘焙黑场过渡 + 流拷贝拼接（快速，但只能fade through black）
+                #   use_baked_fade=False → xfade 真交叉淡入淡出 + 硬件编码拼接（默认）
+                if use_baked_fade is None:
+                    use_baked_fade = read_global_config().get('GPU_USE_BAKED_FADE', False)
+
+                if video_trans_enable and not use_baked_fade:
+                    # === 模式A: xfade + 硬件编码（真交叉淡入淡出）===
+                    print(f"[GPU] 转场模式: xfade + {hw_codec_name}")
+
+                    # 第一步：渲染片段（不烘焙淡入淡出）
+                    t_step = time.perf_counter()
+                    render_all_clips_accel(
+                        game_type=game_type,
+                        style_config=style_config,
+                        main_configs=main_configs,
+                        video_output_path=video_output_path,
+                        video_res=video_res,
+                        video_bitrate=video_bitrate,
+                        intro_configs=intro_configs,
+                        ending_configs=ending_configs,
+                        auto_add_transition=False,
+                        trans_time=video_trans_time,
+                        force_render=True,
+                        fps=video_fps,
+                        progress_callback=progress_callback
+                    )
+                    print(f"[Timer] 步骤1 - 渲染所有片段耗时: {time.perf_counter() - t_step:.2f}s")
+
+                    # 第二步：xfade 拼接（使用硬件编码器）
+                    t_step = time.perf_counter()
+                    print(f"[AccelRenderer] 正在拼接完整视频（xfade + {hw_codec_name}）...")
+                    output_file = combine_full_video_direct(
+                        video_output_path,
+                        auto_add_transition=True,
+                        trans_time=video_trans_time,
+                        codec=hw_codec,
+                        bitrate=video_bitrate,
+                        video_fps=video_fps
+                    )
+                    print(f"[Timer] 步骤2 - 视频拼接(xfade)耗时: {time.perf_counter() - t_step:.2f}s")
+                else:
+                    # === 模式B: 烘焙黑场过渡 + 流拷贝（或无转场）===
+                    if video_trans_enable:
+                        print("[GPU] 转场模式: 烘焙黑场过渡 + 流拷贝")
+                    else:
+                        print("[GPU] 无转场模式: 直接流拷贝拼接")
+
+                    # 第一步：渲染片段（根据需要烘焙淡入淡出）
+                    t_step = time.perf_counter()
+                    render_all_clips_accel(
+                        game_type=game_type,
+                        style_config=style_config,
+                        main_configs=main_configs,
+                        video_output_path=video_output_path,
+                        video_res=video_res,
+                        video_bitrate=video_bitrate,
+                        intro_configs=intro_configs,
+                        ending_configs=ending_configs,
+                        auto_add_transition=video_trans_enable,
+                        trans_time=video_trans_time,
+                        force_render=True,
+                        fps=video_fps,
+                        progress_callback=progress_callback
+                    )
+                    print(f"[Timer] 步骤1 - 渲染所有片段耗时: {time.perf_counter() - t_step:.2f}s")
+
+                    # 第二步：流拷贝拼接（无需重编码）
+                    t_step = time.perf_counter()
+                    print("[AccelRenderer] 正在拼接完整视频（流拷贝模式）...")
+                    output_file = combine_full_video_direct(
+                        video_output_path,
+                        auto_add_transition=False,
+                        trans_time=video_trans_time,
+                        video_fps=video_fps
+                    )
+                    print(f"[Timer] 步骤2 - 视频拼接(流拷贝)耗时: {time.perf_counter() - t_step:.2f}s")
+
+                # 第三步：音频均衡化 + 重命名
+                t_step = time.perf_counter()
+                final_path = os.path.join(video_output_path, f"{username}_FULL_VIDEO.mp4")
+                _normalize_video_audio(output_file, final_path)
+                print(f"[Timer] 步骤3 - 音频均衡化耗时: {time.perf_counter() - t_step:.2f}s")
+
+                t_total = time.perf_counter() - t_total_start
+                print(f"[Timer] ============================================")
+                print(f"[Timer] 完整视频生成总耗时: {t_total:.2f}s")
+                print(f"[Timer] ============================================")
+                print(f"[AccelRenderer] ✓ 完整视频生成完成: {final_path}")
+                return {"status": "success", "info": f"GPU加速合成完整视频成功"}
+            else:
+                print("[VideoUtils] Taichi 初始化失败，回退到 CPU 渲染")
+        except ImportError:
+            print("[VideoUtils] Taichi 未安装，回退到 CPU 渲染")
+
+    # CPU 渲染回退路径
     print(f"正在合成完整视频...")
     try:
         final_video = create_full_video(
@@ -864,15 +1089,11 @@ def render_complete_full_video(
         print("=" * 60)
         print(f"输出文件: {output_file}")
         print(f"视频比特率: {video_bitrate}")
-        print("提示：如需更快速度，可以考虑：")
-        print("  1. 降低视频分辨率（1280x720 比 1920x1080 快4倍）")
-        print("  2. 减少片段数量")
-        print("  3. 关闭转场效果")
         print("=" * 60)
         
         final_video.write_videofile(
             output_file, 
-            fps=30,
+            fps=video_fps,
             threads=12,  # CPU模式使用多线程
             codec='libx264',
             preset='medium',  # balanced 质量：medium preset
@@ -885,45 +1106,53 @@ def render_complete_full_video(
         final_video.close()
         return {"status": "success", "info": f"合成完整视频成功"}
     except Exception as e:
-        print(f"Error: 合成完整视频时发生异常: {traceback.print_exc()}")
-        return {"status": "error", "info": f"合成完整视频时发生异常: {traceback.print_exc()}"}
+        print(f"Error: 合成完整视频时发生异常: {traceback.format_exc()}")
+        return {"status": "error", "info": f"合成完整视频时发生异常: {traceback.format_exc()}"}
 
 
-def combine_full_video_direct(video_clip_path):
+def combine_full_video_direct(video_clip_path, auto_add_transition=False, trans_time=1,
+                              codec=None, bitrate="5000k", video_fps=60):
     """ 
         拼接指定文件夹下的所有视频片段，生成最终视频文件
-        片段需要具有正确的命名格式(0_xxx, 1_xxx, ...)以确保正确排序 
+        片段需要具有正确的命名格式(0_xxx, 1_xxx, ...)以确保正确排序
+        当 auto_add_transition=True 时使用 FFmpeg xfade 添加转场效果
+        codec/bitrate: 可选硬件编码器参数，传递给 xfade 拼接
     """
     print("[Info] --------------------开始拼接视频-------------------")
-    video_files = [f for f in os.listdir(video_clip_path) if f.endswith(".mp4")]
+    t_concat_start = time.perf_counter()
+    # 仅匹配编号前缀的片段文件，排除 final_output.mp4 / *_FULL_VIDEO.mp4 等
+    import re
+    video_files = [f for f in os.listdir(video_clip_path)
+                   if f.endswith(".mp4") and re.match(r'^\d+_', f)]
     sorted_files = sort_video_files(video_files)
     
     if not sorted_files:
         raise ValueError("Error: 没有有效的视频片段文件！")
+    print(f"[Timer] 拼接: 找到 {len(sorted_files)} 个片段")
 
-    # 创建临时目录存放 ts 文件
+    output_path = os.path.join(video_clip_path, "final_output.mp4")
+
+    # 带转场的拼接：使用 FFmpeg xfade 滤镜
+    if auto_add_transition and len(sorted_files) > 1 and trans_time > 0:
+        output_path = _combine_with_xfade(video_clip_path, sorted_files, output_path, trans_time,
+                                          codec=codec, bitrate=bitrate, video_fps=video_fps)
+        print(f"[Timer] 拼接(xfade)总耗时: {time.perf_counter() - t_concat_start:.2f}s")
+        return output_path
+
+    # 无转场的快速拼接：TS remux + concat
     temp_dir = os.path.join(video_clip_path, "temp_ts")
     os.makedirs(temp_dir, exist_ok=True)
     
     try:
-        # 1. 创建MP4文件列表
-        mp4_list_file = os.path.join(video_clip_path, "mp4_files.txt")
-        with open(mp4_list_file, 'w', encoding='utf-8') as f:
-            for file in sorted_files:
-                # 使用正斜杠替换反斜杠，并使用相对路径
-                full_path = os.path.join(video_clip_path, file).replace('\\', '/')
-                f.write(f"file '{full_path}'\n")
-
-        # 2. 创建TS文件列表并转换视频
+        t_remux = time.perf_counter()
         ts_list_file = os.path.join(video_clip_path, "ts_files.txt")
         with open(ts_list_file, 'w', encoding='utf-8') as f:
             for i, file in enumerate(sorted_files):
                 ts_name = f"{i:04d}.ts"
                 ts_path = os.path.join(temp_dir, ts_name)
                 
-                # 转换MP4为TS
                 cmd = [
-                    'ffmpeg', '-y',
+                    get_ffmpeg_binary('ffmpeg'), '-y',
                     '-i', os.path.join(video_clip_path, file),
                     '-c', 'copy',
                     '-bsf:v', 'h264_mp4toannexb',
@@ -932,37 +1161,175 @@ def combine_full_video_direct(video_clip_path):
                 ]
                 subprocess.run(cmd, check=True)
                 
-                # 写入TS文件相对路径，使用正斜杠
                 relative_ts_path = os.path.join('temp_ts', ts_name).replace('\\', '/')
                 f.write(f"file '{relative_ts_path}'\n")
+        print(f"[Timer] 拼接: TS remux 耗时: {time.perf_counter() - t_remux:.2f}s")
 
-        # 3. 拼接TS文件并输出为MP4
-        output_path = os.path.join(video_clip_path, "final_output.mp4")
-        
-        # 切换到视频目录执行拼接命令
-        current_dir = os.getcwd()
-        os.chdir(video_clip_path)
-        
+        t_merge = time.perf_counter()
         cmd = [
-            'ffmpeg', '-y',
+            get_ffmpeg_binary('ffmpeg'), '-y',
             '-f', 'concat',
             '-safe', '0',
-            '-i', 'ts_files.txt',  # 使用相对路径
+            '-i', 'ts_files.txt',
             '-c', 'copy',
-            'final_output.mp4'  # 使用相对路径
+            'final_output.mp4'
         ]
         
-        subprocess.run(cmd, check=True)
-        os.chdir(current_dir)  # 恢复原始工作目录
+        subprocess.run(cmd, check=True, cwd=video_clip_path)
+        print(f"[Timer] 拼接: concat merge 耗时: {time.perf_counter() - t_merge:.2f}s")
         print("视频拼接完成")
         
     finally:
-        # 清理临时文件
         if os.path.exists(temp_dir):
             for file in os.listdir(temp_dir):
                 os.remove(os.path.join(temp_dir, file))
             os.rmdir(temp_dir)
+        for txt_file in ['mp4_files.txt', 'ts_files.txt']:
+            txt_path = os.path.join(video_clip_path, txt_file)
+            if os.path.exists(txt_path):
+                os.remove(txt_path)
 
+    print(f"[Timer] 拼接(concat)总耗时: {time.perf_counter() - t_concat_start:.2f}s")
+    return output_path
+
+
+def _normalize_video_audio(input_path: str, output_path: str):
+    """对完整视频进行音频均衡化（单次 FFmpeg loudnorm，与 CPU 路径的 RMS 归一化效果近似）"""
+    if os.path.exists(output_path):
+        os.remove(output_path)
+    try:
+        t_norm = time.perf_counter()
+        cmd = [
+            get_ffmpeg_binary('ffmpeg'), '-y', '-hide_banner', '-loglevel', 'warning',
+            '-i', input_path,
+            '-c:v', 'copy',
+            '-af', 'loudnorm=I=-20:TP=-1.5:LRA=11,aresample=48000:first_pts=0,asetpts=N/SR/TB',
+            '-c:a', 'aac', '-b:a', '192k',
+            '-ar', '48000',
+            output_path
+        ]
+        subprocess.run(cmd, check=True)
+        if os.path.exists(input_path) and input_path != output_path:
+            os.remove(input_path)
+        print(f"[AccelRenderer] ✓ 音频均衡化完成 (耗时 {time.perf_counter() - t_norm:.2f}s)")
+    except Exception as e:
+        print(f"[AccelRenderer] Warning: 音频均衡化失败 ({e})，直接使用原始文件")
+        if not os.path.exists(output_path):
+            os.rename(input_path, output_path)
+
+
+def _get_video_duration(filepath: str) -> float:
+    """使用 ffprobe 获取视频时长"""
+    cmd = [
+        get_ffmpeg_binary('ffprobe'), '-v', 'error',
+        '-show_entries', 'format=duration',
+        '-of', 'default=noprint_wrappers=1:nokey=1',
+        filepath
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        return float(result.stdout.strip())
+    except ValueError:
+        return 0.0
+
+
+def _combine_with_xfade(video_clip_path: str, sorted_files: list,
+                         output_path: str, trans_time: float,
+                         codec: str = None, bitrate: str = "5000k",
+                         video_fps: int = 60):
+    """使用 FFmpeg xfade 滤镜拼接视频片段（带淡入淡出转场）
+    
+    Args:
+        codec: 硬件编码器名称（如 'h264_nvenc'），为 None 时使用 libx264 软编码
+        bitrate: 硬件编码使用的目标码率
+    """
+    print(f"[Info] 使用 xfade 转场拼接 ({trans_time}s)")
+    file_paths = [os.path.join(video_clip_path, f) for f in sorted_files]
+
+    # 获取每个片段的时长
+    durations = []
+    for fp in file_paths:
+        d = _get_video_duration(fp)
+        if d <= 0:
+            raise ValueError(f"无法获取视频时长: {fp}")
+        durations.append(d)
+
+    n = len(file_paths)
+
+    # 构建 FFmpeg 输入参数
+    cmd = [get_ffmpeg_binary('ffmpeg'), '-y', '-hide_banner', '-loglevel', 'warning']
+    for fp in file_paths:
+        cmd += ['-i', fp]
+
+    # 构建 xfade + acrossfade 滤镜链
+    filter_parts = []
+
+    # 先统一格式和时长：音频必须裁到与视频 offset 使用的 duration 一致，
+    # 避免 AAC priming/padding 在多次 acrossfade 后累积成可感知延迟。
+    for i, duration in enumerate(durations):
+        filter_parts.append(
+            f"[{i}:v]setpts=PTS-STARTPTS,trim=duration={duration:.6f},"
+            f"setpts=PTS-STARTPTS,fps={video_fps},format=yuv420p,settb=AVTB[v{i}]"
+        )
+        filter_parts.append(
+            f"[{i}:a]asetpts=PTS-STARTPTS,aresample=48000:async=1:first_pts=0,"
+            f"atrim=duration={duration:.6f},asetpts=N/SR/TB,"
+            f"aformat=sample_fmts=fltp:channel_layouts=stereo[a{i}]"
+        )
+
+    # 逐对构建 xfade 和 acrossfade
+    # 累计输出时长用于计算下一个 offset
+    accumulated_duration = durations[0]
+    for i in range(n - 1):
+        offset = accumulated_duration - trans_time
+        if offset < 0:
+            offset = 0.01
+
+        if i == 0:
+            v_in_a, a_in_a = f"[v0]", f"[a0]"
+        else:
+            v_in_a, a_in_a = f"[vfade{i-1}]", f"[afade{i-1}]"
+
+        v_in_b, a_in_b = f"[v{i+1}]", f"[a{i+1}]"
+
+        if i < n - 2:
+            v_out, a_out = f"[vfade{i}]", f"[afade{i}]"
+        else:
+            v_out, a_out = "[vout_raw]", "[aout_raw]"
+
+        filter_parts.append(
+            f"{v_in_a}{v_in_b}xfade=transition=fade:duration={trans_time}:offset={offset:.3f}{v_out}"
+        )
+        filter_parts.append(
+            f"{a_in_a}{a_in_b}acrossfade=d={trans_time}:c1=tri:c2=tri{a_out}"
+        )
+
+        # 每次 xfade 后输出时长 = offset + duration[i+1]
+        accumulated_duration = offset + durations[i + 1]
+
+    filter_parts.append("[vout_raw]setpts=PTS-STARTPTS[vout]")
+    filter_parts.append("[aout_raw]aresample=48000:async=1:first_pts=0,asetpts=N/SR/TB[aout]")
+
+    filter_complex = ";".join(filter_parts)
+    cmd += ['-filter_complex', filter_complex]
+    cmd += ['-map', '[vout]', '-map', '[aout]']
+    # 使用硬件编码器（如 NVENC）或回退到 libx264 软编码
+    if codec and codec != 'libx264':
+        try:
+            from utils.AccelRenderer import get_ffmpeg_encoder_args
+            encoder_args = get_ffmpeg_encoder_args(codec, bitrate)
+            print(f"[Info] xfade 使用硬件编码器: {codec} (bitrate={bitrate})")
+        except ImportError:
+            encoder_args = ['-c:v', 'libx264', '-preset', 'fast', '-crf', '18']
+            print("[Info] xfade 硬件编码器不可用，回退到 libx264")
+    else:
+        encoder_args = ['-c:v', 'libx264', '-preset', 'fast', '-crf', '18']
+    cmd += encoder_args
+    cmd += ['-c:a', 'aac', '-b:a', '192k']
+    cmd += [output_path]
+
+    subprocess.run(cmd, check=True)
+    print("视频拼接完成（含转场效果）")
     return output_path
 
 
@@ -971,6 +1338,7 @@ def combine_full_video_ffmpeg_concat_gl(video_clip_path, trans_name="fade", tran
         使用ffmpeg的concat_gl脚本，以指定的转场效果拼接指定文件夹下的所有视频片段，生成最终视频文件
         片段需要具有正确的命名格式(0_xxx, 1_xxx, ...)以确保正确排序
     """
+    video_clip_path = os.path.abspath(video_clip_path)
     video_files = [f for f in os.listdir(video_clip_path) if f.endswith(".mp4")]
     sorted_files = sort_video_files(video_files)
     
@@ -983,18 +1351,31 @@ def combine_full_video_ffmpeg_concat_gl(video_clip_path, trans_name="fade", tran
     mp4_list_file = os.path.join(video_clip_path, "mp4_files.txt")
     with open(mp4_list_file, 'w', encoding='utf-8') as f:
         for file in sorted_files:
-            # 使用正斜杠替换反斜杠，并使用相对路径
+            # 使用绝对路径，避免子进程 cwd 变化导致 ffmpeg-concat 找不到输入文件
             full_path = os.path.join(video_clip_path, file).replace('\\', '/')
             f.write(f"file '{full_path}'\n")
 
 
-    # 使用nodejs脚本拼接视频
-    node_script_path = os.path.join(os.path.dirname(__file__), "external_scripts", "concat_videos_ffmpeg.js")
+    # 使用 nodejs 脚本拼接视频
+    node_binary = shutil.which("node")
+    if not node_binary:
+        raise FileNotFoundError("未找到 node，请先在 macOS 上安装 Node.js 后再使用 ffmpeg-concat 模式。")
 
-    cmd = f'node {node_script_path} -o {output_path} -v {mp4_list_file} -t {trans_name} -d {int(trans_time * 1000)}'
-    print(f"执行命令: {cmd}")
+    project_root = os.path.dirname(os.path.dirname(__file__))
+    node_script_path = os.path.join(project_root, "external_scripts", "concat_videos_ffmpeg.js")
+    if not os.path.exists(node_script_path):
+        raise FileNotFoundError(f"未找到 ffmpeg-concat 脚本: {node_script_path}")
 
-    os.system(cmd)
+    cmd = [
+        node_binary,
+        node_script_path,
+        "-o", output_path,
+        "-v", mp4_list_file,
+        "-t", trans_name,
+        "-d", str(int(trans_time * 1000)),
+    ]
+    print(f"执行命令: {' '.join(cmd)}")
+
+    subprocess.run(cmd, check=True, cwd=project_root)
 
     return output_path
-

@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS records (
     order_in_archive INTEGER NOT NULL, -- The position of this record in the archive list, start from 0
     achievement REAL, -- Score(chuni)/achievement percentage(maimai)
     fc_status TEXT,   -- 'fc', 'aj', 'none'.. (chuni) / 'fc', 'ap', 'none'..(maimai)
-    fs_status TEXT,   -- 'FC', 'AC', 'none'.. (chuni) / 'fs', 'fsd', 'none' .. (maimai)
+    fs_status TEXT,   -- 'fc', 'fcr', 'none'.. (chuni) / 'fs', 'fsd', 'none' .. (maimai)
     dx_score INTEGER, -- only for maimai DX
     dx_rating INTEGER, -- only for maimai DX
     chuni_rating REAL, -- only for Chunithm

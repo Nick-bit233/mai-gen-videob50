@@ -1,19 +1,10 @@
 from typing import Dict, List, Optional, Tuple, Any, Union
-from unittest import case
 from db_utils.DatabaseManager import DatabaseManager
-from utils.DataUtils import get_jacket_image_from_url, query_songs_metadata, format_record_tag, get_valid_time_range
-from PIL import Image
+from utils.DataUtils import query_songs_metadata, format_record_tag, get_valid_time_range, get_level_value_from_chart_meta
+from utils.AssetManager import AssetManager
 import os
 import json
 from datetime import datetime
-
-# 尝试导入 moviepy，如果失败则使用备用方法
-try:
-    from moviepy import VideoFileClip
-    MOVIEPY_AVAILABLE = True
-except ImportError:
-    MOVIEPY_AVAILABLE = False
-    VideoFileClip = None
 
 class DatabaseDataHandler:
     """
@@ -192,6 +183,10 @@ class DatabaseDataHandler:
         - Adds new records.
         - Deletes old records not present in the new data.
         - Preserves configurations for existing charts.
+        
+        Chart uniqueness is defined by (game_type, song_id, chart_type, level_index).
+        Manual override mode uses unique song_id suffix (e.g., "_manual_<archive_id>_<record_idx>")
+        to create isolated chart entries.
         """
         archive_id = self.load_save_archive(username, archive_name)
         if not archive_id:
@@ -202,6 +197,7 @@ class DatabaseDataHandler:
         existing_records_map = {rec['chart_id']: rec for rec in existing_records_list}
         
         processed_chart_ids = set()
+        download_tasks = []
 
         with self.db.get_connection() as conn: # Use a single transaction
             for i, record_data in enumerate(new_records_data):
@@ -209,8 +205,17 @@ class DatabaseDataHandler:
                 chart_data = record_data.get('chart_data')
                 if not chart_data:
                     raise ValueError("Each record must include 'chart_data' field.")
+                
+                # Always use get_or_create_chart - chart uniqueness is by (game_type, song_id, chart_type, level_index)
                 chart_id = self.db.get_or_create_chart(chart_data)
+                
                 processed_chart_ids.add(chart_id)
+
+                download_tasks.append({
+                    'game_type': chart_data.get('game_type', 'maimai'),
+                    'title': chart_data.get('song_name'),
+                    'artist': chart_data.get('artist')
+                })
 
                 # print(f"Updating record for chart_id {chart_id} with data: {record_data}")
                 # 2. Check if this chart already has a record in the archive
@@ -240,6 +245,8 @@ class DatabaseDataHandler:
                 (len(new_records_data), archive_id)
             )
             conn.commit()
+
+        AssetManager.start_background_download(download_tasks)
 
         return archive_id
 
@@ -360,146 +367,55 @@ class DatabaseDataHandler:
             for record in records:
                 title = record['song_name']
                 artist = record['artist']
-                # 获取歌曲元数据
-                metadata = query_songs_metadata(game_type, title, artist)
-                image_code = metadata.get('imageName', None)
-                # 下载封面图片(pillow Image对象) # TODO：优化下载等待速度和提前缓存机制
-                jacket_image = get_jacket_image_from_url(image_code)
+                chart_id = record['chart_id']
+                
+                # Use AssetManager to get image - 优先使用自定义曲绘
+                jacket_image = AssetManager.get_jacket_image(
+                    game_type, title, artist, 
+                    archive_id=archive_id, chart_id=chart_id
+                )
                 reformat_data = {
-                    'chart_id': record['chart_id'],
+                    'chart_id': chart_id,
                     'song_id': record['song_id'],
                     'title': title,
                     'artist': artist,
                     'type': record['chart_type'],
                     'level_index': record['level_index'],
-                    'ds': float(record['difficulty']),
-                    'achievements': f"{record['achievement']:.4f}", # Format as string with 4 decimal places
+                    'ds': record['difficulty'],  # 支持字符串定数
+                    'achievements': f"{record['achievement']:.4f}",
                     'fc': record['fc_status'],
                     'fs': record['fs_status'],
                     'dxScore': record['dx_score'],
                     'max_dx_score': record['max_dx_score'],
                     'jacket': jacket_image,
                     'ra': record['dx_rating'],
-                    'playCount': record['play_count'],
+                    'play_count': record['play_count'],
                     'clip_name': record['clip_title_name'] or f"Clip_{record['order_in_archive'] + 1}"
                 }
                 ret_records.append(reformat_data)
         elif game_type == 'chunithm':
-            from utils.DataUtils import query_chunithm_ds_by_id
-            import json
-            
             for record in records:
                 title = record.get('song_name', '')
                 artist = record.get('artist', '')
                 level_index = record.get('level_index', 0)
                 song_id = record.get('song_id', '')
                 
-                # 尝试从song_id中提取原始ID（用于从元数据查询定数）
-                raw_song_id = None
-                if isinstance(song_id, str):
-                    if song_id.startswith("chunithm_"):
-                        # 格式: chunithm_2442
-                        try:
-                            raw_song_id = int(song_id.replace("chunithm_", ""))
-                        except Exception as e:
-                            print(f"[查看数据] {title}: 提取失败 from '{song_id}': {e}")
-                    elif song_id.isdigit():
-                        # 格式: '2442' (纯数字字符串)
-                        try:
-                            raw_song_id = int(song_id)
-                        except Exception as e:
-                            print(f"[查看数据] {title}: 转换失败 from '{song_id}': {e}")
-                elif isinstance(song_id, int):
-                    # 格式: 2442 (整数)
-                    raw_song_id = song_id
-                
-                # 从元数据中获取定数（优先使用）
-                ds_from_metadata = None
-                if raw_song_id is not None:
-                    try:
-                        ds_from_metadata = query_chunithm_ds_by_id(raw_song_id, level_index)
-                    except Exception as e:
-                        pass  # 忽略错误，使用数据库存储值
-                
-                # 确定定数值：优先使用元数据中的值，否则使用数据库中存储的值
-                if ds_from_metadata is not None:
-                    ds_value = ds_from_metadata
-                else:
-                    # 从数据库读取的difficulty可能是字符串，需要转换
-                    difficulty_str = record.get('difficulty', '0.0')
-                    try:
-                        ds_value = float(difficulty_str)
-                    except:
-                        ds_value = 0.0
-                
-                # 获取歌曲元数据（可选，用于获取额外信息）
-                try:
-                    metadata = query_songs_metadata(game_type, title, artist)
-                except Exception as e:
-                    # 如果查询metadata失败，继续使用record中的数据
-                    metadata = None
-                    print(f"警告: 查询歌曲元数据失败 ({title}): {e}")
-                
-                # 从raw_data中获取rank和其他信息
-                raw_data = record.get('raw_data', {})
-                # 如果get_records_with_extented_data已经解析了raw_data，它应该是dict
-                # 如果没有解析，它可能是字符串
-                if isinstance(raw_data, str):
-                    try:
-                        raw_data = json.loads(raw_data)
-                    except:
-                        raw_data = {}
-                elif not isinstance(raw_data, dict):
-                    raw_data = {}
-                
-                # 从raw_data中提取rank
-                rank = raw_data.get('rank', '') if isinstance(raw_data, dict) else ''
-                
-                # 从元数据中获取note_designer（谱师）
-                note_designer = None
-                if metadata and 'sheets' in metadata:
-                    sheets = metadata.get('sheets', [])
-                    if level_index < len(sheets):
-                        note_designer = sheets[level_index].get('noteDesigner', '')
-                
-                # 注意：chunithm暂时不支持jacket（曲绘）
-                
-                # 转换combo_type和chain_type格式（从原始格式转换为图片生成器期望的格式）
-                # 落雪API返回的值可能是: null, "fullcombo", "alljustice" 等
-                fc_status_raw = record.get('fc_status', '')
-                combo_type = ''
-                if fc_status_raw:
-                    fc_status_lower = str(fc_status_raw).lower().strip()
-                    # 精确匹配落雪API的可能值
-                    if fc_status_lower == 'alljustice' or fc_status_lower == 'aj':
-                        combo_type = 'aj'   # All Justice
-                    elif fc_status_lower == 'alljusticeclear' or fc_status_lower == 'ajc':
-                        combo_type = 'ajc'  # All Justice Clear
-                    elif fc_status_lower == 'fullcombo' or fc_status_lower == 'fc':
-                        combo_type = 'fc'   # Full Combo
-                
-                fs_status_raw = record.get('fs_status', '')
-                chain_type = ''
-                if fs_status_raw:
-                    fs_status_lower = str(fs_status_raw).lower().strip()
-                    # 精确匹配落雪API的可能值
-                    if fs_status_lower == 'fullchain' or fs_status_lower == 'fc':
-                        chain_type = 'fc'   # Full Chain
-                    elif fs_status_lower == 'fullchainrainbow' or fs_status_lower == 'fcr':
-                        chain_type = 'fcr'  # Full Chain Rainbow
-                    elif fs_status_lower == 'alljustice' or fs_status_lower == 'aj':
-                        # alljustice 也可以作为 chain_type
-                        chain_type = 'fc'   # 使用 Full Chain 表示
-                
-                # 从XV元数据获取新定数（lev_XX_i），用于XVERSE版本显示
-                from utils.DataUtils import query_chunithm_xv_ds_by_id
-                xv_ds = None
-                if raw_song_id is not None:
-                    try:
-                        xv_ds = query_chunithm_xv_ds_by_id(raw_song_id, level_index)
-                    except:
-                        pass
-                
+                # 获取定数信息（优先从元数据，如果无采用自定义数据）
+                ds_value_cur = None
+                ds_value_next = None
+                metadata = query_songs_metadata(game_type, title, artist)
+                if metadata:
+                    chart_info = metadata.get('charts_info', [])
+                    for chart_meta in chart_info:
+                        chart_level_index = chart_meta.get('difficulty', -1)
+                        if chart_level_index == level_index:
+                            ds_value_cur = get_level_value_from_chart_meta(chart_meta)
+                            ds_value_next = get_level_value_from_chart_meta(chart_meta, latest_first=True)
+                # 如果定数信息不存在，使用record中的difficulty字段, fallback为"--"
+                if ds_value_cur is None:
+                    ds_value_cur = record.get('difficulty', None)
+                if ds_value_cur is None:
+                    ds_value_cur = "--"
                 reformat_data = {
                     'chart_id': record.get('chart_id'),
                     'song_id': song_id,
@@ -507,18 +423,13 @@ class DatabaseDataHandler:
                     'artist': artist,
                     'type': record.get('chart_type', 0),
                     'level_index': level_index,
-                    'ds_cur': ds_value,  # VERSE版本的定数（当前版本）
-                    'ds': ds_value,  # 添加ds字段用于显示
-                    'ds_next': xv_ds if xv_ds is not None else 0.0,  # XVERSE版本的新定数
+                    'ds_cur': ds_value_cur,
+                    'ds_next': ds_value_next,
                     'score': int(record.get('achievement', 0)), # Format as integer score
-                    'combo_type': combo_type,  # 转换后的格式：fc, aj, ajc
-                    'chain_type': chain_type,  # 转换后的格式：fc, fcr
-                    'rank': rank,  # 添加rank字段
-                    'note_designer': note_designer,  # 添加谱师字段
-                    # 注意：chunithm暂时不支持jacket
+                    'combo_type': record.get('fc_status', 'none'), 
+                    'chain_type': record.get('fs_status', 'none'),
                     'ra': record.get('chuni_rating', 0.0),
-                    'playCount': record.get('play_count', 0),
-                    'play_count': record.get('play_count', 0),  # 添加play_count字段
+                    'play_count': record.get('play_count', 0), 
                     'clip_name': record.get('clip_title_name') or f"Clip_{record.get('order_in_archive', 0) + 1}"
                 }
                 ret_records.append(reformat_data)
@@ -548,11 +459,13 @@ class DatabaseDataHandler:
             for record in records:
                 title = record['song_name']
                 artist = record['artist']
-                # 获取歌曲元数据
-                metadata = query_songs_metadata(game_type, title, artist)
-                image_code = metadata.get('imageName', None)
-                # 下载封面图片(pillow Image对象) # TODO：优化下载等待速度和提前缓存机制
-                jacket_image = get_jacket_image_from_url(image_code)
+                chart_id = record['chart_id']
+                
+                # Use AssetManager to get image - 优先使用自定义曲绘
+                jacket_image = AssetManager.get_jacket_image(
+                    game_type, title, artist, 
+                    archive_id=archive_id, chart_id=chart_id
+                )
                 reformat_data = {
                     'chart_id': record['chart_id'],
                     'song_id': record['song_id'],
@@ -560,7 +473,7 @@ class DatabaseDataHandler:
                     'artist': artist,
                     'type': record['chart_type'],
                     'level_index': record['level_index'],
-                    'ds': float(record['difficulty']),
+                    'ds': record['difficulty'],  # 支持字符串定数
                     'achievements': f"{record['achievement']:.4f}", # Format as string with 4 decimal places
                     'fc': record['fc_status'],
                     'fs': record['fs_status'],
@@ -568,98 +481,33 @@ class DatabaseDataHandler:
                     'max_dx_score': record['max_dx_score'],
                     'jacket': jacket_image,
                     'ra': record['dx_rating'],
-                    'playCount': record['play_count'],
+                    'play_count': record['play_count'],
                     'clip_name': record['clip_title_name'] or f"Clip_{record['order_in_archive'] + 1}"
                 }
                 ret_records.append(reformat_data)
-        elif game_type == 'chunithm':
-            from utils.DataUtils import query_chunithm_ds_by_id
-            import json
-            
+        elif game_type == 'chunithm':       
             for record in records:
                 title = record.get('song_name', '')
                 artist = record.get('artist', '')
                 level_index = record.get('level_index', 0)
                 song_id = record.get('song_id', '')
                 
-                # 尝试从song_id中提取原始ID（用于从元数据查询定数）
-                raw_song_id = None
-                if isinstance(song_id, str):
-                    if song_id.startswith("chunithm_"):
-                        # 格式: chunithm_2442
-                        try:
-                            raw_song_id = int(song_id.replace("chunithm_", ""))
-                        except Exception as e:
-                            print(f"[查看数据] {title}: 提取失败 from '{song_id}': {e}")
-                    elif song_id.isdigit():
-                        # 格式: '2442' (纯数字字符串)
-                        try:
-                            raw_song_id = int(song_id)
-                        except Exception as e:
-                            print(f"[查看数据] {title}: 转换失败 from '{song_id}': {e}")
-                elif isinstance(song_id, int):
-                    # 格式: 2442 (整数)
-                    raw_song_id = song_id
-                
-                # 从元数据中获取定数（优先使用）
-                ds_from_metadata = None
-                if raw_song_id is not None:
-                    try:
-                        ds_from_metadata = query_chunithm_ds_by_id(raw_song_id, level_index)
-                    except Exception as e:
-                        pass  # 忽略错误，使用数据库存储值
-                
-                # 确定定数值：优先使用元数据中的值，否则使用数据库中存储的值
-                if ds_from_metadata is not None:
-                    ds_value = ds_from_metadata
-                else:
-                    # 从数据库读取的difficulty可能是字符串，需要转换
-                    difficulty_str = record.get('difficulty', '0.0')
-                    try:
-                        ds_value = float(difficulty_str)
-                    except:
-                        ds_value = 0.0
-                
-                # 获取歌曲元数据（可选，用于获取额外信息）
-                try:
-                    metadata = query_songs_metadata(game_type, title, artist)
-                except Exception as e:
-                    # 如果查询metadata失败，继续使用record中的数据
-                    metadata = None
-                    print(f"警告: 查询歌曲元数据失败 ({title}): {e}")
-                
-                # 从raw_data中获取rank和其他信息
-                raw_data = record.get('raw_data', {})
-                # 如果get_records_with_extented_data已经解析了raw_data，它应该是dict
-                # 如果没有解析，它可能是字符串
-                if isinstance(raw_data, str):
-                    try:
-                        raw_data = json.loads(raw_data)
-                    except:
-                        raw_data = {}
-                elif not isinstance(raw_data, dict):
-                    raw_data = {}
-                
-                # 从raw_data中提取rank
-                rank = raw_data.get('rank', '') if isinstance(raw_data, dict) else ''
-                
-                # 从元数据中获取note_designer（谱师）
-                note_designer = None
-                if metadata and 'sheets' in metadata:
-                    sheets = metadata.get('sheets', [])
-                    if level_index < len(sheets):
-                        note_designer = sheets[level_index].get('noteDesigner', '')
-                
-                # 注意：这里不下载曲绘图片，因为只是用于查看数据
-                
-                # 从XV元数据获取新定数（lev_XX_i）
-                from utils.DataUtils import query_chunithm_xv_ds_by_id
-                xv_ds = None
-                if raw_song_id is not None:
-                    try:
-                        xv_ds = query_chunithm_xv_ds_by_id(raw_song_id, level_index)
-                    except:
-                        pass
+                # 获取定数信息（优先从元数据，如果无采用自定义数据）
+                ds_value_cur = None
+                ds_value_next = None
+                metadata = query_songs_metadata(game_type, title, artist)
+                if metadata:
+                    chart_info = metadata.get('charts_info', [])
+                    for chart_meta in chart_info:
+                        chart_level_index = chart_meta.get('difficulty', -1)
+                        if chart_level_index == level_index:
+                            ds_value_cur = get_level_value_from_chart_meta(chart_meta)
+                            ds_value_next = get_level_value_from_chart_meta(chart_meta, latest_first=True)
+                # 如果定数信息不存在，使用record中的difficulty字段, fallback为"--"
+                if ds_value_cur is None:
+                    ds_value_cur = record.get('difficulty', None)
+                if ds_value_cur is None:
+                    ds_value_cur = "--"
                 
                 reformat_data = {
                     'chart_id': record.get('chart_id'),
@@ -668,19 +516,13 @@ class DatabaseDataHandler:
                     'artist': artist,
                     'type': record.get('chart_type', 0),
                     'level_index': level_index,
-                    'ds_cur': ds_value,  # 使用从元数据获取的定数
-                    'ds': ds_value,  # 添加ds字段用于显示
-                    'xv_ds': xv_ds if xv_ds is not None else 0.0,  # XV版本的新定数
-                    'ds_next': None,
+                    'ds_cur': ds_value_cur,
+                    'ds_next': ds_value_next,
                     'score': int(record.get('achievement', 0)), # Format as integer score
-                    'combo_type': record.get('fc_status', ''),
-                    'chain_type': record.get('fs_status', ''),
-                    'rank': rank,  # 添加rank字段
-                    'note_designer': note_designer,  # 添加谱师字段
-                    # 注意：不包含jacket字段，因为只是用于查看
+                    'combo_type': record.get('fc_status', 'none'), 
+                    'chain_type': record.get('fs_status', 'none'),
                     'ra': record.get('chuni_rating', 0.0),
-                    'playCount': record.get('play_count', 0),
-                    'play_count': record.get('play_count', 0),  # 添加play_count字段
+                    'play_count': record.get('play_count', 0), 
                     'clip_name': record.get('clip_title_name') or f"Clip_{record.get('order_in_archive', 0) + 1}"
                 }
                 ret_records.append(reformat_data)
@@ -835,7 +677,8 @@ class DatabaseDataHandler:
                 'clip_title_name': record.get('clip_title_name'),
                 'record_tag': format_record_tag(
                     record.get('game_type'), record.get('clip_title_name'), 
-                    record.get('song_id'), record.get('chart_type', -1), record.get('level_index', -1)
+                    record.get('song_id'), record.get('chart_type', -1), record.get('level_index', -1),
+                    record.get('song_name'), record.get('chart_id')
                 )
             }
             ret_configs.append(entry)
@@ -860,33 +703,7 @@ class DatabaseDataHandler:
             s = record.get('video_slice_start', 0)
             e = record.get('video_slice_end', 0)
             start, end = get_valid_time_range(s, e)
-            
-            # 验证并调整时间范围，确保不超过视频实际长度
-            video_path = record.get('video_path')
-            if video_path and os.path.exists(video_path) and MOVIEPY_AVAILABLE:
-                try:
-                    video_clip = VideoFileClip(video_path)
-                    video_duration = video_clip.duration
-                    video_clip.close()
-                    
-                    # 如果结束时间超出视频长度，自动调整
-                    if end > video_duration:
-                        print(f"警告: {record.get('clip_title_name', '未知')} 的结束时间 {end:.2f} 超出视频长度 {video_duration:.2f}，自动调整")
-                        end = video_duration
-                    
-                    # 如果开始时间超出视频长度，重置为0
-                    if start >= video_duration:
-                        print(f"警告: {record.get('clip_title_name', '未知')} 的开始时间 {start:.2f} 超出视频长度 {video_duration:.2f}，自动调整为0")
-                        start = 0
-                        end = min(end, video_duration)
-                    
-                    # 确保结束时间大于开始时间
-                    if end <= start:
-                        end = min(start + 1, video_duration)
-                except Exception as e:
-                    print(f"警告: 无法读取视频 {video_path} 的长度，跳过时间验证: {e}")
-            
-            duration = end - start  # 修复：应该是 end - start，不是 start - end
+            duration = end - start
             entry = {
                 'game_type': record.get('game_type'),
                 'chart_id': record.get('chart_id', None),
@@ -948,15 +765,6 @@ class DatabaseDataHandler:
         archive_id = self.load_save_archive(username, archive_name)
         if not archive_id:
             raise ValueError("No active archive found to save configuration.")
-        
-        # Delete existing configurations of this type
-        # with self.db.get_connection() as conn:
-        #     cursor = conn.cursor()
-        #     cursor.execute('''
-        #         DELETE FROM extra_video_configs 
-        #         WHERE archive_id = ? AND config_type = ?
-        #     ''', (archive_id, config_type))
-        #     conn.commit()
         
         # Save new configurations with proper indexing
         for index, config_data in enumerate(config_data_list):

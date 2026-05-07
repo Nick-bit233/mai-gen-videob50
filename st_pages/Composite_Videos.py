@@ -4,7 +4,7 @@ import os
 
 from datetime import datetime
 from utils.PageUtils import load_style_config, open_file_explorer, read_global_config, write_global_config, get_game_type_text
-from utils.PathUtils import get_user_base_dir, get_user_media_dir
+from utils.PathUtils import get_user_media_dir
 from utils.VideoUtils import render_all_video_clips, combine_full_video_direct, combine_full_video_ffmpeg_concat_gl, render_complete_full_video
 from db_utils.DatabaseDataHandler import get_database_handler
 
@@ -16,11 +16,20 @@ db_handler = get_database_handler()
 # =============================================================================
 # Page layout starts here
 # ==============================================================================
-st.header("Step 5: 视频生成")
+st.header("🎥 视频生成")
 
 st.markdown(f"> 您正在使用 **{get_game_type_text(G_type)}** 视频生成模式。")
 
 st.info("在执行视频生成前，请确保已经完成了4-1和4-2步骤，并且检查所有填写的配置无误。")
+
+# 检查Taichi依赖是否安装
+if 'taichi_accel_installed' not in st.session_state:
+    st.session_state.taichi_accel_installed = False
+    try:
+        from utils.TaichiAccel import TAICHI_AVAILABLE
+        st.session_state.taichi_accel_installed = TAICHI_AVAILABLE
+    except ImportError:
+        st.session_state.taichi_accel_installed = False
 
 ### Savefile Management - Start ###
 username = st.session_state.get("username", None)
@@ -33,8 +42,7 @@ if not username:
 st.write(f"当前用户名: **{username}**")
 archives = db_handler.get_user_save_list(username, game_type=G_type)
 
-data_name = "B30" if G_type == "chunithm" else "B50"
-with st.expander(f"更换{data_name}存档"):
+with st.expander(f"更换分表存档"):
     if not archives:
         st.warning("未找到任何存档。请先新建或加载存档。")
         st.stop()
@@ -68,21 +76,23 @@ if not archive_id:
     st.stop()
 ### Savefile Management - End ###
 
-st.write("视频生成相关设置")
+st.markdown("#### 视频生成设置")
 
 _mode_index = 0 if G_config['ONLY_GENERATE_CLIPS'] else 1
 _video_res = G_config['VIDEO_RES']
-_video_bitrate = 5000 # TODO：存储到配置文件中
+_video_bitrate = G_config.get('VIDEO_BITRATE', 5000)
+_video_fps = G_config.get('VIDEO_FPS', 60)
 _trans_enable = G_config['VIDEO_TRANS_ENABLE']
 _trans_time = G_config['VIDEO_TRANS_TIME']
 
 options = ["仅生成每个视频片段", "生成完整视频"]
 with st.container(border=True):
     mode_str = st.radio("选择视频生成模式", 
+            horizontal=True,
             options=options, 
             index=_mode_index)
     
-    force_render_clip = st.checkbox("生成视频片段时，强制覆盖已存在的视频文件", value=False)
+    force_render_clip = st.checkbox("生成视频片段时，强制覆盖已存在的视频文件（否则将跳过同名片段的生成）", value=False)
 
 trans_config_placeholder = st.empty()
 with trans_config_placeholder.container(border=True):
@@ -90,22 +100,39 @@ with trans_config_placeholder.container(border=True):
     trans_enable = st.checkbox("启用片段过渡", value=_trans_enable)
     trans_time = st.number_input("过渡时间", min_value=0.5, max_value=10.0, value=_trans_time, step=0.5,
                                  disabled=not trans_enable)
-with st.container(border=True):
-    st.write("视频分辨率")
-    col1, col2 = st.columns(2)
-    v_res_width = col1.number_input("视频宽度", min_value=360, max_value=4096, value=_video_res[0])
-    v_res_height = col2.number_input("视频高度", min_value=360, max_value=4096, value=_video_res[1])
+vcof_col1, vcof_col2 = st.columns(2)
+with vcof_col1:
+    with st.container(border=True):
+        st.write("视频分辨率")
+        col1, col2 = st.columns(2)
+        v_res_width = col1.number_input("视频宽度", min_value=360, max_value=4096, value=_video_res[0])
+        v_res_height = col2.number_input("视频高度", min_value=360, max_value=4096, value=_video_res[1])
+with vcof_col2:
+    with st.container(border=True):
+        st.write("视频比特率(kbps)")  
+        v_bitrate = st.number_input("视频比特率", min_value=1000, max_value=10000, value=_video_bitrate)
 
 with st.container(border=True):
-    st.write("视频比特率(kbps)")  
-    v_bitrate = st.number_input("视频比特率", min_value=1000, max_value=10000, value=_video_bitrate)
+    st.write("视频帧率")
+    v_fps = st.number_input("输出帧率 (fps)", min_value=24, max_value=120, value=_video_fps, step=1)
+
+_gpu_accel = G_config.get('USE_GPU_ACCEL', False)
+with st.container(border=True):
+    st.markdown("##### 🚀 GPU 加速渲染（实验性）")
+    gpu_accel = st.checkbox(
+        "启用 Taichi GPU 加速",
+        value=_gpu_accel and st.session_state.taichi_accel_installed,
+        disabled=not st.session_state.taichi_accel_installed,
+        help="使用 Taichi GPU 合成 + FFmpeg 硬件编码加速视频渲染。如果无法勾选，请在主页检查是否安装Taichi加速组件。"
+             "启用后将自动检测最佳 GPU 后端（CUDA/Vulkan/Metal）和硬件编码器（NVENC/VideoToolbox 等）。"
+    )
+    gpu_accel = gpu_accel and st.session_state.taichi_accel_installed
 
 v_mode_index = options.index(mode_str)
 v_bitrate_kbps = f"{v_bitrate}k"
 
 user_media_paths = get_user_media_dir(username, game_type=G_type)
 video_output_path = user_media_paths['output_video_dir']
-
 if not os.path.exists(video_output_path):
     os.makedirs(video_output_path)
 
@@ -121,40 +148,82 @@ except Exception as e:
         st.error(traceback.format_exc())
     st.stop()
 
+if not main_configs:
+    st.error("❌ 未找到主视频配置，请检查4-1步骤是否正常保存！")
+
+if not intro_configs or not ending_configs:
+    st.error("❌ 未找到片头或片尾配置，请检查4-2步骤是否正常保存！")
+
 def save_video_render_config():
     # 保存配置
     G_config['ONLY_GENERATE_CLIPS'] = v_mode_index == 0
     G_config['VIDEO_RES'] = (v_res_width, v_res_height)
     G_config['VIDEO_BITRATE'] = v_bitrate
+    G_config['VIDEO_FPS'] = v_fps
     G_config['VIDEO_TRANS_ENABLE'] = trans_enable
     G_config['VIDEO_TRANS_TIME'] = trans_time
+    G_config['USE_GPU_ACCEL'] = gpu_accel
     write_global_config(G_config)
     st.toast("配置已保存！")
 
-if st.button("开始生成视频"):
+if st.button("开始生成视频", use_container_width=True, type="primary"):
     save_video_render_config()
     video_res = (v_res_width, v_res_height)
 
+    # 前置检查 FFmpeg 版本
+    try:
+        from utils.AccelRenderer import check_ffmpeg_version
+        check_ffmpeg_version()
+    except RuntimeError as e:
+        st.error(f"❌ FFmpeg 版本检查失败: {e}")
+        st.stop()
+
     placeholder = st.empty()
+
+    # GPU 加速时创建 Streamlit 进度回调
+    def _make_st_progress(container):
+        progress_bar = container.progress(0, text="准备渲染...")
+        status_text = container.empty()
+        def callback(clip_idx, total_clips, frame, total_frames, clip_name):
+            clip_progress = clip_idx / total_clips if total_clips > 0 else 0
+            frame_progress = frame / total_frames if total_frames > 0 else 0
+            overall = (clip_idx + frame_progress) / total_clips if total_clips > 0 else 0
+            progress_bar.progress(min(overall, 1.0),
+                text=f"🚀 正在渲染: {int(overall * 100)}% | 片段 {clip_idx+1}/{total_clips}: {clip_name} ({frame}/{total_frames})")
+        return callback if gpu_accel else None
+
     if v_mode_index == 0:
         try:
             with placeholder.container(border=True, height=560):
                 st.warning("生成过程中请不要手动跳转到其他页面，或刷新本页面，否则可能导致生成失败！")
+                progress_cb = _make_st_progress(st.container()) if gpu_accel else None
                 with st.spinner("正在生成所有视频片段……"):
                     render_all_video_clips(
                         game_type=G_type,
-                        
+                        style_config=style_config,
+                        main_configs=main_configs,
+                        video_output_path=video_output_path,
+                        video_res=video_res,
+                        video_bitrate=v_bitrate_kbps,
+                        video_fps=v_fps,
+                        intro_configs=intro_configs,
+                        ending_configs=ending_configs,
+                        trans_time=trans_time,
+                        force_render=force_render_clip,
+                        use_gpu_accel=gpu_accel,
+                        progress_callback=progress_cb
                     )
-                    st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
+                    if not gpu_accel:
+                        st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
             st.success("视频片段生成结束！点击下方按钮打开视频所在文件夹")
         except Exception as e:
-            st.error(f"视频片段生成失败，错误详情: {traceback.print_exc()}")
+            st.error(f"视频片段生成失败，错误: {e}，转到控制台查看详情")
 
     else:
         try:
             with placeholder.container(border=True, height=560):
-                st.info("请注意，生成完整视频通常需要一定时间，您可以在控制台窗口中查看进度")
                 st.warning("生成过程中请不要手动跳转到其他页面，或刷新本页面，否则可能导致生成失败！")
+                progress_cb = _make_st_progress(st.container()) if gpu_accel else None
                 with st.spinner("正在生成完整视频……"):
                     output_info = render_complete_full_video(
                         username=username,
@@ -166,86 +235,127 @@ if st.button("开始生成视频"):
                         video_output_path=video_output_path,
                         video_res=video_res,
                         video_bitrate=v_bitrate_kbps,
+                        video_fps=v_fps,
                         video_trans_enable=trans_enable,
                         video_trans_time=trans_time,
-                        full_last_clip=False
+                        full_last_clip=False,
+                        use_gpu_accel=gpu_accel,
+                        use_baked_fade=False if gpu_accel else None,
+                        progress_callback=progress_cb
                     )
                     st.write(f"【{output_info['info']}")
             st.success("完整视频生成结束！点击下方按钮打开视频所在文件夹")
         except Exception as e:
-            st.error(f"完整视频生成失败，错误详情: {traceback.print_exc()}")
+            st.error(f"完整视频生成失败，错误: {e}，转到控制台查看详情")
 
 abs_path = os.path.abspath(video_output_path)
 if st.button("打开视频输出文件夹"):
     open_file_explorer(abs_path)
-st.write(f"如果打开文件夹失败，请在此路径中寻找生成的视频：{abs_path}")
+st.markdown(f">💡 如果打开文件夹失败，请在此路径中寻找生成的视频：{abs_path}")
 
 # 添加分割线
 st.divider()
 
-st.write("其他视频生成方案")
-st.warning("请注意，此区域的功能未经充分测试，不保证生成视频的效果或稳定性，请谨慎使用。")
-with st.container(border=True):
-    st.write("【快速模式】先生成所有视频片段，再直接拼接为完整视频")
-    st.info("本方案会降低视频生成过程中的内存占用，并减少生成时间，但视频片段之间将只有黑屏过渡。")
-    if st.button("直接拼接方式生成完整视频"):
-        save_video_render_config()
-        video_res = (v_res_width, v_res_height)
-        with st.spinner("正在生成所有视频片段……"):
-            render_all_video_clips(
-                game_type=G_type,
-                style_config=style_config,
-                main_configs=main_configs,
-                video_output_path=video_output_path, 
-                video_res=video_res, 
-                video_bitrate=v_bitrate_kbps,
-                intro_configs=intro_configs,
-                ending_configs=ending_configs,
-                auto_add_transition=trans_enable, 
-                trans_time=trans_time,
-                force_render=force_render_clip
-            )
-            st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
-        with st.spinner("正在拼接视频……"):
-            combine_full_video_direct(video_output_path)
-        st.success("所有任务已退出，请从上方按钮打开文件夹查看视频生成结果")
-
-with st.container(border=True):
-    st.write("【更多过渡效果】使用ffmpeg concat生成视频，允许自定义片段过渡效果")
-    st.warning("本功能要求先在本地环境中安装ffmpeg concat插件，请务必查看使用说明后进行！")
-    @st.dialog("ffmpeg-concat使用说明")
-    def delete_video_config_dialog(file):
-        ### 展示markdown文本
-        # read markdown file
-        with open(file, "r", encoding="utf-8") as f:
-            doc = f.read()
-        st.markdown(doc)
-
-    if st.button("查看ffmpeg concat使用说明", key=f"open_ffmpeg_concat_doc"):
-        delete_video_config_dialog("./docs/ffmpeg_concat_Guide.md")
-
+with st.expander("展开其他视频生成方案"):
+    st.warning("⚠️ 请注意，此区域的功能未经充分测试，不保证生成视频的效果或稳定性，请谨慎使用。")
     with st.container(border=True):
-        st.write("片段过渡效果")
-        trans_name = st.selectbox("选择过渡效果", options=["fade", "circleOpen", "crossWarp", "directionalWarp", "directionalWipe", "crossZoom", "dreamy", "squaresWire"], index=0)
-        if st.button("使用ffmpeg concat生成视频"):
+        st.write("【简单模式】直接拼接视频片段为完整视频（无过渡效果）")
+        st.info("使用此模式可以降低视频生成过程中的内存占用，但视频片段之间将只有黑屏过渡。此模式支持GPU加速。")
+        if st.button("直接拼接方式生成完整视频"):
             save_video_render_config()
             video_res = (v_res_width, v_res_height)
-            with st.spinner("正在生成所有视频片段……"):
-                render_all_video_clips(
-                    game_type=G_type,
-                    style_config=style_config,
-                    main_configs=main_configs,
-                    video_output_path=video_output_path, 
-                    video_res=video_res, 
-                    video_bitrate=v_bitrate_kbps,
-                    intro_configs=intro_configs,
-                    ending_configs=ending_configs,
-                    auto_add_transition=trans_enable,
-                    trans_time=trans_time,
-                    force_render=force_render_clip
-                )
-                st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
-            with st.spinner("正在拼接视频……"):
-                combine_full_video_ffmpeg_concat_gl(video_output_path, trans_name, trans_time)
-                st.info("已启动视频拼接任务，请在控制台窗口查看进度……")
-            st.success("所有任务已退出，请从上方按钮打开文件夹查看视频生成结果")
+            try:
+                from utils.AccelRenderer import check_ffmpeg_version
+                check_ffmpeg_version()
+            except RuntimeError as e:
+                st.error(f"❌ FFmpeg 版本检查失败: {e}")
+                st.stop()
+            if gpu_accel:
+                # GPU快速模式：方案B（烘焙黑场过渡 + 流拷贝）
+                try:
+                    progress_cb = _make_st_progress(st.container())
+                    with st.spinner("正在使用GPU加速快速模式生成完整视频……"):
+                        output_info = render_complete_full_video(
+                            username=username,
+                            game_type=G_type,
+                            main_configs=main_configs,
+                            intro_configs=intro_configs,
+                            ending_configs=ending_configs,
+                            style_config=style_config,
+                            video_output_path=video_output_path,
+                            video_res=video_res,
+                            video_bitrate=v_bitrate_kbps,
+                            video_fps=v_fps,
+                            video_trans_enable=trans_enable,
+                            video_trans_time=trans_time,
+                            full_last_clip=False,
+                            use_gpu_accel=True,
+                            use_baked_fade=True,
+                            progress_callback=progress_cb
+                        )
+                        st.write(f"【{output_info['info']}")
+                    st.success("GPU快速模式生成完成！点击上方按钮打开文件夹查看视频")
+                except Exception as e:
+                    st.error(f"GPU快速模式生成失败，错误: {e}，转到控制台查看详情")
+            else:
+                # CPU快速模式：原有逻辑
+                with st.spinner("正在生成所有视频片段……"):
+                    render_all_video_clips(
+                        game_type=G_type,
+                        style_config=style_config,
+                        main_configs=main_configs,
+                        video_output_path=video_output_path, 
+                        video_res=video_res, 
+                        video_bitrate=v_bitrate_kbps,
+                        video_fps=v_fps,
+                        intro_configs=intro_configs,
+                        ending_configs=ending_configs,
+                        auto_add_transition=trans_enable, 
+                        trans_time=trans_time,
+                        force_render=force_render_clip
+                    )
+                    st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
+                with st.spinner("正在拼接视频……"):
+                    combine_full_video_direct(video_output_path, video_fps=v_fps)
+                st.success("所有任务已退出，请从上方按钮打开文件夹查看视频生成结果")
+
+    with st.container(border=True):
+        st.write("【更多过渡效果】使用ffmpeg concat生成视频，允许自定义片段过渡效果")
+        st.warning("此模式要求先在本地环境中安装ffmpeg concat插件，请务必查看使用说明后进行！此模式不支持GPU加速！")
+        @st.dialog("ffmpeg-concat使用说明")
+        def delete_video_config_dialog(file):
+            ### 展示markdown文本
+            # read markdown file
+            with open(file, "r", encoding="utf-8") as f:
+                doc = f.read()
+            st.markdown(doc)
+
+        if st.button("查看ffmpeg concat使用说明", key=f"open_ffmpeg_concat_doc"):
+            delete_video_config_dialog("./docs/ffmpeg_concat_Guide.md")
+
+        with st.container(border=True):
+            st.write("片段过渡效果")
+            trans_name = st.selectbox("选择过渡效果", options=["fade", "circleOpen", "crossWarp", "directionalWarp", "directionalWipe", "crossZoom", "dreamy", "squaresWire"], index=0)
+            if st.button("使用ffmpeg concat生成视频"):
+                save_video_render_config()
+                video_res = (v_res_width, v_res_height)
+                with st.spinner("正在生成所有视频片段……"):
+                    render_all_video_clips(
+                        game_type=G_type,
+                        style_config=style_config,
+                        main_configs=main_configs,
+                        video_output_path=video_output_path, 
+                        video_res=video_res, 
+                        video_bitrate=v_bitrate_kbps,
+                        video_fps=v_fps,
+                        intro_configs=intro_configs,
+                        ending_configs=ending_configs,
+                        auto_add_transition=trans_enable,
+                        trans_time=trans_time,
+                        force_render=force_render_clip
+                    )
+                    st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
+                with st.spinner("正在拼接视频……"):
+                    combine_full_video_ffmpeg_concat_gl(video_output_path, trans_name, trans_time)
+                    st.info("已启动视频拼接任务，请在控制台窗口查看进度……")
+                st.success("所有任务已退出，请从上方按钮打开文件夹查看视频生成结果")
