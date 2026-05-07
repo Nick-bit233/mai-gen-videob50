@@ -116,7 +116,7 @@ def detect_hw_encoder() -> Tuple[str, str]:
                 # 实际探测编码器是否能工作（驱动版本可能不满足要求）
                 probe = subprocess.run(
                     [get_ffmpeg_binary('ffmpeg'), '-y', '-hide_banner', '-loglevel', 'error',
-                     '-f', 'lavfi', '-i', 'nullsrc=s=64x64:d=0.04:r=25',
+                     '-f', 'lavfi', '-i', 'nullsrc=s=256x256:d=0.1:r=30',
                      '-c:v', codec, '-f', 'null', '-'],
                     capture_output=True, text=True, timeout=10
                 )
@@ -349,7 +349,12 @@ def _prepare_bg_frame(bg_path: str, resolution: tuple, is_video: bool = False,
             return cv2.resize(frame, resolution)
     
     # 静态图片背景
-    img = cv2.imread(bg_path, cv2.IMREAD_COLOR)
+    try:
+        with open(bg_path, 'rb') as f:
+            img_array = np.frombuffer(f.read(), dtype=np.uint8)
+            img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+    except Exception:
+        img = None
     if img is None:
         return np.zeros((resolution[1], resolution[0], 3), dtype=np.uint8)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -381,7 +386,12 @@ def _load_image_rgba(path: str) -> np.ndarray:
 
 def _load_image_rgb(path: str, target_size: tuple = None) -> np.ndarray:
     """加载图片为 RGB numpy 数组"""
-    img = cv2.imread(path, cv2.IMREAD_COLOR)
+    try:
+        with open(path, 'rb') as f:
+            img_array = np.frombuffer(f.read(), dtype=np.uint8)
+            img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+    except Exception:
+        img = None
     if img is None:
         if target_size:
             return np.zeros((target_size[1], target_size[0], 3), dtype=np.uint8)
