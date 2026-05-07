@@ -9,6 +9,7 @@ import struct
 import random
 from PIL import Image
 from typing import Dict, Union, Optional
+from functools import lru_cache
 
 # 服务器bucket用于转存融合过的的metadata
 BUCKET_ENDPOINT = "https://nickbit-maigen-images.oss-cn-shanghai.aliyuncs.com"
@@ -228,6 +229,7 @@ def download_metadata(game_type="maimai") -> tuple[str, dict]:
         print(f"Failed to download metadata from {url}. Status code: {response.status_code}")
         raise FileNotFoundError
     
+@lru_cache(maxsize=2)
 def load_metadata(game_type: str) -> dict:
     metadata_dir = './music_metadata/'
     if game_type == "maimai":

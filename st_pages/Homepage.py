@@ -1,11 +1,13 @@
 import streamlit as st
 from utils.PageUtils import change_theme, get_game_type_text, update_music_metadata, DEFAULT_STYLE_CONFIG_FILE_PATH, get_db_manager, clear_all_user_data
+from utils.DataUtils import load_metadata
 from db_utils.DataMigration import old_data_migration
 from utils.themes import THEME_COLORS, DEFAULT_STYLES
 from utils.WebAgentUtils import st_init_cache_pathes
 import datetime
 import os
 import json
+import sys
 from pathlib import Path
 
 def get_user_config_dir():
@@ -40,6 +42,10 @@ def save_last_game_type(game_type: str):
             json.dump(data, f, ensure_ascii=False, indent=4)
     except Exception:
         pass  # 静默处理保存失败
+
+def refresh_music_metadata_cache():
+    load_metadata.cache_clear()
+    st.cache_data.clear()
 
 def load_last_game_type() -> str:
     """
@@ -230,14 +236,14 @@ with st.container(border=False):
                         python_executable = os.path.join(os.getcwd(), "runtime", "python.exe")
                         if not os.path.exists(python_executable):
                             st.warning("⚠️ 在整合包中未找到python.exe，正在尝试使用系统Python安装Taichi...")
-                            python_executable = "python"
+                            python_executable = sys.executable
                     else:
-                        python_executable = "python3"
+                        python_executable = sys.executable
                     subprocess.check_call([python_executable, "-m", "pip", "install", "taichi[all]"])
                     st.success("✅ Taichi加速库安装成功！请重新启动应用以生效。")
                 except Exception as e:
                     st.error(f"❌ 安装失败: {e}")
-        st.markdown("> 如果您是从源代码手动部署，运行下列命令安装依赖，然后重启应用：\n\n```\npip install taichi[all]\n```")
+        st.markdown(f"> 如果您是从源代码手动部署，运行下列命令安装依赖，然后重启应用：\n\n```bash\n{sys.executable} -m pip install taichi[all]\n```")
     else:
         st.success("✅ GPU加速组件已安装，您已可以在合成视频前启用GPU加速！", icon="⚡")
 
@@ -318,6 +324,7 @@ with st.container(border=True):
         if needs_update:
             with st.spinner("正在更新乐曲元数据..."):
                 update_music_metadata()
+                refresh_music_metadata_cache()
             st.success("✅ 乐曲元数据已更新")
         else:
             st.info("ℹ️ 最近已更新过乐曲元数据（24小时内），如有需要可以手动更新")
@@ -328,6 +335,7 @@ with st.container(border=True):
                 if st.button("🔄 手动更新", key="manual_update_metadata", use_container_width=True):
                     with st.spinner("正在更新..."):
                         update_music_metadata()
+                        refresh_music_metadata_cache()
                     st.success("✅ 乐曲元数据已更新")
                     st.rerun()
     except Exception as e:

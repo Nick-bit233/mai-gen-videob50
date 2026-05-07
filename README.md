@@ -39,6 +39,7 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
     - 双击`start.bat`文件启动应用。
     - 请不要使用旧版本的runtime运行环境，其缺少新版本的依赖
 - 请注意：**打包版本仅支持Windows10及以上操作系统**
+- `macOS` 用户请使用源代码方式启动，当前仓库代码可运行在 macOS 上，但 Release 打包运行环境仍仅提供 Windows 版本。
 - 首次启动时，如果没有立刻弹出浏览器窗口，请检查控制台，如果要求输入Email，请直接回车跳过即可。
 - 遇到问题请参考[常见问题](#常见问题)一节。
 
@@ -129,12 +130,20 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
         使用`sudo apt-get install ffmpeg`安装ffmpeg。
 
+    - macOS:
+
+        推荐先安装 [Homebrew](https://brew.sh/)，然后执行 `brew install ffmpeg`。
+
+        如果后续需要使用 ffmpeg-concat 的高级转场模式，还需要额外安装 Node.js：`brew install node`
+
 4. 使用下面的命令启动streamlit网页应用
 
     ```bash
     streamlit run st_app.py
     ```
     在网页运行程序时，请保持终端窗口打开，依照页面指引使用即可
+
+    > macOS 建议直接使用当前虚拟环境对应的解释器执行依赖安装，例如：`python -m pip install -r requirements.txt`
 
 ---
 
@@ -342,4 +351,3 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 - This repository fetches Unicode-defined emoji from [twemoji](https://github.com/jdecked/twemoji?tab=readme-ov-file)
 
 ---
-
