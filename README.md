@@ -16,9 +16,9 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 以下贡献来自@[Blueteemo](https://github.com/Blueteemo):
 
-- 🛠️ 修复了在勾选“启用gpu加速合成”后，无法正确检测部分型号GPU的NVENC编码器的问题
-- 🛠️ 修复了Windows 路径中包含中文时，cv2.imread() 无法正确读取文件的问题
-- 🎚️ 现在允许设置输出视频的帧率，默认帧率提高到60fps
+- 🛠️ 修复了在勾选“启用gpu加速合成”后，无法正确检测部分NVENC编码器的问题
+- 🛠️ 修复了Windows路径中包含中文时，`cv2.imread()` 无法正确读取文件的问题
+- 🎚️ 现在允许设置输出视频的帧率，默认输出视频帧率提高到60fps
 
 此版本没有运行库更新，仍然可以使用v1.2版本的运行环境。
 
