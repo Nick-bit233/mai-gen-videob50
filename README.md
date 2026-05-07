@@ -8,6 +8,21 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 ## 更新速览
 
+`v1.2.1` Bug修复：
+- 🛠️ 修复了在某些系统环境下，生成视频时出现`MoviePy error: failed to read the first frame of video file black_bg.mp4 `的错误
+- 🛠️ 修复了在macOS下，数据库路径解析和命令行工具调用不稳定的问题 @[RararXD](https://github.com/RararXD)
+- 🛠️ 修复了在勾选“启用gpu加速合成”后生成视频，得到的完整视频中音画不同步的问题
+- 其他若干有关UI表现bug修复，详见release日志
+
+以下贡献来自@[Blueteemo](https://github.com/Blueteemo):
+
+- 🛠️ 修复了在勾选“启用gpu加速合成”后，无法正确检测部分型号GPU的NVENC编码器的问题
+- 🛠️ 修复了Windows 路径中包含中文时，cv2.imread() 无法正确读取文件的问题
+- 🎚️ 现在允许设置输出视频的帧率，默认帧率提高到60fps
+
+此版本没有运行库更新，仍然可以使用v1.2版本的运行环境。
+
+
 `v1.2` 开发版本更新：
 - 🚀 **GPU 加速渲染（实验功能）**：新增基于 Taichi 的 GPU 加速渲染管线，大幅提升视频合成速度，预计加速比在x3以上：
     - 自动检测最佳 GPU 后端：CUDA（NVIDIA）、Vulkan、Metal（macOS）、OpenGL，不可用时自动回退 CPU
