@@ -3,7 +3,7 @@ import os
 import json
 import traceback
 from datetime import datetime
-from utils.user_gamedata_handlers import fetch_user_gamedata, update_b50_data_int
+from utils.user_gamedata_handlers import fetch_user_gamedata, unify_user_gamedata, update_b50_data_int
 from utils.PageUtils import process_username, get_game_type_text
 from db_utils.DatabaseDataHandler import get_database_handler
 from utils.PathUtils import get_user_base_dir
@@ -216,7 +216,7 @@ def confirm_delete_archive(username: str, archive_name: str):
     if st.button("取消"):
         st.rerun()
 
-def handle_new_data(username: str, source: str, params: dict = None, parser: str = "json"):
+def handle_new_data(username: str, source: str, params: dict = None):
     """
     Fetches new data from a source, then creates a new archive in the database.
     This function is a placeholder for the actual data fetching logic.
@@ -226,12 +226,19 @@ def handle_new_data(username: str, source: str, params: dict = None, parser: str
     raw_file_path = f"{get_user_base_dir(username)}/{username}_{source}_raw_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     try:
         # 重构：查分，并创建存档，原始数据缓存于raw_file_path
-        if source == "intl":
+        if source in ["mmbl", "html", "json"]:
+            new_archive_data = unify_user_gamedata(
+                raw_file_path=raw_file_path,
+                source=source,
+                username=username,
+                params=params,
+            )
+        elif source == "intl":
+            # deprecated branch
             new_archive_data = update_b50_data_int(
                 b50_raw_file=raw_file_path,
                 username=username,
-                params=params,
-                parser=parser
+                params=params
             )
         elif source in ["fish", "lxns"]:
             new_archive_data = fetch_user_gamedata(
@@ -580,13 +587,19 @@ if st.session_state.get('config_saved', False):
             st.warning("⚠️ 国际服/日服数据还未适配到新版本，可能无法正常使用。")
             if G_type == "maimai":
                 st.write("请将maimai DX NET(官网)获取的源代码，或 DX Rating 网站导出的JSON代码粘贴到下方。")
-                data_input = st.text_area("粘贴源代码或JSON", height=200)
+                data_input = st.text_area("请粘贴获取到的原始数据", height=200)
                 
                 if st.button("从粘贴内容创建新存档"):
                     if data_input:
-                        file_type = "json" if data_input.strip().startswith("[{") else "html"
-                        handle_new_data(username, source="intl",
-                                        params={"type": "maimai", "query": "best"}, parser=file_type)
+                        if data_input.strip().startswith("Song"):
+                            file_type = "mmbl"
+                        elif data_input.strip().startswith("[{"):
+                            file_type = "json"
+                        else:
+                            file_type = "html" # 不同浏览器导出的HTML代码可能格式不同，留作默认情况                           
+                        handle_new_data(username, source=file_type,
+                                        params={"type": "maimai", "query": "best", "data_input": data_input})
+                        # TODO: 这里的params应加入b15_versions参数，用于区分国际服/日服的b15版本名。参考user_gamedata_handlers.py中generate_archive_data_from_mmbl函数的注释和filter_mmbl_b50函数。目前在上述文件中定义了全局变量用于筛选MMBL的b15部分。
                     else:
                         st.warning("输入框内容为空。")
             else:

@@ -721,6 +721,152 @@ def lxns_to_new_record_format(lxns_record: dict, game_type: str = "maimai") -> d
 
     return record
 
+def mmbl_to_new_record_format(mmbl_record: dict, game_type: str = "maimai") -> dict:
+    """
+    Convert a MMBL entry to the new unified record format.
+    The input mmbl_record should be processed MMBL exported line in dict.
+
+    Args:
+        mmbl_record (dict): A single entry of processed MMBL export.
+        game_type (str): The game type (only "maimai" supported).
+
+    Returns:
+        dict: The converted record in the new unified format.
+    """
+    pass
+
+def read_mmbl_tsv(data_input, params):
+    """
+    MMBL exports TSV data with a header row and multiple chart data rows.
+    Read the header row first, then parse every entry into a dict with the header fields as keys.
+    """
+    lines = data_input.strip().split('\n')
+    if not lines:
+        return []
+    
+    headers = lines[0].split('\t')
+    """
+    Song	Genre	Version	Chart	Difficulty	Level	Achv	Rank	FC/AP	Sync	DX ✦	DX %	DX Score	Chart Constant
+    """
+    mmbl_dicts = []
+    for line in lines[1:]:
+        if not line.strip():
+            continue
+        values = line.split('\t')
+        row = {headers[i]: values[i] if i < len(values) else '' for i in range(len(headers))}
+        mmbl_dicts.append(row)
+    
+    return mmbl_dicts
+
+def parse_mmbl_tsv(chart_entry: dict, game_type="maimai") -> dict:
+    """
+    Parsing a single entry of MMBL chart data to internal record format.
+
+    Args:
+        chart_entry: converted dict of MMBL chart entry
+    """
+    chart_type = chart_entry.get("Chart", "")
+    chart_type = chart_type_str2value(chart_type.lower())
+
+    level_idx = 0
+    level_label = chart_entry.get("Difficulty", "")
+    if level_label:
+        level_idx = level_label_to_index(game_type, level_label)
+
+    ds = chart_entry.get("Chart Constant", "0.0")
+    song_name = chart_entry.get("Song", "NO_TITLE")
+    song_id = song_name # TODO: 改用哈希id
+    
+    total_dx_score = chart_entry.get("DX Score", "0/0")
+    # 将dx_score以/分隔，取最后一个部分
+    dx_score = int(total_dx_score.split("/")[0])
+    max_dx_score = int(total_dx_score.split("/")[1])
+
+    achivement = chart_entry.get("Achv", "101.0000%").rstrip("%")
+
+    def normalize_flag(value):
+        s = value.lower().replace("+", "p")
+        if s in ("-", "sync"):
+            return "none"
+        return s
+
+    fc_ap = normalize_flag(chart_entry.get("FC/AP", "-"))
+    sync = normalize_flag(chart_entry.get("Sync", "-"))
+    rating = chart_entry.get("Rating", 0)
+    
+    chart_data = {
+        'game_type': game_type,
+        'song_id': song_id,
+        'chart_type': chart_type,
+        'level_index': level_idx,
+        'difficulty': ds,
+        'song_name': song_name,
+        'artist': None, # TODO: 在哪里补曲师？
+        'max_dx_score': max_dx_score,
+        'video_path': None
+    }
+    record = {
+            'chart_data': chart_data,
+            'order_in_archive': 0, # Do not modify order here, will be set when inserting to DB
+            'achievement': achivement,
+            'fc_status': fc_ap,  # use string 'none' for null value, consistent with DB format
+            'fs_status': sync,
+            'dx_score': dx_score,
+            'dx_rating': rating,
+            'chuni_rating': 0,
+            'play_count': 0, # MMBL doesn't export play count
+            'clip_title_name': "", # Keep empty for further editing
+            # Store the original record as JSON string (ensure_ascii=True to escape unicode like the example)
+            'raw_data': json.dumps(chart_entry, ensure_ascii=True)
+        }
+    return record
+
+def filter_mmbl_b50(mmbl_data, b15_versions, best_past_len=35, best_new_len=15):
+    """
+    Filter and parse B50 entries from raw MMBL exported data
+    """
+    from utils.dxnet_extension import compute_rating, safe_parse_difficulty
+    b15_versions_lower = {v.lower() for v in b15_versions}
+    print(f"DataUtils DEBUG: Trying to filter B15 with versions: {b15_versions_lower} from MMBL data with {len(mmbl_data)} entries.")
+
+    def mmbl_rating(entry, i):
+        ds = safe_parse_difficulty(entry["Chart Constant"])
+        achv = float(entry["Achv"].rstrip("%"))
+        rating = compute_rating(entry["Chart Constant"], achv)
+        # print(f"DEBUG: Entry {i} - Song: {entry['Song']}, Version: {entry['Version']}")
+        return ({**entry, "Rating": rating}, i)
+
+    def best_sort_key(item):
+        entry, original_index = item
+        return (-entry["Rating"], -safe_parse_difficulty(entry["Chart Constant"]), -float(entry["Achv"].rstrip("%")), original_index)
+
+    # Calculate ratings for all entries first, then sort and slice to get top entries for new and past versions
+    new_charts = [mmbl_rating(entry, i) for i, entry in enumerate(mmbl_data)
+                  if entry.get("Version", "").lower() in b15_versions_lower]
+    past_charts = [mmbl_rating(entry, i) for i, entry in enumerate(mmbl_data)
+                   if entry.get("Version", "").lower() not in b15_versions_lower]
+
+    new_sorted = sorted(new_charts, key=best_sort_key)[:best_new_len]
+    past_sorted = sorted(past_charts, key=best_sort_key)[:best_past_len]
+
+    # print(f"DEBUG: Found {len(new_sorted)} new charts and {len(past_sorted)} past charts after filtering MMBL data.")
+    # print(f"DEBUG: Sorted new charts (top {best_new_len}): {[entry['Song'] for entry, _ in new_sorted]}")
+    # print(f"DEBUG: Sorted past charts (top {best_past_len}): {[entry['Song'] for entry, _ in past_sorted]}")
+
+    # Parse the sorted entries into the new record format, and assign clip_title_name based on their rank in the sorted list
+    new_records = []
+    for i, (entry, _) in enumerate(new_sorted, start=1):
+        record = parse_mmbl_tsv(entry)
+        record['clip_title_name'] = f"NewBest{i}"
+        new_records.append(record)
+
+    past_records = []
+    for i, (entry, _) in enumerate(past_sorted, start=1):
+        record = parse_mmbl_tsv(entry)
+        record['clip_title_name'] = f"PastBest{i}"
+        past_records.append(record)
+
+    return new_records + past_records
 
 # --------------------------------------
 # Image download helpers
