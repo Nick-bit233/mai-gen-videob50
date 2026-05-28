@@ -1,22 +1,24 @@
 import csv
 import glob
 import json
-from lxml import etree
 import os
 import re
 import json
 import requests
 
-from utils.dxnet_extension import ChartManager
+from utils.dxnet_extension import compute_rating
 from utils.DataUtils import (
-    FC_PROXY_ENDPOINT, 
+    FC_PROXY_ENDPOINT,
     fish_to_new_record_format,
     query_songs_metadata,
     chart_type_str2value,
     level_label_to_index,
     chunithm_fc_status_to_label,
     read_mmbl_tsv,
-    filter_mmbl_b50
+    filter_mmbl_b50,
+    read_maimai_html,
+    load_metadata,
+    exact_match_chart
 )
 
 LEVEL_LABEL = ["Basic", "Advanced", "Expert", "Master", "Re:MASTER"]
@@ -24,6 +26,13 @@ LEVEL_LABEL = ["Basic", "Advanced", "Expert", "Master", "Re:MASTER"]
 # Version tags from MMBL, used for filtering B15 records from MBL exported data.
 DEFAULT_B15_VERSION_INT = ["PRiSM PLUS", "CiRCLE"]
 DEFAULT_B15_VERSION_JP = ["CiRCLE", "CiRCLE PLUS"]
+
+# game_version labels
+GAME_VERSION_LABELS = {
+    "latest_CN": "DX2025",
+    "latest_INT": "CiRCLE",
+    "latest_JP": "CiRCLE PLUS"
+}
 
 # 辅助函数：格式化song_id
 def format_record_songid(record, raw_song_id, game_type="maimai"):
@@ -531,6 +540,9 @@ def generate_archive_data_from_fish(fish_data, params) -> dict:
 
 
 def filter_maimai_ap_data(fish_data, top_len=50):
+    """
+    从水鱼数据fish_data中过滤出AP成绩，并按照ra值降序排序，如果ra值相同，按照ds定数降序排序，返回前top_len条记录。
+    """
     charts_data = fish_data['records']
 
     # 解析AP数据
@@ -557,6 +569,7 @@ def filter_maimai_ap_data(fish_data, top_len=50):
 # Origin B50 data file finders
 ################################################
 
+@DeprecationWarning
 def find_origin_data(username, file_type = "html", game_type = "maimai"):
     """查找原始B50数据文件
     
@@ -609,133 +622,10 @@ def find_origin_data(username, file_type = "html", game_type = "maimai"):
     raise Exception(f"Error: No {file_type.upper()} file found in the user's folder.")
 
 ################################################
-# Read B50 from DX NET raw HTML
-################################################
-
-def read_b50_from_html(b50_raw_file, username, params):
-    html_raw = find_origin_data(username, "html")
-    html_tree = etree.HTML(html_raw)
-    # Locate B35 and B15
-    b35_div_names = [
-        "Songs for Rating(Others)",
-        "RATING対象曲（ベスト）"
-    ]
-    b15_div_names = [
-        "Songs for Rating(New)",
-        "RATING対象曲（新曲）"
-    ]
-    b35_screw = locate_html_screw(html_tree, b35_div_names)
-    b15_screw = locate_html_screw(html_tree, b15_div_names)
-
-    # html_screws = html_tree.xpath('//div[@class="screw_block m_15 f_15 p_s"]')
-    # if not html_screws:
-    #     raise Exception("Error: B35/B15 screw not found. Please check HTML input!")
-    # b35_screw = html_screws[1]
-    # b15_screw = html_screws[0]
-
-    # Iterate songs and save as JSON
-    b50_json = {
-        "charts": {
-            "dx": [],
-            "sd": []
-        },
-        "rating": -1,
-        "username": username
-    }
-    manager = ChartManager()
-    song_id_placeholder = 0 # Avoid same file names for downloaded videos
-    for song in iterate_songs(b35_screw):
-        song_id_placeholder -= 1 # Remove after implemented dataset
-        song_json = parse_html_to_json(song, song_id_placeholder)
-        song_json = manager.fill_json(song_json)
-        b50_json["charts"]["sd"].append(song_json)
-    for song in iterate_songs(b15_screw):
-        song_id_placeholder -= 1 # Remove after implemented dataset
-        song_json = parse_html_to_json(song, song_id_placeholder)
-        song_json = manager.fill_json(song_json)
-        b50_json["charts"]["dx"].append(song_json)
-
-    b50_json["rating"] = manager.total_rating
-
-    # Write b50 JSON to raw file
-    with open(b50_raw_file, 'w', encoding="utf-8") as f:
-        json.dump(b50_json, f, ensure_ascii = False, indent = 4)
-    return b50_json
-
-def locate_html_screw(html_tree, div_names):
-    for name in div_names:
-        screw = html_tree.xpath(f'//div[text()="{name}"]')
-        if screw:
-            return screw[0]
-    raise Exception(f"Error: HTML screw (type = \"{div_names[0]}\") not found.")
-
-def iterate_songs(div_screw):
-    current_div = div_screw
-    while True:
-        current_div = current_div.xpath('following-sibling::div[1]')[0]
-        if len(current_div) == 0:
-            break
-        yield current_div
-
-# Parse HTML div of a song to diving-fish raw data JSON
-def parse_html_to_json(song_div, song_id_placeholder):
-    LEVEL_DIV_LABEL = ["_basic", "_advanced", "_expert", "_master", "_remaster"]
-    # Initialise chart JSON
-    chart = {
-        "achievements": 0,
-        "ds": 0,
-        "dxScore": 0,
-        "fc": "",
-        "fs": "",
-        "level": "0",
-        "level_index": -1,
-        "level_label": "easy",
-        "ra": 0,
-        "rate": "",
-        "song_id": song_id_placeholder,
-        "title": "",
-        "type": "",
-    }
-
-    # Get achievements
-    score_div = song_div.xpath('.//div[contains(@class, "music_score_block")]')
-    if score_div:
-        score_text = score_div[0].text
-        score_text = score_text.strip().replace('\xa0', '').replace('\n', '').replace('\t', '')
-        score_text = score_text.rstrip('%')
-        chart["achievements"] = float(score_text)
-
-    # Get song level and internal level
-    level_div = song_div.xpath('.//div[contains(@class, "music_lv_block")]')
-    if level_div:
-        level_text = level_div[0].text
-        chart["level"] = level_text
-
-    # Get song difficulty
-    div_class = song_div.get("class", "")
-    for idx, level in enumerate(LEVEL_DIV_LABEL):
-        if level.lower() in div_class.lower():
-            chart["level_index"] = idx
-            chart["level_label"] = LEVEL_LABEL[idx]
-            break
-
-    # Get song title
-    title_div = song_div.xpath('.//div[contains(@class, "music_name_block")]')
-    if title_div:
-        chart["title"] = title_div[0].text
-
-    # Get chart type
-    kind_icon_img = song_div.xpath('.//img[contains(@class, "music_kind_icon")]')
-    if kind_icon_img:
-        img_src = kind_icon_img[0].get("src", "")
-        chart["type"] = "DX" if img_src.endswith("dx.png") else "SD"
-
-    return chart
-
-################################################
 # Read B50 from dxrating.net export
 ################################################
 
+@DeprecationWarning
 def read_dxrating_json(b50_raw_file, username, params):
     dxrating_json = find_origin_data(username, "json")
     # Iterate songs and save as JSON
@@ -747,6 +637,7 @@ def read_dxrating_json(b50_raw_file, username, params):
         "rating": -1,
         "username": username
     }
+    from utils.dxnet_extension import ChartManager
     manager = ChartManager()
     song_id_placeholder = 0 # Avoid same file names for downloaded videos
     for song in dxrating_json:
@@ -765,6 +656,7 @@ def read_dxrating_json(b50_raw_file, username, params):
         json.dump(b50_json, f, ensure_ascii = False, indent = 4)
     return b50_json
 
+@DeprecationWarning
 def parse_dxrating_json(song_json, song_id_placeholder):
     LEVEL_DIV_LABEL = ["basic", "advanced", "expert", "master", "remaster"]
 
@@ -802,7 +694,7 @@ def parse_dxrating_json(song_json, song_id_placeholder):
     return chart
 
 ################################################
-# MMBL data parsing functions
+# Generate archive data from local data input
 ################################################
 
 def generate_archive_data_from_mmbl(mmbl_data, username, params) -> dict:
@@ -811,25 +703,43 @@ def generate_archive_data_from_mmbl(mmbl_data, username, params) -> dict:
 
     Args:
         mmbl_data: list of dicts converted from MMBL TSV data
+        username: user's name for recording
         params (dict):
-            type (str): game type, currently only "maimai" is supported
+            type (str): game type, only "maimai" is supported
             query (str): query type, only "best" supported... currently?
             filter (dict): filter conditions, example: {"tag": "ap", "top": 50, "b15_versions": ["PRiSM PLUS", "CiRCLE"]}
 
     Returns:
         new_archive_data (dict): initialized profile data for database insertion, including initial_records list
     """
-    type = params.get("type", "maimai")
+    game_type = params.get("type", "maimai")
     query = params.get("query", "best")
     filter = params.get("filter", None)
     b15_versions = filter.get("b15_versions", DEFAULT_B15_VERSION_INT) if filter else DEFAULT_B15_VERSION_INT
+    if b15_versions == DEFAULT_B15_VERSION_JP:
+        game_version = GAME_VERSION_LABELS["latest_JP"]
+    else:
+        game_version = GAME_VERSION_LABELS["latest_INT"]
 
     sub_type_tag = ""
 
-    if type == "maimai":
-        if query == "best":
-            record_data = filter_mmbl_b50(mmbl_data, b15_versions=b15_versions)
-            sub_type_tag = "best"
+    if game_type == "maimai":
+        if query == "all":
+            tag = filter.get("tag", None)
+            if not tag: # 无tag，进入默认B50模式
+                try:
+                    record_data = filter_mmbl_b50(mmbl_data, b15_versions=b15_versions)
+                except KeyError:
+                    raise ValueError("Error: MMBL数据格式不正确，缺少必要字段。请检查选择的数据源类型或MMBL导出数据的设置。")
+                sub_type_tag = "best"
+            else:
+                if tag in ["ap"]:
+                    top_len = filter.get("top", 50)
+                    sub_type_tag = tag
+                    record_data = None # TODO: MMBL ap filtering
+                    raise NotImplementedError("Error: MMBL AP50筛选功能尚未实装。")
+                else:
+                    raise ValueError("Error: 目前仅支持tag为ap的查询类型。")
         else:
             raise ValueError("Error: Only best query is supported for MMBL data for now")
     else:
@@ -840,12 +750,69 @@ def generate_archive_data_from_mmbl(mmbl_data, username, params) -> dict:
         record_data[i]['order_in_archive'] = len(record_data) - i
 
     new_archive_data = {
-        "game_type": type,
+        "game_type": game_type,
         "sub_type": sub_type_tag,
         "username": username,
         "rating_mai": sum(record['dx_rating'] for record in record_data),
         "rating_chu": 0.0,
-        "game_version": "latest_INTL", # TODO: 根据b15版本信息设置game_version
+        "game_version": game_version,
+        "initial_records": record_data
+    }
+    return new_archive_data
+
+def generate_archive_data_from_html(html_data, username, params = None) -> dict:
+    """
+    Generate initialised profile for dataset from raw HTML data.
+
+    Args:
+        html_raw: raw HTML string from DXrating page
+        username: user's name for recording
+        params (dict): no parameters will be used
+    """
+    game_type = params.get("type", "maimai")
+    sub_type_tag = "best"
+
+    raw_html_records = html_data["raw_records"]
+    game_version = GAME_VERSION_LABELS["latest_INT"] if html_data["html_language"] == 0 else GAME_VERSION_LABELS["latest_JP"]
+
+    if game_type == "maimai":
+        # Build database records from raw html records. Fill artist, chart constant, rating for each record by exact matching
+        songs_metadata = load_metadata(game_type)
+        record_data = []
+        for raw_record in raw_html_records:
+            # For the data structure of raw_record, see the return value of parse_maimai_html
+            query = raw_record["query"]
+            chart_data = exact_match_chart(query, songs_metadata)
+            dx_rating = compute_rating(chart_data["difficulty"], float(raw_record["achievement"]))
+            record = {
+                'chart_data': chart_data,
+                'order_in_archive': 0, # Do not modify order here, will be set when inserting to DB
+                'achievement': raw_record["achievement"],
+                'fc_status': "none", # not provided in HTML
+                'fs_status': "none", # not provided in HTML
+                'dx_score': 0, # not provided in HTML
+                'dx_rating': dx_rating,
+                'chuni_rating': 0,
+                'play_count': 0,
+                'clip_title_name': raw_record["clip_title_name"],
+                # Store the original HTML div as raw data for potential future use
+                'raw_data': raw_record["raw_data"]
+            }
+            record_data.append(record)
+    else:
+        raise ValueError("Error: Only MAIMAI DX is supported for HTML data")
+    
+    # Keep the same database ordering as generate_archive_data_from_fish
+    for i in range(len(record_data)):
+        record_data[i]['order_in_archive'] = len(record_data) - i
+
+    new_archive_data = {
+        "game_type": game_type,
+        "sub_type": sub_type_tag,
+        "username": username,
+        "rating_mai": sum(record['dx_rating'] for record in record_data),
+        "rating_chu": 0.0,
+        "game_version": game_version,
         "initial_records": record_data
     }
     return new_archive_data
@@ -865,6 +832,15 @@ def unify_user_gamedata(raw_file_path, username, params, source="mmbl") -> dict:
             json.dump(mmbl_data, f, ensure_ascii=False, indent=4)
         
         return generate_archive_data_from_mmbl(mmbl_data, username, params)
+    
+    elif source == "html":
+        html_data = read_maimai_html(data_input, params)
+        # 将半成品的dict数据保存
+        with open(raw_file_path, "w", encoding="utf-8") as f:
+            json.dump(html_data["raw_records"], f, ensure_ascii=False, indent=4)
+
+        return generate_archive_data_from_html(html_data, username, params)
+    
     else:
         raise ValueError(f"Invalid source {source} for unifying user game data input")
 
@@ -873,19 +849,21 @@ def unify_user_gamedata(raw_file_path, username, params, source="mmbl") -> dict:
 # Update local cache files (Deprecated old INT data updater)
 ################################################
 
+@DeprecationWarning
 def update_b50_data_int(raw_file_path, data_type, username, params) -> dict:
     parser_map = {
-        "html": read_b50_from_html,
+        "html": read_maimai_html,
         "json": read_dxrating_json,
         "mmbl": read_mmbl_tsv
     }
-    data_parser = parser_map.get(data_type, read_b50_from_html)
+    data_parser = parser_map.get(data_type, read_maimai_html)
 
     # building b50_raw
     parsed_data = data_parser(raw_file_path, username, params)
     # building b50_config
     return generate_data_file_int(parsed_data, params)
 
+@DeprecationWarning
 def generate_data_file_int(parsed_data, params) -> dict:
     type = params.get("type", "maimai")
     query = params.get("query", "best")

@@ -10,6 +10,7 @@ import random
 from PIL import Image
 from typing import Dict, Union, Optional
 from functools import lru_cache
+from lxml import etree
 
 # 服务器bucket用于转存融合过的的metadata
 BUCKET_ENDPOINT = "https://nickbit-maigen-images.oss-cn-shanghai.aliyuncs.com"
@@ -421,14 +422,14 @@ def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tupl
             or query.lower() in artist.lower() \
             or query.lower() in all_aliases:
                 
-                sheets = song.get('charts_info', [])
-                for s in sheets:
+                charts = song.get('charts_info', [])
+                for c in charts:
                     # 选择难度和查询一致的谱面
-                    s_level_index = s.get('difficulty', -1)  # "difficulty": int index
-                    if s_level_index == level_index:
-                        type = s.get('type', 'standard')  # "type": "dx" or "standard" or "utage"
+                    c_level_index = c.get('difficulty', -1)  # "difficulty": int index
+                    if c_level_index == level_index:
+                        type = c.get('type', 'standard')  # "type": "dx" or "standard" or "utage"
                         result_string = f"{song.get('title', '')} [{type}]"
-                        total_notes = s.get('note_counts', {}).get('total', 0)
+                        total_notes = c.get('note_counts', {}).get('total', 0)
                         if not total_notes:  # 防止数据源传入NULL
                             total_notes = 0
                         chart_data = {
@@ -436,7 +437,7 @@ def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tupl
                             'song_id': song.get('title', ''),  # 暂时使用title作为song_id, TODO: 替换为hash id
                             'chart_type': chart_type_str2value(type),
                             'level_index': level_index,
-                            'difficulty': str(get_level_value_from_chart_meta(s)),
+                            'difficulty': str(get_level_value_from_chart_meta(c)),
                             'song_name': song.get('title', ''),
                             'artist': song.get('artist', None),
                             'max_dx_score': total_notes * 3,
@@ -456,18 +457,18 @@ def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tupl
             or query.lower() in artist.lower() \
             or query.lower() in all_aliases:
                 
-                sheets = song.get('charts_info', [])
-                for s in sheets:
+                charts = song.get('charts_info', [])
+                for c in charts:
                     # 选择难度和查询一致的谱面
-                    s_level_index = s.get('difficulty', -1)  # "difficulty": int index
-                    if s_level_index == level_index:
+                    c_level_index = c.get('difficulty', -1)  # "difficulty": int index
+                    if c_level_index == level_index:
                         result_string = f"{title}"
                         chart_data = {
                             'game_type': 'chunithm',
                             'song_id': song.get('title', ''),
                             'chart_type': 0,  # Chunithm默认是normal (0)
                             'level_index': level_index,
-                            'difficulty': str(get_level_value_from_chart_meta(s)),
+                            'difficulty': str(get_level_value_from_chart_meta(c)),
                             'song_name': title,
                             'artist': artist,
                             'max_dx_score': 0,  # 不使用dx_score
@@ -477,6 +478,48 @@ def search_songs(query, songs_data, game_type:str, level_index:int) -> List[tupl
         return results
     else:
         raise ValueError("Unsupported game type for search.")
+    
+def exact_match_chart(query, songs_data, game_type="maimai") -> dict:
+    """
+    Match exact chart with given song_data, which should contain title, level_index, chart_type, and usually from HTML source with complete metadata. This is used for matching the exact chart when generating video for a specific record, to ensure we get the correct difficulty and max score information.
+
+    Args:
+        query: dict, example
+        {
+            "title": "FFT", # Must be exactly matching the title in metadata
+            "level_index": 3, # Master
+            "chart_type": 0,  # standard
+        }
+        songs_data: list of dict, the loaded metadata for the game type
+        game_type: str, only "maimai" used currently, as this is a method for parsing HTML source.
+    """
+    chart_data = {}
+    if game_type == "maimai":
+        # Don't use 'get' here to ensure we raise error if any of the required fields is missing
+        for song in songs_data:
+            title = song.get('title', '')
+            if query["title"] == title: # Must be exact match
+                charts = song.get('charts_info', [])
+                for c in charts:
+                    c_level_index = c.get('difficulty', -1)
+                    c_chart_type = chart_type_str2value(c.get('type', ''), fish_record_style=False)
+                    if c_level_index == query["level_index"] and c_chart_type == query["chart_type"]:
+                        chart_data = {
+                            'game_type': 'maimai',
+                            'song_id': song.get('title', ''),  # TODO: 替换为hash id
+                            'chart_type': query["chart_type"],
+                            'level_index': query["level_index"],
+                            'difficulty': str(get_level_value_from_chart_meta(c)),
+                            'song_name': query["title"],
+                            'artist': song.get('artist', None),
+                            'max_dx_score': c.get('note_counts', {}).get('total', 0) * 3,  # 防止NULL
+                            'video_path': None
+                        }
+                        return chart_data
+                raise ValueError(f"Error: exactly matched song {query["title"]}, but didn't find chart with level index {query["level_index"]} with chart type {query["chart_type"]}")
+        raise ValueError(f"Error: can't exactly match song with name {query["title"]}")
+    else:
+        raise NotImplementedError("Unsupported game type for exact chart matching.")
 
 def query_songs_metadata(game_type: str, title: str, artist: Union[str, None]=None) -> Union[dict, None]:
     """查询歌曲元数据（按 title 字段匹配；若存在重名则优先匹配 artist）"""
@@ -721,19 +764,9 @@ def lxns_to_new_record_format(lxns_record: dict, game_type: str = "maimai") -> d
 
     return record
 
-def mmbl_to_new_record_format(mmbl_record: dict, game_type: str = "maimai") -> dict:
-    """
-    Convert a MMBL entry to the new unified record format.
-    The input mmbl_record should be processed MMBL exported line in dict.
-
-    Args:
-        mmbl_record (dict): A single entry of processed MMBL export.
-        game_type (str): The game type (only "maimai" supported).
-
-    Returns:
-        dict: The converted record in the new unified format.
-    """
-    pass
+# ----------------------
+# MMBL data parsing methods
+# ----------------------
 
 def read_mmbl_tsv(data_input, params):
     """
@@ -773,7 +806,8 @@ def parse_mmbl_tsv(chart_entry: dict, game_type="maimai") -> dict:
     if level_label:
         level_idx = level_label_to_index(game_type, level_label)
 
-    ds = chart_entry.get("Chart Constant", "0.0")
+    from utils.dxnet_extension import safe_parse_difficulty
+    ds = safe_parse_difficulty(chart_entry.get("Chart Constant", "0.0"))
     song_name = chart_entry.get("Song", "NO_TITLE")
     song_id = song_name # TODO: 改用哈希id
     
@@ -801,7 +835,7 @@ def parse_mmbl_tsv(chart_entry: dict, game_type="maimai") -> dict:
         'level_index': level_idx,
         'difficulty': ds,
         'song_name': song_name,
-        'artist': None, # TODO: 在哪里补曲师？
+        'artist': None, # TODO: 加一个补曲师的
         'max_dx_score': max_dx_score,
         'video_path': None
     }
@@ -830,7 +864,6 @@ def filter_mmbl_b50(mmbl_data, b15_versions, best_past_len=35, best_new_len=15):
     print(f"DataUtils DEBUG: Trying to filter B15 with versions: {b15_versions_lower} from MMBL data with {len(mmbl_data)} entries.")
 
     def mmbl_rating(entry, i):
-        ds = safe_parse_difficulty(entry["Chart Constant"])
         achv = float(entry["Achv"].rstrip("%"))
         rating = compute_rating(entry["Chart Constant"], achv)
         # print(f"DEBUG: Entry {i} - Song: {entry['Song']}, Version: {entry['Version']}")
@@ -867,6 +900,145 @@ def filter_mmbl_b50(mmbl_data, b15_versions, best_past_len=35, best_new_len=15):
         past_records.append(record)
 
     return new_records + past_records
+
+# --------------------------------------
+# HTML parsing methods
+# --------------------------------------
+
+def read_maimai_html(data_input, params=None):
+    """
+    Read B50 data from raw HTML input (from maimai DX NET page), parse it and collect basic information to new record format.
+
+    Args:
+        data_input: HTML string input from the streamlit page
+        params: no params will be used
+    Returns:
+        raw_html_records: list of records (dict). Some details (曲师artist, 定数chart constant, 单曲评分rating, 总评分overall dx rating) are still missing and need to be processed again.
+    """
+    try:
+        html_tree = etree.HTML(data_input)
+    except Exception as e:
+        raise ValueError(f"Error: 解析HTML数据时发生错误，请检查输入数据是否为有效的HTML格式。错误详情: {e}")
+
+    # Locate B35 and B15
+    b35_div_names = [
+        "Songs for Rating(Others)",
+        "RATING対象曲（ベスト）"
+    ]
+    b15_div_names = [
+        "Songs for Rating(New)",
+        "RATING対象曲（新曲）"
+    ]
+    b35_screw, html_languange = locate_html_screw(html_tree, b35_div_names)
+    b15_screw, _ = locate_html_screw(html_tree, b15_div_names)
+
+    # html_screws = html_tree.xpath('//div[@class="screw_block m_15 f_15 p_s"]')
+    # if not html_screws:
+    #     raise Exception("Error: B35/B15 screw not found. Please check HTML input!")
+    # b35_screw = html_screws[1]
+    # b15_screw = html_screws[0]
+
+    # Iterate songs and save as JSON
+    raw_html_records = []
+    new_clip_number = 0
+    for song_div in iterate_songs(b15_screw):
+        new_clip_number += 1
+        record = parse_maimai_html(song_div)
+        record['clip_title_name'] = f"NewBest_{new_clip_number}"
+        raw_html_records.append(record)
+    past_clip_number = 0
+    for song_div in iterate_songs(b35_screw):
+        past_clip_number += 1
+        record = parse_maimai_html(song_div)
+        record['clip_title_name'] = f"PastBest_{past_clip_number}"
+        raw_html_records.append(record)
+
+    html_data = {
+        "raw_records": raw_html_records,
+        "html_language": html_languange,
+    }
+    return html_data
+
+def locate_html_screw(html_tree, div_names):
+    for i, name in enumerate(div_names):
+        screw = html_tree.xpath(f'//div[text()="{name}"]')
+        if screw:
+            return screw[0], i
+    raise Exception(f"Error: 未找到类似\"{div_names[0]}\")的HTML screw，请检查选择的数据源类型或复制的HTML内容完整性。")
+
+def iterate_songs(div_screw):
+    current_div = div_screw
+    while True:
+        current_div = current_div.xpath('following-sibling::div[1]')[0]
+        if len(current_div) == 0:
+            break
+        yield current_div
+
+def parse_maimai_html(song_div):
+    """
+    Parse a HTML div from maimai DX Net B50 page into a JSON record in new record formatting
+    """
+    LEVEL_DIV_LABEL = ["_basic", "_advanced", "_expert", "_master", "_remaster"]
+    # Initialise chart JSON (Depracated fish style JSON)
+    # chart = {
+    #     "achievements": 0,
+    #     "ds": 0,
+    #     "dxScore": 0,
+    #     "fc": "",
+    #     "fs": "",
+    #     "level": "0",
+    #     "level_index": -1,
+    #     "level_label": "easy",
+    #     "ra": 0,
+    #     "rate": "",
+    #     "song_id": song_id_placeholder,
+    #     "title": "",
+    #     "chart_type": -1,
+    # }
+
+    # Get achievements
+    score_div = song_div.xpath('.//div[contains(@class, "music_score_block")]')
+    if score_div:
+        score_text = score_div[0].text
+        score_text = score_text.strip().replace('\xa0', '').replace('\n', '').replace('\t', '')
+        score_text = score_text.rstrip('%')
+
+    # Get song level
+    # level_div = song_div.xpath('.//div[contains(@class, "music_lv_block")]')
+    # if level_div:
+    #     level_text = level_div[0].text
+    #     chart["level"] = level_text
+
+    # Get song level index
+    div_class = song_div.get("class", "")
+    for idx, level in enumerate(LEVEL_DIV_LABEL):
+        if level.lower() in div_class.lower():
+            level_index = idx
+            break
+
+    # Get song title
+    title_div = song_div.xpath('.//div[contains(@class, "music_name_block")]')
+    if title_div:
+        title = title_div[0].text
+
+    # Get chart type
+    kind_icon_img = song_div.xpath('.//img[contains(@class, "music_kind_icon")]')
+    if kind_icon_img:
+        img_src = kind_icon_img[0].get("src", "")
+        chart_type = chart_type_str2value("dx") if img_src.endswith("dx.png") else chart_type_str2value("sd")
+    
+    query = {
+        "title": title,
+        "level_index": level_index,
+        "chart_type": chart_type
+    }
+    raw_record = {
+        "query": query,
+        "achievement": score_text,
+        "raw_data": etree.tostring(song_div, encoding='unicode'),
+        'clip_title_name': "" # Edit later
+    }
+    return raw_record
 
 # --------------------------------------
 # Image download helpers
