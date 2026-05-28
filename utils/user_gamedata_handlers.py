@@ -24,14 +24,17 @@ from utils.DataUtils import (
 LEVEL_LABEL = ["Basic", "Advanced", "Expert", "Master", "Re:MASTER"]
 
 # Version tags from MMBL, used for filtering B15 records from MBL exported data.
-DEFAULT_B15_VERSION_INT = ["PRiSM PLUS", "CiRCLE"]
-DEFAULT_B15_VERSION_JP = ["CiRCLE", "CiRCLE PLUS"]
+DEFAULT_B15_VERSION = {
+    "INT": ["PRiSM PLUS", "CiRCLE"],
+    "JP": ["CiRCLE", "CiRCLE PLUS"]
+}
 
 # game_version labels
 GAME_VERSION_LABELS = {
     "latest_CN": "DX2025",
     "latest_INT": "CiRCLE",
-    "latest_JP": "CiRCLE PLUS"
+    "latest_JP": "CiRCLE PLUS",
+    "Not Specified": "Not Specified"
 }
 
 # 辅助函数：格式化song_id
@@ -396,7 +399,7 @@ def generate_config_file_from_lxns(lxns_data, params, friend_code):
                 "username": username,
                 "rating_mai": 0,
                 "rating_chu": total_rating,
-                "game_version": "latest_CN",
+                "game_version": GAME_VERSION_LABELS["latest_CN"],
                 "initial_records": all_records
             }
             
@@ -533,7 +536,7 @@ def generate_archive_data_from_fish(fish_data, params) -> dict:
         "username": fish_data['username'],
         "rating_mai": fish_data['rating'] if type == "maimai" else 0,
         "rating_chu": fish_data['rating'] if type == "chunithm" else 0.0,
-        "game_version": "latest_CN",
+        "game_version": GAME_VERSION_LABELS["latest_CN"],
         "initial_records": new_record_data
     }
     return new_archive_data
@@ -704,10 +707,7 @@ def generate_archive_data_from_mmbl(mmbl_data, username, params) -> dict:
     Args:
         mmbl_data: list of dicts converted from MMBL TSV data
         username: user's name for recording
-        params (dict):
-            type (str): game type, only "maimai" is supported
-            query (str): query type, only "best" supported... currently?
-            filter (dict): filter conditions, example: {"tag": "ap", "top": 50, "b15_versions": ["PRiSM PLUS", "CiRCLE"]}
+        params (dict): example params -> see unify_user_gamedata function for details
 
     Returns:
         new_archive_data (dict): initialized profile data for database insertion, including initial_records list
@@ -715,39 +715,32 @@ def generate_archive_data_from_mmbl(mmbl_data, username, params) -> dict:
     game_type = params.get("type", "maimai")
     query = params.get("query", "best")
     filter = params.get("filter", None)
-    b15_versions = filter.get("b15_versions", DEFAULT_B15_VERSION_INT) if filter else DEFAULT_B15_VERSION_INT
-    if b15_versions == DEFAULT_B15_VERSION_JP:
-        game_version = GAME_VERSION_LABELS["latest_JP"]
-    else:
-        game_version = GAME_VERSION_LABELS["latest_INT"]
-
     sub_type_tag = ""
 
     if game_type == "maimai":
         if query == "all":
             tag = filter.get("tag", None)
-            if not tag: # 无tag，进入默认B50模式
-                try:
-                    record_data = filter_mmbl_b50(mmbl_data, b15_versions=b15_versions)
-                except KeyError:
-                    raise ValueError("Error: MMBL数据格式不正确，缺少必要字段。请检查选择的数据源类型或MMBL导出数据的设置。")
-                sub_type_tag = "best"
-            else:
-                if tag in ["ap"]:
-                    top_len = filter.get("top", 50)
-                    sub_type_tag = tag
-                    record_data = None # TODO: MMBL ap filtering
-                    raise NotImplementedError("Error: MMBL AP50筛选功能尚未实装。")
-                else:
-                    raise ValueError("Error: 目前仅支持tag为ap的查询类型。")
+            sub_type_tag = tag if tag else "best"
+            try:
+                record_data = filter_mmbl_b50(mmbl_data, filter)
+            except KeyError:
+                raise ValueError("Error: MMBL数据格式不正确，缺少必要字段。请检查选择的数据源类型或MMBL导出数据的设置。")
         else:
-            raise ValueError("Error: Only best query is supported for MMBL data for now")
+            raise ValueError("Error: Only \"all\" query is supported for MMBL data for now")
     else:
         raise ValueError("Error: Only MAIMAI DX is supported for MMBL data")
     
     # Keep the same database ordering as generate_archive_data_from_fish
     for i in range(len(record_data)):
         record_data[i]['order_in_archive'] = len(record_data) - i
+
+    b15_versions = filter.get("b15_versions", -1) if filter else -1
+    if b15_versions == 0:
+        game_version = GAME_VERSION_LABELS["latest_INT"]
+    elif b15_versions == 1:
+        game_version = GAME_VERSION_LABELS["latest_JP"]
+    else:
+        game_version = GAME_VERSION_LABELS["Not Specified"]
 
     new_archive_data = {
         "game_type": game_type,
@@ -822,9 +815,25 @@ def generate_archive_data_from_html(html_data, username, params = None) -> dict:
 ################################################
 
 def unify_user_gamedata(raw_file_path, username, params, source="mmbl") -> dict:
+    """
+    Unify user imported data. First, process with read_x methods to get JSON-like dict data. Then, generate archive data with generate_x methods for database insertion.
+
+    Args:
+        raw_file_path (str): The path to save raw data for future reference. Raw data needs to be processed.
+        username (str): user's name for recording
+        params (dict): Example
+            type (str): game type, only "maimai" is supported
+            query (str): query type, only "best" supported... currently?
+            filter (dict): filter conditions, example: {"tag": "ap", "b15_versions": 0}
+        source (str): the source of the input data, "mmbl" or "html" currently supported
+    
+    Returns:
+        Generated archive data.
+    """
     data_input = params.get("data_input", None)
     if not data_input:
         print("Error: 读取用户输入的文本数据时发生错误，文本框可能为空？")
+        
     if source == "mmbl":
         mmbl_data = read_mmbl_tsv(data_input, params)
         # 将初步转译为dict的数据保存

@@ -20,6 +20,13 @@ FC_PROXY_ENDPOINT = "https://fish-usta-proxy-efexqrwlmf.cn-shanghai.fcapp.run"
 # 第三方原始数据源api用于获取曲绘等CDN资源
 LXNS_API_ENDPOINT = "https://assets.lxns.net"  # 落雪查分器api
 
+# Version tags from MMBL, used for filtering B15 records from MBL exported data.
+DEFAULT_B15_VERSION = [
+    ["PRiSM PLUS", "CiRCLE"],
+    ["CiRCLE", "CiRCLE PLUS"],
+    []
+]
+
 def get_otoge_db_api_endpoint(game_type) -> str:
     return f"https://otoge-db.net/{game_type}/jacket"  # otoge-db api
 
@@ -772,15 +779,19 @@ def read_mmbl_tsv(data_input, params):
     """
     MMBL exports TSV data with a header row and multiple chart data rows.
     Read the header row first, then parse every entry into a dict with the header fields as keys.
+
+    Args:
+        data_input: raw TSV string exported from MMBL
+        params: no params will be used here
+    
+    Returns:
+        Rough processed JSON-like list of dict mmbl_data
     """
     lines = data_input.strip().split('\n')
     if not lines:
         return []
     
-    headers = lines[0].split('\t')
-    """
-    Song	Genre	Version	Chart	Difficulty	Level	Achv	Rank	FC/AP	Sync	DX ✦	DX %	DX Score	Chart Constant
-    """
+    headers = lines[0].split('\t') # Song	Genre	Version	Chart	Difficulty	Level	Achv	Rank	FC/AP	Sync	DX ✦	DX %	DX Score	Chart Constant
     mmbl_dicts = []
     for line in lines[1:]:
         if not line.strip():
@@ -855,50 +866,66 @@ def parse_mmbl_tsv(chart_entry: dict, game_type="maimai") -> dict:
         }
     return record
 
-def filter_mmbl_b50(mmbl_data, b15_versions, best_past_len=35, best_new_len=15):
+def filter_mmbl_b50(mmbl_data, filter: dict = None):
     """
     Filter and parse B50 entries from raw MMBL exported data
     """
     from utils.dxnet_extension import compute_rating, safe_parse_difficulty
-    b15_versions_lower = {v.lower() for v in b15_versions}
-    print(f"DataUtils DEBUG: Trying to filter B15 with versions: {b15_versions_lower} from MMBL data with {len(mmbl_data)} entries.")
 
     def mmbl_rating(entry, i):
         achv = float(entry["Achv"].rstrip("%"))
         rating = compute_rating(entry["Chart Constant"], achv)
-        # print(f"DEBUG: Entry {i} - Song: {entry['Song']}, Version: {entry['Version']}")
         return ({**entry, "Rating": rating}, i)
 
     def best_sort_key(item):
         entry, original_index = item
         return (-entry["Rating"], -safe_parse_difficulty(entry["Chart Constant"]), -float(entry["Achv"].rstrip("%")), original_index)
 
-    # Calculate ratings for all entries first, then sort and slice to get top entries for new and past versions
-    new_charts = [mmbl_rating(entry, i) for i, entry in enumerate(mmbl_data)
-                  if entry.get("Version", "").lower() in b15_versions_lower]
-    past_charts = [mmbl_rating(entry, i) for i, entry in enumerate(mmbl_data)
-                   if entry.get("Version", "").lower() not in b15_versions_lower]
+    MMBL_FILTER_FUNCTIONS = {
+        "ap": lambda entry: entry.get("FC/AP", "") in ["AP", "AP+"],
+        "fc": lambda entry: entry.get("FC/AP", "") in ["FC", "FC+", "AP", "AP+"],
+    }
 
+    # Parse filter params
+    if not filter:
+        b15_versions = []
+        best_past_len = 50
+        best_new_len = 0
+        tag = ""
+    else:
+        #print("DEBUG: filter = ", filter)
+        b15_versions = DEFAULT_B15_VERSION[filter.get("b15_versions", -1)]
+        best_past_len = filter.get("best_past_len", 35 if b15_versions else 50)
+        best_new_len = filter.get("best_new_len", 15 if b15_versions else 0)
+        tag = filter.get("tag", "").lower()
+
+    # 如果有筛选需求，排除不满足tag要求的谱面
+    if tag:
+        if tag not in MMBL_FILTER_FUNCTIONS:
+            raise ValueError(f"MMBL数据源仅支持tag为{list(MMBL_FILTER_FUNCTIONS.keys())}的筛选，当前tag: {tag}")
+        tagged_charts = [(i, entry) for i, entry in enumerate(mmbl_data)
+                         if MMBL_FILTER_FUNCTIONS[tag](entry)]
+    else:
+        tagged_charts = list(enumerate(mmbl_data))
+    # 筛选谱面版本，计算rating并排序
+    new_charts = [mmbl_rating(entry, i) for i, entry in tagged_charts
+                  if entry.get("Version", "") in b15_versions] if b15_versions else []
+    past_charts = [mmbl_rating(entry, i) for i, entry in tagged_charts
+                   if (not b15_versions or entry.get("Version", "") not in b15_versions)]
     new_sorted = sorted(new_charts, key=best_sort_key)[:best_new_len]
     past_sorted = sorted(past_charts, key=best_sort_key)[:best_past_len]
-
-    # print(f"DEBUG: Found {len(new_sorted)} new charts and {len(past_sorted)} past charts after filtering MMBL data.")
-    # print(f"DEBUG: Sorted new charts (top {best_new_len}): {[entry['Song'] for entry, _ in new_sorted]}")
-    # print(f"DEBUG: Sorted past charts (top {best_past_len}): {[entry['Song'] for entry, _ in past_sorted]}")
-
-    # Parse the sorted entries into the new record format, and assign clip_title_name based on their rank in the sorted list
+    # 将筛选后的谱面转译为数据库格式，并添加clip_title_name
     new_records = []
-    for i, (entry, _) in enumerate(new_sorted, start=1):
+    for i, (entry, _) in enumerate(new_sorted):
         record = parse_mmbl_tsv(entry)
-        record['clip_title_name'] = f"NewBest{i}"
+        record['clip_title_name'] = f"NewBest{i + 1}"
         new_records.append(record)
-
     past_records = []
-    for i, (entry, _) in enumerate(past_sorted, start=1):
+    past_suffix = "PastBest" if best_new_len > 0 else "Best"
+    for i, (entry, _) in enumerate(past_sorted):
         record = parse_mmbl_tsv(entry)
-        record['clip_title_name'] = f"PastBest{i}"
+        record['clip_title_name'] = f"{past_suffix}{i + 1}"
         past_records.append(record)
-
     return new_records + past_records
 
 # --------------------------------------

@@ -1,5 +1,3 @@
-from utils.PageUtils import load_music_metadata
-
 # TODO: 这个文件只剩下工具函数了，考虑把它挪到DataUtils或者user_gamedata_handlers里
 
 def safe_parse_difficulty(ds) -> float:
@@ -159,6 +157,7 @@ class ChartManager:
         self.total_rating = 0
 
         # with open("./music_datasets/jp_songs_info.json", 'r', encoding="utf-8") as f:
+        from utils.PageUtils import load_music_metadata
         self.all_songs = load_music_metadata("maimaidx")    
 
     def fill_json(self, chart_json):
