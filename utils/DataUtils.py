@@ -1006,6 +1006,10 @@ def parse_maimai_html(song_div):
     Parse a HTML div from maimai DX Net B50 page into a JSON record in new record formatting
     """
     LEVEL_DIV_LABEL = ["_basic", "_advanced", "_expert", "_master", "_remaster"]
+    score_text = ""
+    level_index = -1
+    title = ""
+    chart_type = -1
     # Initialise chart JSON (Depracated fish style JSON)
     # chart = {
     #     "achievements": 0,
