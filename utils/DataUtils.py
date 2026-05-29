@@ -523,8 +523,8 @@ def exact_match_chart(query, songs_data, game_type="maimai") -> dict:
                             'video_path': None
                         }
                         return chart_data
-                raise ValueError(f"Error: exactly matched song {query["title"]}, but didn't find chart with level index {query["level_index"]} with chart type {query["chart_type"]}")
-        raise ValueError(f"Error: can't exactly match song with name {query["title"]}")
+                raise ValueError(f"Error: exactly matched song {query['title']}, but didn't find chart with level index {query['level_index']} with chart type {query['chart_type']}")
+        raise ValueError(f"Error: can't exactly match song with name {query['title']}")
     else:
         raise NotImplementedError("Unsupported game type for exact chart matching.")
 
