@@ -1,9 +1,10 @@
 import streamlit as st
 import os
+import re
 import json
 import traceback
 from datetime import datetime
-from utils.user_gamedata_handlers import fetch_user_gamedata, update_b50_data_int
+from utils.user_gamedata_handlers import fetch_user_gamedata, unify_user_gamedata
 from utils.PageUtils import process_username, get_game_type_text
 from db_utils.DatabaseDataHandler import get_database_handler
 from utils.PathUtils import get_user_base_dir
@@ -216,7 +217,7 @@ def confirm_delete_archive(username: str, archive_name: str):
     if st.button("取消"):
         st.rerun()
 
-def handle_new_data(username: str, source: str, params: dict = None, parser: str = "json"):
+def handle_new_data(username: str, source: str, params: dict = None):
     """
     Fetches new data from a source, then creates a new archive in the database.
     This function is a placeholder for the actual data fetching logic.
@@ -226,13 +227,19 @@ def handle_new_data(username: str, source: str, params: dict = None, parser: str
     raw_file_path = f"{get_user_base_dir(username)}/{username}_{source}_raw_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     try:
         # 重构：查分，并创建存档，原始数据缓存于raw_file_path
-        if source == "intl":
-            new_archive_data = update_b50_data_int(
-                b50_raw_file=raw_file_path,
+        if source in ["mmbl", "html"]: #, "json"]:
+            new_archive_data = unify_user_gamedata(
+                raw_file_path=raw_file_path,
+                source=source,
                 username=username,
                 params=params,
-                parser=parser
             )
+        # elif source == "intl":
+        #     new_archive_data = update_b50_data_int(
+        #         b50_raw_file=raw_file_path,
+        #         username=username,
+        #         params=params
+        #     )
         elif source in ["fish", "lxns"]:
             new_archive_data = fetch_user_gamedata(
                 raw_file_path=raw_file_path,
@@ -576,22 +583,84 @@ if st.session_state.get('config_saved', False):
                 
 
         # Data from DX Web (INTL/JP Server)
-        with st.expander("从 DX Rating Net 导入（国际服/日服）"):
-            st.warning("⚠️ 国际服/日服数据还未适配到新版本，可能无法正常使用。")
+        with st.expander("🌏 从官网手动导入数据 (国际服/日服)"):
+            st.warning("✅ 国际服/日服数据已更新MMBL导入支持，绝赞测试中！")
             if G_type == "maimai":
-                st.write("请将maimai DX NET(官网)获取的源代码，或 DX Rating 网站导出的JSON代码粘贴到下方。")
-                data_input = st.text_area("粘贴源代码或JSON", height=200)
-                
+                st.write("请将获取的数据文本粘贴到下方输入框中，并选择对应的数据源类型和其他信息。")
+
+                if st.toggle("💡 展开查看数据获取指南"):
+                    # TODO: Claude写的分段加载markdown图片/文本，后续可以封装成工具方法
+                    _guide_path = os.path.join(os.path.dirname(__file__), "..", "docs", "DataImportGuide.md")
+                    _res_dir = os.path.join(os.path.dirname(__file__), "..", "md_res")
+
+                    with open(_guide_path, "r", encoding="utf-8") as f:
+                        _guide_md = f.read()
+
+                    st.divider()
+                    # 按图片行拆分
+                    pattern = re.compile(r"(!\[([^\]]*)\]\(([^)]+)\))") # ![alt](path) 正则
+                    last_end = 0
+                    for match in pattern.finditer(_guide_md):
+                        # 图片前的文本
+                        before = _guide_md[last_end:match.start()]
+                        if before.strip():
+                            st.markdown(before)
+                        # 图片
+                        img_path = os.path.join(_res_dir, os.path.basename(match.group(3)))
+                        st.image(img_path)
+                        last_end = match.end()
+                    # 最后一张图片后的文本
+                    remaining = _guide_md[last_end:]
+                    if remaining.strip():
+                        st.markdown(remaining)
+                    st.divider()
+
+                DATA_SOURCE_OPTIONS = ["Maimai Booklet (MMBL, 推荐)", "maimai DX Net (HTML, 不含FC状态等信息)"] #, "dxrating (JSON)"]
+                MMBL_VERSION_OPTIONS = ["国际服 (PRiSM PLUS & CiRCLE)", "日服 (CiRCLE & CiRCLE PLUS)", "全版本 (取全曲最高50条成绩，生成AP50/FC50时推荐)"]
+                FILTER_TAG_OPTIONS = ["无筛选 (根据版本筛选B35+B15或整体B50)", "极50 (只筛选FC以上成绩)", "神50 (只筛选AP以上成绩)"]
+
+                data_source = st.radio("选择导入的数据源类型：", options=DATA_SOURCE_OPTIONS, key="data_source")
+                if data_source == DATA_SOURCE_OPTIONS[0]:
+                    mmbl_version = st.radio("B15对应版本 (仅影响MMBL数据源)", options=MMBL_VERSION_OPTIONS, key="mmbl_version")
+                    filter_tag = st.radio("特殊筛选条件 (仅影响MMBL数据源)", options=FILTER_TAG_OPTIONS, key="filter_tag")
+
+                data_input = st.text_area("请粘贴获取到的原始数据", height=200)
+
                 if st.button("从粘贴内容创建新存档"):
                     if data_input:
-                        file_type = "json" if data_input.strip().startswith("[{") else "html"
-                        handle_new_data(username, source="intl",
-                                        params={"type": "maimai", "query": "best"}, parser=file_type)
+                        query = "best"
+                        filter = {}
+                        if data_source == DATA_SOURCE_OPTIONS[0]:
+                            file_type = "mmbl"
+                            query = "all" # MMBL固定返回全部数据
+
+                            # 用户指明自己的数据源服务器
+                            if mmbl_version == MMBL_VERSION_OPTIONS[0]:
+                                filter["b15_versions"] = 0
+                            elif mmbl_version == MMBL_VERSION_OPTIONS[1]:
+                                filter["b15_versions"] = 1
+                            else:
+                                filter["b15_versions"] = -1
+                            # AP50需要修改filter
+                            if filter_tag == FILTER_TAG_OPTIONS[1]:
+                                filter["tag"] = "fc"
+                            elif filter_tag == FILTER_TAG_OPTIONS[2]:
+                                filter["tag"] = "ap"
+                        elif data_source == DATA_SOURCE_OPTIONS[1]:
+                            file_type = "html"
+                        else:
+                            file_type = "json"
+
+                        handle_new_data(username, source=file_type,
+                                        params={"type": "maimai", "query": query,
+                                                "data_input": data_input,
+                                                "filter": filter})
                     else:
                         st.warning("输入框内容为空。")
             else:
                 st.warning(f"暂未支持从国际服/日服数据导入中二节奏数据，如有需要请在左侧导航栏使用自定义分表功能手动配置。")
-
+        with st.expander("💡 数据在神秘的服务器里？加入交流群，说不定就能实装呢？"):
+            st.write("加入QQ群：[994702414](https://qm.qq.com/q/ogt02jHEjK)")
     # --- Navigation ---
     st.divider()
     if st.session_state.get('data_updated_step1', False) and st.session_state.get('archive_name'):
