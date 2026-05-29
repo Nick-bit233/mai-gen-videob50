@@ -23,12 +23,6 @@ from utils.DataUtils import (
 
 LEVEL_LABEL = ["Basic", "Advanced", "Expert", "Master", "Re:MASTER"]
 
-# Version tags from MMBL, used for filtering B15 records from MBL exported data.
-DEFAULT_B15_VERSION = {
-    "INT": ["PRiSM PLUS", "CiRCLE"],
-    "JP": ["CiRCLE", "CiRCLE PLUS"]
-}
-
 # game_version labels
 GAME_VERSION_LABELS = {
     "latest_CN": "DX2025",
