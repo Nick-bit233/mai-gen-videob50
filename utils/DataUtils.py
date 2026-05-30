@@ -831,7 +831,7 @@ def parse_mmbl_tsv(chart_entry: dict, game_type="maimai") -> dict:
 
     def normalize_flag(value):
         s = value.lower().replace("+", "p")
-        if s in ("-", "sync"):
+        if s == "-":
             return "none"
         return s
 
@@ -846,7 +846,7 @@ def parse_mmbl_tsv(chart_entry: dict, game_type="maimai") -> dict:
         'level_index': level_idx,
         'difficulty': ds,
         'song_name': song_name,
-        'artist': None, # TODO: 加一个补曲师的
+        'artist': None,
         'max_dx_score': max_dx_score,
         'video_path': None
     }

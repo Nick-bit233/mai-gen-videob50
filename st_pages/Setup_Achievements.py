@@ -651,6 +651,9 @@ if st.session_state.get('config_saved', False):
                         else:
                             file_type = "json"
 
+                        # TODO: 用自家的JS脚本读json，然后解读这种json替代mmbl
+                        # TODO: “平替地板”筛选条件，当地板同分谱面溢出时，保留这些谱面让用户自己删除不想要的
+
                         handle_new_data(username, source=file_type,
                                         params={"type": "maimai", "query": query,
                                                 "data_input": data_input,
