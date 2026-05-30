@@ -8,6 +8,14 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 ## 更新速览
 
+`v1.3 (?)` 开发版本更新
+
+以下内容来自@[奕凌Yelon](https://github.com/YelonNotXTD)
+
+- ✨ **新增数据源**：现在支持通过maimai booklet工具从官网导出所有成绩来新建存档了！在该导入方式下，可以自定义B15的版本与成绩的筛选方式，从而支持国际服/日服数据源的AP50等特殊生成。
+- 🛠️ **修复数据源**：现在又可以通过官网でらっくすrating界面的HTML源代码来创建国际服/日服B50存档了！
+- 🎚️ **小巧思**：在生成完整视频时，现在可以勾选新的选项来只生成开场和结尾片段。适用于在填写心得时已经生成了所有谱面的单独片段的用户。
+
 `v1.2.1` Bug修复：
 - 🛠️ 修复了在某些系统环境下，生成视频时出现`MoviePy error: failed to read the first frame of video file black_bg.mp4 `的错误
 - 🛠️ 修复了在macOS下，数据库路径解析和命令行工具调用不稳定的问题 @[RararXD](https://github.com/RararXD)
@@ -88,13 +96,19 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 - [x] [落雪查分器](https://maimai.lxns.net/)：直接通过好友码获取（请在账户设置中打开相关权限）。如果您不愿意授权开发者读取，可选择填入落雪后台生成的个人 API KEY 拉取数据。
 
-> 注：以下源支持已过期，无法保证可用性
+- [x] 基于[Maimai Booklet](https://myjian.github.io/mai-tools/#howto)导出的[国际服](https://maimaidx-eng.com/maimai-mobile/home/ratingTargetMusic/)/[日服](https://maimaidx.jp/maimai-mobile/home/ratingTargetMusic/) 官网成绩
 
-- [x] Maimai DX NET： [国际服](https://maimaidx-eng.com/maimai-mobile/home/ratingTargetMusic/)/[日服](https://maimaidx.jp/maimai-mobile/home/ratingTargetMusic/) 
+> 更新计划: 因为该书签工具开发者有"看一眼主页就能发现的问题"，在未来版本我们会支持以其他方式从官网读取您的成绩，以筛选各种B50并生成视频的方式。届时我们会取消引用该工具并不再解析该工具输出的TSV数据。
 
-- [x] [DXrating](https://dxrating.net/rating)：支持国服/国际服/日服
+- [x] Maimai DX NET的Rating对象乐曲页面： [国际服](https://maimaidx-eng.com/maimai-mobile/home/ratingTargetMusic/)/[日服](https://maimaidx.jp/maimai-mobile/home/ratingTargetMusic/) 
 
-国际服/日服官网以及DXrating网站导入数据需要通过下载网页或导出源码，点此查看[国际服/日服数据获取插件使用教程](docs/DX_NET_Guide.md)）
+国际服/日服官网的数据导入需要额外操作或借助其他工具：点此查看[国际服/日服数据获取插件使用教程](docs/DataImportGuide.md)）
+
+> 注：以下源支持已过期，暂不可用
+
+- [ ] [DXrating](https://dxrating.net/rating)：支持国服/国际服/日服
+
+> 更新计划：修复解析DXrating JSON的功能。
 
 
 ### 流媒体源支持情况

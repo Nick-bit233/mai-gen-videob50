@@ -92,6 +92,7 @@ with st.container(border=True):
             options=options, 
             index=_mode_index)
     
+    no_main_clip = st.checkbox("生成视频片段时，跳过全部曲目片段（仅生成开场、结尾）", value=False)
     force_render_clip = st.checkbox("生成视频片段时，强制覆盖已存在的视频文件（否则将跳过同名片段的生成）", value=False)
 
 trans_config_placeholder = st.empty()
@@ -201,7 +202,7 @@ if st.button("开始生成视频", use_container_width=True, type="primary"):
                     render_all_video_clips(
                         game_type=G_type,
                         style_config=style_config,
-                        main_configs=main_configs,
+                        main_configs=main_configs if not no_main_clip else [],
                         video_output_path=video_output_path,
                         video_res=video_res,
                         video_bitrate=v_bitrate_kbps,
