@@ -671,8 +671,12 @@ def exact_match_chart(query, songs_data, game_type="maimai") -> dict:
                             'video_path': None
                         }
                         return chart_data
+                if title == "Help me, ERINNNNNN!!":
+                    continue # SBGA把旧的歌名改了，导致第一次可能把DX查成SD
                 raise ValueError(f"Error: exactly matched song {query['title']}, but didn't find chart with level index {query['level_index']} with chart type {query['chart_type']}")
-        raise ValueError(f"Error: can't exactly match song with name {query['title']}")
+        # 国际服独占曲不在数据库中，可能会掉到这里
+        print(f"Warning: can't exactly match song with name {query['title']}")
+        return None
     else:
         raise NotImplementedError("Unsupported game type for exact chart matching.")
 
@@ -951,8 +955,8 @@ def filter_mgbl_b50(mgbl_scores: list, filter: dict) -> List[dict]:
         record_data: list of dict, will be stored in database
     """
     MGBL_FILTER_FUNCTIONS = {
-        "ap": lambda score: score.get("combo", "") in ["AP", "AP+"],
-        "fc": lambda score: score.get("combo", "") in ["FC", "FC+", "AP", "AP+"],
+        "ap": lambda score: score.get("combo", "") in ["ap", "app"],
+        "fc": lambda score: score.get("combo", "") in ["fc", "fcp", "ap", "app"],
     }
     SONGS_METADATA = load_metadata("maimai")
 
@@ -966,6 +970,9 @@ def filter_mgbl_b50(mgbl_scores: list, filter: dict) -> List[dict]:
             "chart_type": chart_type_str2value(score["type"].lower(), fish_record_style=False)
         }
         chart_data = exact_match_chart(query, SONGS_METADATA, game_type="maimai")
+        if not chart_data:
+            print(f"Warning: 无法匹配谱面{query}, 已自动跳过。如果缺失的数据是\"全世界共通リズム感テスト\"属正常现象。")
+            return None
         achievement = score.get("achievement", "101.0000%").rstrip("%")
         dx_rating = compute_rating(chart_data["difficulty"], float(achievement))
         record = {
@@ -1009,20 +1016,27 @@ def filter_mgbl_b50(mgbl_scores: list, filter: dict) -> List[dict]:
         tagged_scores = list(enumerate(mgbl_scores))
 
     # Match version and sort
-    new_records = [mgbl_to_record(i, score) for i, score in tagged_scores
-                  if score["isNew"]] if match_b15 else []
-    past_records = [mgbl_to_record(i, score) for i, score in tagged_scores
-                   if (not match_b15 or not score["isNew"])]
-    new_records_sorted = sorted(new_records, key=mgbl_sort_key)[:best_new_len]
-    past_records_sorted = sorted(past_records, key=mgbl_sort_key)[:best_past_len]
+    new_records = [result for result in
+                    (mgbl_to_record(i, score) for i, score
+                    in tagged_scores if score["isNew"])
+                    if result is not None] if match_b15 else []
+    past_records = [result for result in 
+                    (mgbl_to_record(i, score) for i, score in tagged_scores
+                    if (not match_b15 or not score["isNew"]))
+                    if result is not None]
+    new_records = sorted(new_records, key=mgbl_sort_key)[:best_new_len]
+    past_records = sorted(past_records, key=mgbl_sort_key)[:best_past_len]
     # Fill clip_title_name
+    record_data = []
     best_prefix = "Best" if not tag else tag.upper()
-    for clip_number, (_, record) in enumerate(new_records_sorted):
+    for clip_number, (_, record) in enumerate(new_records):
         record["clip_title_name"] = f"New{best_prefix}{clip_number + 1}"
+        record_data.append(record)
     past_prefix = "Past" if best_new_len > 0 else ""
-    for clip_number, (_, record) in enumerate(past_records_sorted):
+    for clip_number, (_, record) in enumerate(past_records):
         record["clip_title_name"] = f"{past_prefix}{best_prefix}{clip_number + 1}"
-    return new_records_sorted + past_records_sorted
+        record_data.append(record)
+    return record_data
 
 # ----------------------
 # MTBL data parsing methods

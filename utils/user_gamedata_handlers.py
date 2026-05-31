@@ -547,12 +547,12 @@ def generate_archive_data_from_mgbl(mgbl_data, username, params) -> dict:
     """
     game_type = params.get("type", "maimai")
     query = params.get("query", "all")
-    filter = params.get("filter", None)
+    filter = params.get("filter", {})
+    tag = filter.get("tag", "")
     sub_type_tag = ""
 
     if game_type == "maimai":
         if query == "all":
-            tag = filter.get("tag", None)
             sub_type_tag = tag if tag else "best"
             try:
                 record_data = filter_mgbl_b50(mgbl_data["scores"], filter)
@@ -567,19 +567,30 @@ def generate_archive_data_from_mgbl(mgbl_data, username, params) -> dict:
     for i in range(len(record_data)):
         record_data[i]['order_in_archive'] = len(record_data) - i
 
-    game_version = GAME_VERSION_LABELS["Unspecified"]
+    game_version = GAME_VERSION_LABELS["Not Specified"]
     if filter and filter.get("b15_versions", -1) >= 0:
         if mgbl_data["host"] == "maimaidx-eng.com":
             game_version = GAME_VERSION_LABELS["latest_INT"]
         else:
             game_version = GAME_VERSION_LABELS["latest_JP"]
 
+    local_rating = sum(record['dx_rating'] for record in record_data)
+    if local_rating != mgbl_data["rating"] and not tag:
+        print(f"""
+            ==============================================================================
+            Warning: 计算得到的rating {local_rating} 与从官网读取并录入存档的rating {mgbl_data['rating']} 不一致。请检查以下情况，必要时在"编辑数据"页面手动调整相关谱面。
+            1. 数据来自国际服且现与日服的大版本不一致，B50可能包含了定数有变动的谱面；
+            2. 潜在B50中存在近期被删除或国际服独占曲目，如"全世界共通リズム感テスト"，这些曲目无法被检索；
+            3. 近期您的数据源服务器有大版本更新，我们的数据库可能尚未及时更新相关数据；
+            4. SBGA又抽风改动了旧曲目的名称，如"Help me, ERINNNNNN!!"等，导致了谱面匹配错位。
+            ==============================================================================
+        """)
 
     new_archive_data = {
         "game_type": game_type,
         "sub_type": sub_type_tag,
         "username": username,
-        "rating_mai": mgbl_data["rating"],
+        "rating_mai": local_rating,
         "rating_chu": 0.0,
         "game_version": game_version,
         "initial_records": record_data
@@ -600,12 +611,12 @@ def generate_archive_data_from_mtbl(mtbl_data, username, params) -> dict:
     """
     game_type = params.get("type", "maimai")
     query = params.get("query", "best")
-    filter = params.get("filter", None)
+    filter = params.get("filter", {})
+    tag = filter.get("tag", "")
     sub_type_tag = ""
 
     if game_type == "maimai":
         if query == "all":
-            tag = filter.get("tag", None)
             sub_type_tag = tag if tag else "best"
             try:
                 record_data = filter_mtbl_b50(mtbl_data, filter)
@@ -662,6 +673,9 @@ def generate_archive_data_from_html(html_data, username, params = None) -> dict:
             # For the data structure of raw_record, see the return value of parse_maimai_html
             query = raw_record["query"]
             chart_data = exact_match_chart(query, songs_metadata)
+            if not chart_data:
+                print(f"Warning: 无法匹配谱面{query}, 已自动跳过。如果缺失的数据是\"全世界共通リズム感テスト\"属正常现象。")
+                continue
             dx_rating = compute_rating(chart_data["difficulty"], float(raw_record["achievement"]))
             record = {
                 'chart_data': chart_data,
