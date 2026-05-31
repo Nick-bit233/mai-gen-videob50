@@ -8,8 +8,7 @@ from copy import deepcopy
 from utils.PathUtils import *
 from utils.PageUtils import get_db_manager, process_username, get_game_type_text
 from db_utils.DatabaseDataHandler import get_database_handler
-from utils.DataUtils import load_metadata, search_songs, level_label_to_index, chart_type_value2str
-from utils.dxnet_extension import compute_chunithm_rating, compute_rating
+from utils.DataUtils import load_metadata, search_songs, level_label_to_index, chart_type_value2str, compute_chunithm_rating, compute_rating
 from utils.ChartUtils import (
     get_chart_type_options, get_level_index_options,
     get_fc_status_options, get_fs_status_options,

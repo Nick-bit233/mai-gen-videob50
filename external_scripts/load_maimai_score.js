@@ -1,12 +1,12 @@
 javascript:(async function() {
-    /* Configuration */
     const host = window.location.hostname;
-    const baseUrl = "https://" + host + "/maimai-mobile/record/";
+    const baseUrl = "https://" + host + "/maimai-mobile";
     const b15VersionIds = host.includes("maimaidx-eng.com") ? [24, 25] : [25, 26];
 
     const CONFIG = {
-        allUrl: baseUrl + "musicGenre/search/?genre=99&diff=",
-        versionUrl: (versionId, diffId) => baseUrl + "musicVersion/search/?version=" + versionId + "&diff=" + diffId,
+        homeUrl: baseUrl + "/home",
+        allUrl: baseUrl + "/record/musicGenre/search/?genre=99&diff=",
+        versionUrl: (versionId, diffId) => baseUrl + "/record/musicVersion/search/?version=" + versionId + "&diff=" + diffId,
         difficulties: [
             { id: 0, name: "Basic" },
             { id: 1, name: "Advanced" },
@@ -21,7 +21,7 @@ javascript:(async function() {
         ],
         b15Versions: undefined
     };
-    CONFIG.b15Versions = CONFIG.versions.filter(v => b15VersionIds.includes(v.id))
+    CONFIG.b15Versions = CONFIG.versions.filter(v => b15VersionIds.includes(v.id));
 
     const statusDiv = document.createElement("div");
     let allScores = [];
@@ -97,11 +97,12 @@ javascript:(async function() {
                         difficulty: diff.name,
                         level: levelElem ? levelElem.innerText.trim() : "Unknown",
                         achievement: scoreElem.innerText.trim(),
-                        dxscore: dxScore,
+                        dxScore: dxScore,
+                        maxDxScore: maxDxScore,
                         sync: syncStatus,
                         combo: comboStatus,
                         type: getChartType(row),
-                        raw_difficulty_id: diff.id,
+                        difficultyId: diff.id,
                         isNew: false,
                     });
                 }
@@ -124,10 +125,9 @@ javascript:(async function() {
             const doc = parser.parseFromString(text, 'text/html');
 
             const songRows = doc.querySelectorAll('.w_450.m_15.p_3.f_0');
-            // showStatus("Fetched " + songRows.length + " songs")
 
             songRows.forEach(row => {
-                const songNameElem = row.querySelector('.music_name_block')
+                const songNameElem = row.querySelector('.music_name_block');
                 if (songNameElem) {
                     newSongs.add(songNameElem.innerText + "_" + getChartType(row));
                 }
@@ -138,13 +138,25 @@ javascript:(async function() {
         }
     }
 
+    async function fetchRating() {
+        const response = await fetch(CONFIG.homeUrl);
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        const text = await response.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(text, 'text/html');
+        const ratingElem = doc.querySelector('.rating_block');
+        if (!ratingElem) return -1;
+        const parsed = parseInt(ratingElem.innerText.trim(), 10);
+        return isNaN(parsed) ? -1 : parsed;
+    }
+
     try {
         showStatus("Starting export... Please wait.");
         
         await fetchAllScores();
         await fetchNewSongs();
 
-        showStatus("Filtering B15 songs for version " + CONFIG.b15Versions[0].name + " and " + CONFIG.b15Versions[1].name + "...")
+        showStatus("Filtering B15 songs for version " + CONFIG.b15Versions[0].name + " and " + CONFIG.b15Versions[1].name + "...");
 
         allScores.forEach(s => {
             if (newSongs.has(s.songName + "_" + s.type)) {
@@ -153,20 +165,42 @@ javascript:(async function() {
         });
 
         showStatus("Export complete! Generating JSON for " + allScores.length + " scores...");
-
-        const jsonStr = JSON.stringify(allScores, null, 2);
-        const blob = new Blob([jsonStr], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = "maimai_scores_" + new Date().toISOString().slice(0,10) + ".json";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        const rating = await fetchRating();
+        const output = {
+            host: host,
+            rating: rating,
+            scores: allScores
+        };
+        const jsonStr = JSON.stringify(output, null, 2);
         
-        setTimeout(() => { if(statusDiv) statusDiv.remove(); }, 4000);
+        const btn = document.createElement('button');
+        btn.innerText = "📋 点击复制MGBL格式成绩数据";
+        btn.style.cssText = "position:fixed;top:10px;left:10px;z-index:9999;padding:10px 16px;background:#E7B1A9;color:white;border:none;border-radius:6px;font-size:14px;cursor:pointer;transition:background 0.2s,transform 0.1s;";
+        btn.onmousedown = () => {
+            btn.style.transform = "scale(0.95)";
+            btn.style.background = "#c98880";
+        };
+        btn.onmouseup = () => {
+            btn.style.transform = "scale(1)";
+            btn.style.background = "#E7B1A9";
+        };
+        btn.onmouseleave = () => {
+            btn.style.transform = "scale(1)";
+            btn.style.background = "#E7B1A9";
+        };
+        btn.onclick = () => {
+            navigator.clipboard.writeText(jsonStr).then(() => {
+                btn.innerText = "✅ 已复制！";
+                setTimeout(() => {
+                    btn.innerText = "📋 复制成绩数据";
+                }, 10000);
+            }).catch(err => {
+                alert("复制失败: " + err.message);
+            });
+        };
+        document.body.appendChild(btn);
+        
+        setTimeout(() => { if(statusDiv) statusDiv.remove(); }, 5000);
 
     } catch (err) {
         console.error(err);

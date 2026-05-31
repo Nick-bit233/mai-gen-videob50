@@ -6,14 +6,15 @@ import re
 import json
 import requests
 
-from utils.dxnet_extension import compute_rating
 from utils.DataUtils import (
     FC_PROXY_ENDPOINT,
     fish_to_new_record_format,
     lxns_to_new_record_format,
     chart_type_str2value,
-    read_mmbl_tsv,
-    filter_mmbl_b50,
+    compute_rating,
+    filter_mgbl_b50,
+    read_mtbl_tsv,
+    filter_mtbl_b50,
     read_maimai_html,
     load_metadata,
     exact_match_chart
@@ -454,8 +455,7 @@ def read_dxrating_json(b50_raw_file, username, params):
         "rating": -1,
         "username": username
     }
-    from utils.dxnet_extension import ChartManager
-    manager = ChartManager()
+    manager = None
     song_id_placeholder = 0 # Avoid same file names for downloaded videos
     for song in dxrating_json:
         song_id_placeholder -= 1 # -1 ~ -35 = b35, -36 ~ -50 = b15, assume full b35
@@ -514,12 +514,84 @@ def parse_dxrating_json(song_json, song_id_placeholder):
 # Generate archive data from local data input
 ################################################
 
-def generate_archive_data_from_mmbl(mmbl_data, username, params) -> dict:
+def generate_archive_data_from_mgbl(mgbl_data, username, params) -> dict:
     """
-    Generate initialised profile for dataset from MMBL data.
+    Extract song data from Mai-gen booklet output and form archive data.
 
     Args:
-        mmbl_data: list of dicts converted from MMBL TSV data
+        mgbl_data: Mai-gen booklet output JSON, example
+            {
+                "host": "maimaidx-eng.com",
+                "rating": 11451,
+                "scores": [
+                    {
+                        "songName": "Xaleid◆scopiX",
+                        "difficulty": "Re:MASTER",
+                        "level": "15",
+                        "achievement": "99.7325%",
+                        "dxscore": 4396,
+                        "sync": "sync",
+                        "combo": "fc",
+                        "type": "DX",
+                        "raw_difficulty_id": 4,
+                        "isNew": true
+                    },
+                    {...}
+                ]
+            }
+        username: user's name for recording
+        params (dict): example params -> see unify_user_gamedata function for detail
+
+    Returns:
+        new_archive_data (dict): initialized profile data for database insertion, including initial_records list
+    """
+    game_type = params.get("type", "maimai")
+    query = params.get("query", "all")
+    filter = params.get("filter", None)
+    sub_type_tag = ""
+
+    if game_type == "maimai":
+        if query == "all":
+            tag = filter.get("tag", None)
+            sub_type_tag = tag if tag else "best"
+            try:
+                record_data = filter_mgbl_b50(mgbl_data["scores"], filter)
+            except:
+                raise ValueError("Error: 解析MGBL数据时发生未知错误。")
+        else:
+            raise ValueError("Error: Only \"all\" query is supported for Mai-gen booklet data.")
+    else:
+        raise ValueError("Error: Only MAIMAI DX is supported for Mai-gen booklet data")
+    
+    # Keep the same database ordering as generate_archive_data
+    for i in range(len(record_data)):
+        record_data[i]['order_in_archive'] = len(record_data) - i
+
+    game_version = GAME_VERSION_LABELS["Unspecified"]
+    if filter and filter.get("b15_versions", -1) >= 0:
+        if mgbl_data["host"] == "maimaidx-eng.com":
+            game_version = GAME_VERSION_LABELS["latest_INT"]
+        else:
+            game_version = GAME_VERSION_LABELS["latest_JP"]
+
+
+    new_archive_data = {
+        "game_type": game_type,
+        "sub_type": sub_type_tag,
+        "username": username,
+        "rating_mai": mgbl_data["rating"],
+        "rating_chu": 0.0,
+        "game_version": game_version,
+        "initial_records": record_data
+    }
+    return new_archive_data
+
+def generate_archive_data_from_mtbl(mtbl_data, username, params) -> dict:
+    """
+    Generate initialised profile for dataset from MTBL data.
+
+    Args:
+        mtbl_data: list of dicts converted from MTBL TSV data
         username: user's name for recording
         params (dict): example params -> see unify_user_gamedata function for details
 
@@ -536,15 +608,15 @@ def generate_archive_data_from_mmbl(mmbl_data, username, params) -> dict:
             tag = filter.get("tag", None)
             sub_type_tag = tag if tag else "best"
             try:
-                record_data = filter_mmbl_b50(mmbl_data, filter)
+                record_data = filter_mtbl_b50(mtbl_data, filter)
             except KeyError:
-                raise ValueError("Error: MMBL数据格式不正确，缺少必要字段。请检查选择的数据源类型或MMBL导出数据的设置。")
+                raise ValueError("Error: MTBL数据格式不正确，缺少必要字段。请检查选择的数据源类型或MTBL导出数据的设置。")
         else:
-            raise ValueError("Error: Only \"all\" query is supported for MMBL data for now")
+            raise ValueError("Error: Only \"all\" query is supported for MTBL data for now")
     else:
-        raise ValueError("Error: Only MAIMAI DX is supported for MMBL data")
+        raise ValueError("Error: Only MAIMAI DX is supported for MTBL data")
     
-    # Keep the same database ordering as generate_archive_data_from_fish
+    # Keep the same database ordering as generate_archive_data
     for i in range(len(record_data)):
         record_data[i]['order_in_archive'] = len(record_data) - i
 
@@ -609,7 +681,7 @@ def generate_archive_data_from_html(html_data, username, params = None) -> dict:
     else:
         raise ValueError("Error: Only MAIMAI DX is supported for HTML data")
     
-    # Keep the same database ordering as generate_archive_data_from_fish
+    # Keep the same database ordering as generate_archive_data
     for i in range(len(record_data)):
         record_data[i]['order_in_archive'] = len(record_data) - i
 
@@ -628,7 +700,7 @@ def generate_archive_data_from_html(html_data, username, params = None) -> dict:
 # Unify user imported texts to internal format
 ################################################
 
-def unify_user_gamedata(raw_file_path, username, params, source="mmbl") -> dict:
+def unify_user_gamedata(raw_file_path, username, params, source="mgbl") -> dict:
     """
     Unify user imported data. First, process with read_x methods to get JSON-like dict data. Then, generate archive data with generate_x methods for database insertion.
 
@@ -639,7 +711,7 @@ def unify_user_gamedata(raw_file_path, username, params, source="mmbl") -> dict:
             type (str): game type, only "maimai" is supported
             query (str): query type, only "best" supported... currently?
             filter (dict): filter conditions, example: {"tag": "ap", "b15_versions": 0}
-        source (str): the source of the input data, "mmbl" or "html" currently supported
+        source (str): the source of the input data
     
     Returns:
         Generated archive data.
@@ -647,14 +719,21 @@ def unify_user_gamedata(raw_file_path, username, params, source="mmbl") -> dict:
     data_input = params.get("data_input", None)
     if not data_input:
         print("Error: 读取用户输入的文本数据时发生错误，文本框可能为空？")
+    
+    if source == "mgbl":
+        mgbl_data = json.loads(data_input)
+        # 保存原始JSON
+        with open(raw_file_path, "w", encoding="utf-8") as f:
+            json.dump(mgbl_data, f, ensure_ascii=False, indent=4)
         
-    if source == "mmbl":
-        mmbl_data = read_mmbl_tsv(data_input, params)
+        return generate_archive_data_from_mgbl(mgbl_data, username, params)
+    elif source == "mtbl":
+        mtbl_data = read_mtbl_tsv(data_input, params)
         # 将初步转译为dict的数据保存
         with open(raw_file_path, "w", encoding="utf-8") as f:
-            json.dump(mmbl_data, f, ensure_ascii=False, indent=4)
+            json.dump(mtbl_data, f, ensure_ascii=False, indent=4)
         
-        return generate_archive_data_from_mmbl(mmbl_data, username, params)
+        return generate_archive_data_from_mtbl(mtbl_data, username, params)
     
     elif source == "html":
         html_data = read_maimai_html(data_input, params)

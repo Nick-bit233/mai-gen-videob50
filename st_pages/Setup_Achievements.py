@@ -227,7 +227,7 @@ def handle_new_data(username: str, source: str, params: dict = None):
     raw_file_path = f"{get_user_base_dir(username)}/{username}_{source}_raw_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     try:
         # 重构：查分，并创建存档，原始数据缓存于raw_file_path
-        if source in ["mmbl", "html"]: #, "json"]:
+        if source in ["mtbl", "html"]: #, "json"]:
             new_archive_data = unify_user_gamedata(
                 raw_file_path=raw_file_path,
                 source=source,
@@ -584,7 +584,7 @@ if st.session_state.get('config_saved', False):
 
         # Data from DX Web (INTL/JP Server)
         with st.expander("🌏 从官网手动导入数据 (国际服/日服)"):
-            st.warning("✅ 国际服/日服数据已更新MMBL导入支持，绝赞测试中！")
+            st.warning("✅ 国际服/日服数据已更新MTBL导入支持，绝赞测试中！")
             if G_type == "maimai":
                 st.write("请将获取的数据文本粘贴到下方输入框中，并选择对应的数据源类型和其他信息。")
 
@@ -615,14 +615,15 @@ if st.session_state.get('config_saved', False):
                         st.markdown(remaining)
                     st.divider()
 
-                DATA_SOURCE_OPTIONS = ["Maimai Booklet (MMBL, 推荐)", "maimai DX Net (HTML, 不含FC状态等信息)"] #, "dxrating (JSON)"]
-                MMBL_VERSION_OPTIONS = ["国际服 (PRiSM PLUS & CiRCLE)", "日服 (CiRCLE & CiRCLE PLUS)", "全版本 (取全曲最高50条成绩，生成AP50/FC50时推荐)"]
+                DATA_SOURCE_OPTIONS = ["Mai-gen Booklet (MGBL, 推荐)", "maimai DX Net (HTML, 不含FC状态等信息)", "dxrating.com (DXJS, 暂不支持)", "Mai-tool Booklet (MTBL, 不推荐, 即将移除)"]
+                MGBL_VERSION_OPTIONS = ["自动筛选B15", "全版本 (取全曲最高50条成绩, 生成AP50/FC50时推荐)"]
+                MTBL_VERSION_OPTIONS = ["国际服 (PRiSM PLUS & CiRCLE)", "日服 (CiRCLE & CiRCLE PLUS)", "全版本 (取全曲最高50条成绩，生成AP50/FC50时推荐)"]
                 FILTER_TAG_OPTIONS = ["无筛选 (根据版本筛选B35+B15或整体B50)", "极50 (只筛选FC以上成绩)", "神50 (只筛选AP以上成绩)"]
 
                 data_source = st.radio("选择导入的数据源类型：", options=DATA_SOURCE_OPTIONS, key="data_source")
                 if data_source == DATA_SOURCE_OPTIONS[0]:
-                    mmbl_version = st.radio("B15对应版本 (仅影响MMBL数据源)", options=MMBL_VERSION_OPTIONS, key="mmbl_version")
-                    filter_tag = st.radio("特殊筛选条件 (仅影响MMBL数据源)", options=FILTER_TAG_OPTIONS, key="filter_tag")
+                    mtbl_version = st.radio("B15对应版本 (仅影响MTBL数据源)", options=MTBL_VERSION_OPTIONS, key="mtbl_version")
+                    filter_tag = st.radio("特殊筛选条件 (仅影响MTBL数据源)", options=FILTER_TAG_OPTIONS, key="filter_tag")
 
                 data_input = st.text_area("请粘贴获取到的原始数据", height=200)
 
@@ -631,13 +632,13 @@ if st.session_state.get('config_saved', False):
                         query = "best"
                         filter = {}
                         if data_source == DATA_SOURCE_OPTIONS[0]:
-                            file_type = "mmbl"
-                            query = "all" # MMBL固定返回全部数据
+                            file_type = "mtbl"
+                            query = "all" # 固定返回全部数据
 
                             # 用户指明自己的数据源服务器
-                            if mmbl_version == MMBL_VERSION_OPTIONS[0]:
+                            if mtbl_version == MTBL_VERSION_OPTIONS[0]:
                                 filter["b15_versions"] = 0
-                            elif mmbl_version == MMBL_VERSION_OPTIONS[1]:
+                            elif mtbl_version == MTBL_VERSION_OPTIONS[1]:
                                 filter["b15_versions"] = 1
                             else:
                                 filter["b15_versions"] = -1
@@ -651,13 +652,17 @@ if st.session_state.get('config_saved', False):
                         else:
                             file_type = "json"
 
-                        # TODO: 用自家的JS脚本读json，然后解读这种json替代mmbl
                         # TODO: “平替地板”筛选条件，当地板同分谱面溢出时，保留这些谱面让用户自己删除不想要的
 
-                        handle_new_data(username, source=file_type,
-                                        params={"type": "maimai", "query": query,
-                                                "data_input": data_input,
-                                                "filter": filter})
+                        handle_new_data(
+                            username,
+                            source=file_type,
+                            params={
+                                "type": "maimai",
+                                "query": query,
+                                "data_input": data_input,
+                                "filter": filter
+                            })
                     else:
                         st.warning("输入框内容为空。")
             else:

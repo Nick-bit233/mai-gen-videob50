@@ -1,8 +1,8 @@
-1. 官网-MMBL导出
+1. 官网-MTBL导出
 
 - 前往[Maimai Booklet工具页面](https://myjian.github.io/mai-tools/#howto)，按照说明在官网（[国际服](https://maimaidx-eng.com)/[日服](https://maimaidx.jp)）加载该插件。
 
-![MMBL导入摘要图](../md_res/mmbl_guide_1.png)
+![MTBL导入摘要图](../md_res/mtbl_guide_1.png)
 
 - 调整导出选项至包含所有内容，读取分数，点击复制`Copy`按钮。
 
