@@ -201,6 +201,40 @@ def lxns_api_instructions():
     **注意**：请妥善保管您的API密钥，不要泄露给他人，本项目仅将此密钥保存在本地，不会上传或分享给任何第三方。
     """)
 
+@st.dialog("国际服/日服数据导入说明")
+def other_data_import_guide():
+    # 加载markdown
+    guide_path = os.path.join(os.path.dirname(__file__), "..", "docs", "DataImportGuide.md")
+    res_dir = os.path.join(os.path.dirname(__file__), "..", "md_res")
+    with open(guide_path, "r", encoding="utf-8") as f:
+        guide_md = f.read()
+    # 准备js脚本
+    js_src = "https://yelonnotxtd.github.io/load_maimai_score.js"
+    js_loader = f"""javascript:(function(){{
+        var s=document.createElement('script');
+        s.src='{js_src}';
+        document.head.appendChild(s);
+    }})();"""
+    js_loader = re.sub(r'\s+', ' ', js_loader).strip()
+
+    # 按图片行拆分
+    # pattern = re.compile(r"(!\[([^\]]*)\]\(([^)]+)\))") # ![alt](path) 正则
+    pattern = re.compile(r"(!\[([^\]]*)\]\(([^)]+)\)|<!--MGBL_LINK-->)")
+    last_end = 0
+    for match in pattern.finditer(guide_md):
+        before = guide_md[last_end:match.start()]
+        if before.strip():
+            st.markdown(before)
+        if match.group(0).startswith("!"):
+            img_path = os.path.join(res_dir, os.path.basename(match.group(3)))
+            st.image(img_path, use_container_width=False)
+        else: # 处理<!--MGBL_LINK-->占位符
+            st.markdown(f"<div><a href=\"{js_loader}\">Mai-gen Booklet 成绩加载工具</a></div>", unsafe_allow_html=True)
+        last_end = match.end()
+    remaining = guide_md[last_end:]
+    if remaining.strip():
+        st.markdown(remaining)
+
 @st.dialog("删除存档确认")
 def confirm_delete_archive(username: str, archive_name: str):
     """Asks for confirmation and deletes an archive from the database."""
@@ -584,36 +618,12 @@ if st.session_state.get('config_saved', False):
 
         # Data from DX Web (INTL/JP Server)
         with st.expander("🌏 手动导入数据 (国际服/日服)"):
-            st.warning("✅ 国际服/日服数据的自研书签页导入工具绝赞测试中！")
+            st.warning("✅ 我们的国际服/日服数据书签页导入工具Mai-gen Booklet绝赞测试中!")
             if G_type == "maimai":
                 st.write("请将获取的数据文本粘贴到下方输入框中，并选择对应的数据源类型和其他信息。")
 
-                if st.toggle("💡 展开查看数据获取指南"):
-                    # TODO: Claude写的分段加载markdown图片/文本，后续可以封装成工具方法
-                    _guide_path = os.path.join(os.path.dirname(__file__), "..", "docs", "DataImportGuide.md")
-                    _res_dir = os.path.join(os.path.dirname(__file__), "..", "md_res")
-
-                    with open(_guide_path, "r", encoding="utf-8") as f:
-                        _guide_md = f.read()
-
-                    st.divider()
-                    # 按图片行拆分
-                    pattern = re.compile(r"(!\[([^\]]*)\]\(([^)]+)\))") # ![alt](path) 正则
-                    last_end = 0
-                    for match in pattern.finditer(_guide_md):
-                        # 图片前的文本
-                        before = _guide_md[last_end:match.start()]
-                        if before.strip():
-                            st.markdown(before)
-                        # 图片
-                        img_path = os.path.join(_res_dir, os.path.basename(match.group(3)))
-                        st.image(img_path)
-                        last_end = match.end()
-                    # 最后一张图片后的文本
-                    remaining = _guide_md[last_end:]
-                    if remaining.strip():
-                        st.markdown(remaining)
-                    st.divider()
+                if st.button("💡 点击查看数据获取指南", key="read_other_data_import_guide"):
+                    other_data_import_guide()
 
                 DATA_SOURCE_OPTIONS = ["Mai-gen Booklet (MGBL, 推荐)", "maimai DX Net (HTML, 仅基础信息)", "dxrating.com (DXJS, 暂不支持)", "Mai-tool Booklet (MTBL, 不推荐, 即将移除)"]
                 MGBL_VERSION_OPTIONS = ["自动筛选B15", "不筛选 (取全版本最高50条成绩, 生成AP50/FC50时推荐)"]

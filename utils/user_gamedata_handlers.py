@@ -575,14 +575,16 @@ def generate_archive_data_from_mgbl(mgbl_data, username, params) -> dict:
             game_version = GAME_VERSION_LABELS["latest_JP"]
 
     local_rating = sum(record['dx_rating'] for record in record_data)
-    if local_rating != mgbl_data["rating"] and not tag:
+    if local_rating != mgbl_data["rating"]:
         print(f"""
             ==============================================================================
             Warning: 计算得到的rating {local_rating} 与从官网读取并录入存档的rating {mgbl_data['rating']} 不一致。请检查以下情况，必要时在"编辑数据"页面手动调整相关谱面。
-            1. 数据来自国际服且现与日服的大版本不一致，B50可能包含了定数有变动的谱面；
-            2. 潜在B50中存在近期被删除或国际服独占曲目，如"全世界共通リズム感テスト"，这些曲目无法被检索；
-            3. 近期您的数据源服务器有大版本更新，我们的数据库可能尚未及时更新相关数据；
-            4. SBGA又抽风改动了旧曲目的名称，如"Help me, ERINNNNNN!!"等，导致了谱面匹配错位。
+            0. 如果正在使用带有特殊筛选条件或全版本B50筛选, 属正常现象, 但还请检查...
+            1. 数据来自国际服且现与日服的大版本不一致, B50可能包含了定数有变动的谱面;
+            2. B50中存在同名的曲目, 如"Trust"、"Link"等;
+            3. B50中存在被改动过名称的曲目, 如"Help me, ERINNNNNN!!"等;
+            4. 潜在B50中存在近期被删除或国际服独占曲目, 如"全世界共通リズム感テスト"，这些曲目无法被检索;
+            5. 近期您的数据源服务器有大版本更新, 我们的数据库可能尚未及时更新相关数据。
             ==============================================================================
         """)
 
