@@ -10,14 +10,12 @@ from utils.DataUtils import (
     FC_PROXY_ENDPOINT,
     fish_to_new_record_format,
     lxns_to_new_record_format,
-    chart_type_str2value,
     compute_rating,
-    filter_mgbl_b50,
     read_mtbl_tsv,
-    filter_mtbl_b50,
     read_maimai_html,
-    load_metadata,
-    exact_match_chart
+    mgbl_to_unified,
+    mtbl_to_unified,
+    filter_unified_b50
 )
 
 LXNS_API_BASE = "https://maimai.lxns.net"  # 落雪查分器API基础URL
@@ -514,6 +512,7 @@ def parse_dxrating_json(song_json, song_id_placeholder):
 # Generate archive data from local data input
 ################################################
 
+@DeprecationWarning
 def generate_archive_data_from_mgbl(mgbl_data, username, params) -> dict:
     """
     Extract song data from Mai-gen booklet output and form archive data.
@@ -555,7 +554,7 @@ def generate_archive_data_from_mgbl(mgbl_data, username, params) -> dict:
         if query == "all":
             sub_type_tag = tag if tag else "best"
             try:
-                record_data = filter_mgbl_b50(mgbl_data["scores"], filter)
+                record_data = None #filter_mgbl_b50(mgbl_data["scores"], filter)
             except:
                 raise ValueError("Error: 解析MGBL数据时发生未知错误。")
         else:
@@ -599,6 +598,7 @@ def generate_archive_data_from_mgbl(mgbl_data, username, params) -> dict:
     }
     return new_archive_data
 
+@DeprecationWarning
 def generate_archive_data_from_mtbl(mtbl_data, username, params) -> dict:
     """
     Generate initialised profile for dataset from MTBL data.
@@ -621,7 +621,7 @@ def generate_archive_data_from_mtbl(mtbl_data, username, params) -> dict:
         if query == "all":
             sub_type_tag = tag if tag else "best"
             try:
-                record_data = filter_mtbl_b50(mtbl_data, filter)
+                record_data = None #filter_mtbl_b50(mtbl_data, filter)
             except KeyError:
                 raise ValueError("Error: MTBL数据格式不正确，缺少必要字段。请检查选择的数据源类型或MTBL导出数据的设置。")
         else:
@@ -652,6 +652,69 @@ def generate_archive_data_from_mtbl(mtbl_data, username, params) -> dict:
     }
     return new_archive_data
 
+def generate_archive_data_from_unified(unified_data: list, username, params) -> dict:
+    game_type = params.get("type", "maimai")
+    query = params.get("query", "all")
+    filter = params.get("filter", {})
+    tag = filter.get("tag", "")
+
+    if game_type != "maimai":
+        raise ValueError("Error: Only MAIMAI DX is supported.")
+    if query != "all":
+        raise ValueError("Error: Only \"all\" query is supported.")
+
+    sub_type_tag = tag if tag else "best"
+
+    try:
+        record_data = filter_unified_b50(unified_data, filter)
+    except KeyError:
+        raise ValueError("Error: 数据格式不正确，缺少必要字段。请检查选择的数据源类型或导出数据的设置。")
+
+    for i in range(len(record_data)):
+        record_data[i]['order_in_archive'] = len(record_data) - i
+
+    # game_version
+    source_rating = params.get("mgbl_rating", None)
+    source_host = params.get("mgbl_host", None)
+    b15_versions = filter.get("b15_versions", -1) if filter else -1 # 不区分B15时为-1
+    if b15_versions >= 0:
+        if source_host == "maimaidx-eng.com":
+            game_version = GAME_VERSION_LABELS["latest_INT"]
+        elif source_host:
+            game_version = GAME_VERSION_LABELS["latest_JP"]
+        elif b15_versions == 0:
+            game_version = GAME_VERSION_LABELS["latest_INT"]
+        elif b15_versions >= 1:
+            game_version = GAME_VERSION_LABELS["latest_JP"]
+    else:
+        game_version = GAME_VERSION_LABELS["Not Specified"]
+
+    local_rating = sum(record['dx_rating'] for record in record_data)
+
+    # rating 校验 (仅 mgbl 提供 source_rating)
+    if source_rating is not None and local_rating != source_rating:
+        print(f"""
+            ==============================================================================
+            Warning: 计算得到的rating {local_rating} 与从官网读取并录入存档的rating {source_rating} 不一致。请检查以下情况，必要时在"编辑数据"页面手动调整相关谱面。
+            0. 如果正在使用带有特殊筛选条件或全版本B50筛选, 属正常现象, 但还请检查...
+            1. 数据来自国际服且现与日服的大版本不一致, B50可能包含了定数有变动的谱面;
+            2. B50中存在同名的曲目, 如"Trust"、"Link"等;
+            3. B50中存在被改动过名称的曲目, 如"Help me, ERINNNNNN!!"等;
+            4. 潜在B50中存在近期被删除或国际服独占曲目, 如"全世界共通リズム感テスト"，这些曲目无法被检索;
+            5. 近期您的数据源服务器有大版本更新, 我们的数据库可能尚未及时更新相关数据。
+            ==============================================================================
+        """)
+
+    return {
+        "game_type": game_type,
+        "sub_type": sub_type_tag,
+        "username": username,
+        "rating_mai": local_rating,
+        "rating_chu": 0.0,
+        "game_version": game_version,
+        "initial_records": record_data
+    }
+
 def generate_archive_data_from_html(html_data, username, params = None) -> dict:
     """
     Generate initialised profile for dataset from raw HTML data.
@@ -669,12 +732,12 @@ def generate_archive_data_from_html(html_data, username, params = None) -> dict:
 
     if game_type == "maimai":
         # Build database records from raw html records. Fill artist, chart constant, rating for each record by exact matching
-        songs_metadata = load_metadata(game_type)
+        songs_metadata = None #load_metadata(game_type)
         record_data = []
         for raw_record in raw_html_records:
             # For the data structure of raw_record, see the return value of parse_maimai_html
             query = raw_record["query"]
-            chart_data = exact_match_chart(query, songs_metadata)
+            chart_data = None #exact_match_chart(query, songs_metadata)
             if not chart_data:
                 print(f"Warning: 无法匹配谱面{query}, 已自动跳过。如果缺失的数据是\"全世界共通リズム感テスト\"属正常现象。")
                 continue
@@ -738,20 +801,22 @@ def unify_user_gamedata(raw_file_path, username, params, source="mgbl") -> dict:
     
     if source == "mgbl":
         mgbl_data = json.loads(data_input)
-        # 保存原始JSON
         with open(raw_file_path, "w", encoding="utf-8") as f:
             json.dump(mgbl_data, f, ensure_ascii=False, indent=4)
-        
-        return generate_archive_data_from_mgbl(mgbl_data, username, params)
+        unified_data = mgbl_to_unified(mgbl_data["scores"])
+        params["mgbl_rating"] = mgbl_data.get("rating")
+        params["mgbl_host"] = mgbl_data.get("host")
+        return generate_archive_data_from_unified(unified_data, username, params)
+    
     elif source == "mtbl":
         mtbl_data = read_mtbl_tsv(data_input, params)
-        # 将初步转译为dict的数据保存
         with open(raw_file_path, "w", encoding="utf-8") as f:
             json.dump(mtbl_data, f, ensure_ascii=False, indent=4)
-        
-        return generate_archive_data_from_mtbl(mtbl_data, username, params)
+        unified_data = mtbl_to_unified(mtbl_data, params)
+        return generate_archive_data_from_unified(unified_data, username, params)
     
     elif source == "html":
+        # HTML数据源直接提供可信B50，单独处理
         html_data = read_maimai_html(data_input, params)
         # 将半成品的dict数据保存
         with open(raw_file_path, "w", encoding="utf-8") as f:
