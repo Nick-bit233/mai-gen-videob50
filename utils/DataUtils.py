@@ -927,7 +927,7 @@ def lxns_to_new_record_format(lxns_record: dict, game_type: str = "maimai") -> d
 # MGBL data parsing methods
 # ---------------------------
 
-@DeprecationWarning("正在开发新的数据处理链路以简化B50筛选流程。")
+@DeprecationWarning
 def filter_mgbl_b50(mgbl_scores: list, filter: dict) -> List[dict]:
     """
     Filter and parse B50 entries from raw MGBL exported data.
@@ -1070,7 +1070,7 @@ def read_mtbl_tsv(data_input, params):
     
     return mtbl_dicts
 
-@DeprecationWarning("正在开发新的数据处理链路以简化B50筛选流程。")
+@DeprecationWarning
 def parse_mtbl_tsv(chart_entry: dict, game_type="maimai") -> dict:
     """
     Parsing a single entry of MTBL chart data to internal record format.
@@ -1134,7 +1134,7 @@ def parse_mtbl_tsv(chart_entry: dict, game_type="maimai") -> dict:
         }
     return record
 
-@DeprecationWarning("正在开发新的数据处理链路以简化B50筛选流程。")
+@DeprecationWarning
 def filter_mtbl_b50(mtbl_data, filter: dict = None):
     """
     Filter and parse B50 entries from raw MTBL exported data
@@ -1201,6 +1201,32 @@ def filter_mtbl_b50(mtbl_data, filter: dict = None):
 # -------------------------------------------------
 
 def mgbl_to_unified(mgbl_scores: list, params: dict = None) -> list:
+    """
+    Unify data format from mai=gen booklet output
+
+    Args:
+        mgbl_scores: list of dict, raw MGBL score entries, example
+            [
+                {
+                    "songName": "Xaleid◆scopiX",
+                    "difficulty": "Re:MASTER",
+                    "level": "15",
+                    "achievement": "99.7325%",
+                    "dxScore": 4396,
+                    "maxDxScore": 6666,
+                    "sync": "sync",
+                    "combo": "fc",
+                    "type": "DX",
+                    "difficultyId": 4,
+                    "isNew": true
+                },
+                {...}
+            ]
+        params: no params needed here
+    
+    Returns:
+        unified: list of dict, will be used for querying charts and filtering b50
+    """
     unified = []
     for score in mgbl_scores:
         unified.append({
@@ -1220,7 +1246,73 @@ def mgbl_to_unified(mgbl_scores: list, params: dict = None) -> list:
         })
     return unified
 
+def dxjs_to_unified(dxjs_data: list, params: dict = None) -> list:
+    """
+    Unify data format from output of DXJS API
+
+    Args:
+        dxjs_data: list of dict,
+            An example b50 element
+            {
+                "sheetId":"FFT__dxrt__std__dxrt__remaster",
+                "achievementRate":99.8338
+            }
+            An example ALL element
+            {
+                "sheetId":"月面基地__dxrt__dx__dxrt__basic",
+                "identity":{"songId":"月面基地","type":"dx","difficulty":"basic"},
+                "achievementRate":15.8075,
+                "comboFlag":null,
+                "syncFlag":"sync",
+                "source":{"provider":"maimai-net","providerSongName":"月面基地"}
+            }
+        params: check "query" and detected data format consistency, warn user if needed
+
+    Returns:
+        Unified: list of dict, will be used for querying charts and filtering b50
+    """
+    DXRT_SPLIT = "__dxrt__"
+    query = params["query"]
+    is_all_data = dxjs_data[0] and "identity" in dxjs_data[0]
+    if (query == "all") != is_all_data:
+        print("Warning: dxrating JSON处理时数据不一致, 可能选择了错误的JSON类型, 这有概率导致异常的B50数据.")
+
+    unified = []
+    for entry in dxjs_data:
+        # B50 export mode, less info
+        sheet_id_split = entry["sheetId"].split(DXRT_SPLIT) # song_name DXRT_SPLIT chart_type DXRT_SPLIT level_label
+        title = sheet_id_split[0]
+        chart_type = sheet_id_split[1]
+        level_label = sheet_id_split[2]
+        achievement = entry["achievementRate"] # float
+        combo = entry.get("comboFlag", "none") # only in all data export
+        sync = entry.get("syncFlag", "none") # only in all data export
+        unified.append({
+            "query": {
+                "title": title,
+                "level_index": level_label_to_index("maimai", level_label),
+                "chart_type": chart_type_str2value(chart_type.lower())
+            },
+            "achievement": f"{achievement}",
+            "fc_status": combo,
+            "fs_status": sync,
+            "is_new": (not is_all_data) and len(unified) >= 35, # don't match version if parsing all data
+            # no ds provided, so leave it blank and wait filter_unified to query from metadata
+            "raw_data": entry
+        })
+    return unified
+
 def mtbl_to_unified(mtbl_data: list, params: dict = None) -> list:
+    """
+    Unify data format from output of read_mtbl_tsv
+
+    Args:
+        mtbl_data: list of dict, see read_mtbl_tsv output for example
+        params: params["filter"]["b15_versions"] is required for matching version of b15 songs
+    
+    Returns:
+        unified: list of dict, will be used for querying charts and filtering b50
+    """
     def normalize_flag(value):
         s = value.lower().replace("+", "p")
         return "none" if s == "-" else s
@@ -1289,7 +1381,7 @@ def filter_unified_b50(unified_data: list, filter: dict, game_type="maimai") -> 
             "achievement": entry["achievement"],
             "fc_status": entry["fc_status"],
             "fs_status": entry["fs_status"],
-            "dx_score": entry["dx_score"],
+            "dx_score": entry.get("dx_score", 0),
             "dx_rating": dx_rating,
             "chuni_rating": 0,
             "play_count": 0,

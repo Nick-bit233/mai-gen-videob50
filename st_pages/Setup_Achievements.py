@@ -261,7 +261,7 @@ def handle_new_data(username: str, source: str, params: dict = None):
     raw_file_path = f"{get_user_base_dir(username)}/{username}_{source}_raw_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     try:
         # 重构：查分，并创建存档，原始数据缓存于raw_file_path
-        if source in ["mgbl", "html", "mtbl"]:
+        if source in ["mgbl", "html", "dxjs", "mtbl"]:
             new_archive_data = unify_user_gamedata(
                 raw_file_path=raw_file_path,
                 source=source,
@@ -625,8 +625,9 @@ if st.session_state.get('config_saved', False):
                 if st.button("💡 点击查看数据获取指南", key="read_other_data_import_guide"):
                     other_data_import_guide()
 
-                DATA_SOURCE_OPTIONS = ["Mai-gen Booklet (MGBL, 推荐)", "maimai DX Net (HTML, 仅基础信息)", "dxrating.com (DXJS, 暂不支持)", "Mai-tool Booklet (MTBL, 不推荐, 即将移除)"]
-                MGBL_VERSION_OPTIONS = ["自动筛选B15", "不筛选 (取全版本最高50条成绩, 生成AP50/FC50时推荐)"]
+                DATA_SOURCE_OPTIONS = ["官网-MGBL (推荐)", "官网-HTML (仅基础信息)", "DXrating", "官网-MTBL (不推荐, 即将移除)"]
+                MGBL_VERSION_OPTIONS = ["自动筛选B15", "不筛选 (取全版本最高50条成绩, 进行有特殊筛选的生成时推荐)"]
+                DXJS_EXPORT_OPTIONS = ["B50记录JSON (版本筛选: 自动)", "所有记录JSON (版本筛选: 无筛选)"]
                 MTBL_VERSION_OPTIONS = ["国际服 (PRiSM PLUS & CiRCLE)", "日服 (CiRCLE & CiRCLE PLUS)", "全版本 (取全曲最高50条成绩，生成AP50/FC50时推荐)"]
                 FILTER_TAG_OPTIONS = ["无筛选 (根据版本筛选B35+B15或整体B50)", "极50 (只筛选FC以上成绩)", "神50 (只筛选AP以上成绩)"]
 
@@ -636,6 +637,14 @@ if st.session_state.get('config_saved', False):
                     mgbl_version = st.radio("B15筛选设置", options=MGBL_VERSION_OPTIONS, key="mgbl_version")
                 else:
                     mgbl_version = None
+
+                if data_source == DATA_SOURCE_OPTIONS[2]:
+                    dxjs_export = st.radio("导出的JSON类型", options=DXJS_EXPORT_OPTIONS, key="dxjs_export_option")
+                    st.radio("B15筛选模式取决于JSON类型", options=("自动: 前35条为B35, 后续为B15" if dxjs_export == DXJS_EXPORT_OPTIONS[0] else "不筛选 (取全版本最高50条成绩)"), key="dxjs_version")
+                    if dxjs_export == DXJS_EXPORT_OPTIONS[0]:
+                        st.info("ℹ️ dxrating.net导出的B50记录JSON仅包括基础成绩. 如需要FC/FS状态等, 请在后续步骤手动编辑.")
+                    if dxjs_export == DXJS_EXPORT_OPTIONS[1]:
+                        filter_tag = st.radio("特殊筛选条件", options=FILTER_TAG_OPTIONS, key="filter_tag")
 
                 if data_source == DATA_SOURCE_OPTIONS[3]:
                     mtbl_version = st.radio("B15对应版本", options=MTBL_VERSION_OPTIONS, key="mtbl_version")
@@ -662,7 +671,7 @@ if st.session_state.get('config_saved', False):
                             query = "best"
                         elif data_source == DATA_SOURCE_OPTIONS[2]:
                             file_type = "dxjs"
-                            query = "best"
+                            query = "best" if dxjs_export == DXJS_EXPORT_OPTIONS[0] else "all"
                         elif data_source == DATA_SOURCE_OPTIONS[3]:
                             file_type = "mtbl"
                         
@@ -687,7 +696,7 @@ if st.session_state.get('config_saved', False):
 
                         # TODO: “平替地板”筛选条件，当地板同分谱面溢出时，保留这些谱面让用户自己删除不想要的
                         print(f"DEBUG: radio options - data_source: {data_source}, mgbl_version: {mgbl_version}, mtbl_version: {mtbl_version}, filter_tag: {filter_tag}")
-                        print(f"DEBUG: filter for data import: {filter}")
+                        print(f"DEBUG: processed parameters - file_type: {file_type}, query: {query}, filter: {filter}")
                         handle_new_data(
                             username,
                             source=file_type,

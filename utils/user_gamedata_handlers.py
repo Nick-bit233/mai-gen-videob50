@@ -1,8 +1,3 @@
-import csv
-import glob
-import json
-import os
-import re
 import json
 import requests
 
@@ -15,6 +10,7 @@ from utils.DataUtils import (
     read_maimai_html,
     mgbl_to_unified,
     mtbl_to_unified,
+    dxjs_to_unified,
     filter_unified_b50
 )
 
@@ -580,10 +576,11 @@ def generate_archive_data_from_mgbl(mgbl_data, username, params) -> dict:
             Warning: 计算得到的rating {local_rating} 与从官网读取并录入存档的rating {mgbl_data['rating']} 不一致。请检查以下情况，必要时在"编辑数据"页面手动调整相关谱面。
             0. 如果正在使用带有特殊筛选条件或全版本B50筛选, 属正常现象, 但还请检查...
             1. 数据来自国际服且现与日服的大版本不一致, B50可能包含了定数有变动的谱面;
-            2. B50中存在同名的曲目, 如"Trust"、"Link"等;
-            3. B50中存在被改动过名称的曲目, 如"Help me, ERINNNNNN!!"等;
-            4. 潜在B50中存在近期被删除或国际服独占曲目, 如"全世界共通リズム感テスト"，这些曲目无法被检索;
-            5. 近期您的数据源服务器有大版本更新, 我们的数据库可能尚未及时更新相关数据。
+            2. B50中存在未解锁的门曲, 如"有明/Ariake"、"宙天"等, 这些曲目的成绩无法被直接读取;
+            3. B50中存在同名的曲目, 如"Trust"、"Link"等, 请检查是否读取了错误的谱面;
+            4. B50中存在被改动过名称的曲目, 如"Help me, ERINNNNNN!!"等, 请检查谱面信息;
+            5. 潜在B50中存在近期被删除或国际服独占曲目, 如"全世界共通リズム感テスト"，这些曲目无法被检索;
+            6. 近期您的数据源服务器有大版本更新, 我们的数据库可能尚未及时更新相关数据。
             ==============================================================================
         """)
 
@@ -659,9 +656,9 @@ def generate_archive_data_from_unified(unified_data: list, username, params) -> 
     tag = filter.get("tag", "")
 
     if game_type != "maimai":
-        raise ValueError("Error: Only MAIMAI DX is supported.")
-    if query != "all":
-        raise ValueError("Error: Only \"all\" query is supported.")
+        raise ValueError("Error: Only MAIMAI DX is supported for unified data.")
+    if query == "all" and not filter:
+        print("Warning: query is set to \"all\" but no filter provided.")
 
     sub_type_tag = tag if tag else "best"
 
@@ -803,11 +800,18 @@ def unify_user_gamedata(raw_file_path, username, params, source="mgbl") -> dict:
         mgbl_data = json.loads(data_input)
         with open(raw_file_path, "w", encoding="utf-8") as f:
             json.dump(mgbl_data, f, ensure_ascii=False, indent=4)
-        unified_data = mgbl_to_unified(mgbl_data["scores"])
+        unified_data = mgbl_to_unified(mgbl_data["scores"], params)
         params["mgbl_rating"] = mgbl_data.get("rating")
         params["mgbl_host"] = mgbl_data.get("host")
         return generate_archive_data_from_unified(unified_data, username, params)
     
+    elif source == "dxjs":
+        dxjs_data = json.loads(data_input)
+        with open(raw_file_path, "w", encoding="utf-8") as f:
+            json.dump(dxjs_data, f, ensure_ascii=False, indent=4)
+        unified_data = dxjs_to_unified(dxjs_data, params)
+        return generate_archive_data_from_unified(unified_data, username, params)
+
     elif source == "mtbl":
         mtbl_data = read_mtbl_tsv(data_input, params)
         with open(raw_file_path, "w", encoding="utf-8") as f:

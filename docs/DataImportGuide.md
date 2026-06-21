@@ -31,15 +31,15 @@
 
 ## 3. [DXrating](https://dxrating.net/rating)导出
 
-> 截止本文档上次编辑(26年6月4日)，[DXrating网站](https://dxrating.net/rating)在导入成绩时不会读取100.5%(SSS+)以上成绩，但仍可手动添加成绩。在非官方服务器的B50可以考虑在[DXrating网站](https://dxrating.net/rating)手动输入您的B50并导出JSON用于后续生成。
+> 截止本文档上次编辑(2026年6月22日)，[DXrating网站](https://dxrating.net/rating)在导入成绩时不会读取100.5%(SSS+)以上成绩，但仍可手动添加成绩。在非官方服务器的B50可以考虑在[DXrating网站](https://dxrating.net/rating)手动输入您的B50并导出JSON用于后续生成。
 
 - 打开[DXrating网站](https://dxrating.net/rating)，可以在网页中部右侧找到`导入 / IMPORT`、`导出 / EXPORT`等按钮。点击`导入 / IMPORT`并选择`从NET导入 / Import from offical maimai NET`，然后根据页面指示完成数据导入。
 
-2. 导入完毕后，注意页面中央的maimai logo处选择正确的区服。然后点击`导出 / EXPORT`并选择`导出JSON(仅B50) / Export JSON (Only B50 records)`，浏览器会下载一个名字形如`dxrating.export-{导出时间}.json`的文件，复制其中的内容。
+2. 导入完毕后，注意页面中央的maimai logo处选择正确的区服。然后点击`导出 / EXPORT`并选择需要的JSON类型（推荐仅B50记录），浏览器会下载一个名字形如`dxrating.export-{导出时间}.json`的文件，复制其中的内容。
 
 > 打不开Json文件？您可能需要在弹出的打开方式窗口中选择`记事本`，或右键点击`以记事本打开`，或将其后缀改为`.txt`等类似方式。如果都不适用，还请搜索`[您的电脑系统] + 如何打开Json文件`。
 
-> 在大版本更迭期间，或该网站有其他BUG时，导出的B50可能不准确。
+> 在大版本更迭期间或该网站有BUG时，导出的B50可能不准确。
 
 ## 4. 官网-MTBL导出
 
