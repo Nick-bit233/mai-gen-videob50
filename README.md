@@ -8,6 +8,15 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 ## 更新速览
 
+`v1.2.3` 开发版本更新
+
+以下功能翻新来自@[奕凌Yelon](https://github.com/YelonNotXTD)
+
+- ✨ **新增数据源**: 现在我们有自己的书签页工具Mai-gen Booklet！这可以更方便的读取日服/国际服官网的全部成绩并灵活的筛选B50，具体导入教学见创建存档页面。
+- 🛠️ **修复数据源**：现在又可以通过dxrating.net导出的JSON源代码来创建三服B50存档了！
+- 🎚️ 新数据源？: 有神秘版本的日服？联系我们，或许可以从他们的网站上帮你筛选B50...
+- 🎚️ 功能移除预告: 考虑到maimai booklet操作繁琐、作为外部工具不稳定、且有**其他问题**，我们会在未来的版本中移除对其数据的支持, 但这不会影响旧版本已导入的存档。
+
 `v1.2.2` 开发版本更新
 
 以下功能修复来自@[奕凌Yelon](https://github.com/YelonNotXTD)
@@ -71,6 +80,8 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 - [【中二节奏2026】小伙时隔半个月成功抵达虹分，这是他分表发生的变化](https://www.bilibili.com/video/BV1m9yVBfExq)
 
+- [【v1.2.2数据源更新使用例】舞萌国际服又能生成B50视频了！](https://www.bilibili.com/video/BV1baV56REP1)
+
 - 生成视频帧效果
 
 | <img src="md_res/preview_maimai.png" width="400" alt="maimai Prism"> | <img src="md_res/preview_chunithm.jpg" width="400" alt="Chunithm"> |
@@ -82,23 +93,23 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 ### 查分器源支持情况
 
+国服专属的查分器导入
+
 - [x] [水鱼查分器](https://www.diving-fish.com/maimaidx/prober/)：请注意在个人选项中关闭掩码，并允许公开获取你的B50数据。
 
 - [x] [落雪查分器](https://maimai.lxns.net/)：直接通过好友码获取（请在账户设置中打开相关权限）。如果您不愿意授权开发者读取，可选择填入落雪后台生成的个人 API KEY 拉取数据。
 
-- [x] 基于[Maimai Booklet](https://myjian.github.io/mai-tools/#howto)导出的[国际服](https://maimaidx-eng.com/maimai-mobile/home/ratingTargetMusic/)/[日服](https://maimaidx.jp/maimai-mobile/home/ratingTargetMusic/) 官网成绩
+以下为国际服/日服的数据导入，需要额外操作或借助其他工具。您可以在创建存档的页面或[点此查看国际服/日服数据获取插件使用教程](docs/DataImportGuide.md)）
 
-> 更新计划: 因为该书签工具开发者有"看一眼主页就能发现的问题"，在未来版本我们会支持以其他方式从官网读取您的成绩，以筛选各种B50并生成视频的方式。届时我们会取消引用该工具并不再解析该工具输出的TSV数据。
+- [x] 基于我们的书签工具(Mai-gen Booklet)导出的[国际服](https://maimaidx-eng.com/maimai-mobile/home/ratingTargetMusic/)/[日服](https://maimaidx.jp/maimai-mobile/home/ratingTargetMusic/) 官网成绩
 
 - [x] Maimai DX NET的Rating对象乐曲页面： [国际服](https://maimaidx-eng.com/maimai-mobile/home/ratingTargetMusic/)/[日服](https://maimaidx.jp/maimai-mobile/home/ratingTargetMusic/) 
 
-国际服/日服官网的数据导入需要额外操作或借助其他工具：点此查看[国际服/日服数据获取插件使用教程](docs/DataImportGuide.md)）
+- [x] [DXrating](https://dxrating.net/rating)：支持国服/国际服/日服
 
-> 注：以下源支持已过期，暂不可用
+- [x] 基于[Maimai Booklet](https://myjian.github.io/mai-tools/#howto)导出的[国际服](https://maimaidx-eng.com/maimai-mobile/home/ratingTargetMusic/)/[日服](https://maimaidx.jp/maimai-mobile/home/ratingTargetMusic/) 官网成绩
 
-- [ ] [DXrating](https://dxrating.net/rating)：支持国服/国际服/日服
-
-> 更新计划：修复解析DXrating JSON的功能。
+> 更新计划: 因为该书签工具开发者有"看一眼主页就能发现的问题"，在未来版本我们会支持以其他方式从官网读取您的成绩，以筛选各种B50并生成视频的方式。届时我们会取消引用该工具并不再解析该工具输出的TSV数据。
 
 
 ### 流媒体源支持情况
