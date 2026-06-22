@@ -8,6 +8,8 @@ from utils.DataUtils import (
     compute_rating,
     read_mtbl_tsv,
     read_maimai_html,
+    load_metadata,
+    exact_match_chart,
     mgbl_to_unified,
     mtbl_to_unified,
     dxjs_to_unified,
@@ -658,12 +660,12 @@ def generate_archive_data_from_html(html_data, username, params = None) -> dict:
 
     if game_type == "maimai":
         # Build database records from raw html records. Fill artist, chart constant, rating for each record by exact matching
-        songs_metadata = None #load_metadata(game_type)
+        songs_metadata = load_metadata(game_type)
         record_data = []
         for raw_record in raw_html_records:
             # For the data structure of raw_record, see the return value of parse_maimai_html
             query = raw_record["query"]
-            chart_data = None #exact_match_chart(query, songs_metadata)
+            chart_data = exact_match_chart(query, songs_metadata)
             if not chart_data:
                 print(f"Warning: 无法匹配谱面{query}, 已自动跳过。如果缺失的数据是\"全世界共通リズム感テスト\"属正常现象。")
                 continue
