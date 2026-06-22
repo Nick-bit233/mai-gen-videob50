@@ -1,5 +1,6 @@
 # TODO: 这个文件只剩下工具函数了，考虑把它挪到DataUtils或者user_gamedata_handlers里
 
+@DeprecationWarning
 def safe_parse_difficulty(ds) -> float:
     """
     安全解析定数值，支持字符串或数值输入
@@ -26,6 +27,7 @@ def safe_parse_difficulty(ds) -> float:
 
 
 # Parse achievement to rate name
+@DeprecationWarning
 def get_rate(achievement):
     rates = [
         (100.5, "sssp"),
@@ -50,6 +52,7 @@ def get_rate(achievement):
     return "d"
 
 # DX rating factors
+@DeprecationWarning
 def get_factor(achievement):
     factors = [
         (100.5, 0.224),
@@ -79,6 +82,7 @@ def get_factor(achievement):
     return 0
 
 # Compute DX rating for a single song
+@DeprecationWarning
 def compute_rating(ds, score):
     """
     计算 maimai DX 单曲 Rating
@@ -96,6 +100,7 @@ def compute_rating(ds, score):
     return int(ds_val * min(score, 100.5) * get_factor(score))
 
 # Compute Chunithm rating for a single song
+@DeprecationWarning
 def compute_chunithm_rating(ds, score):
     """
     计算 Chunithm 单曲 Rating
@@ -144,6 +149,7 @@ def compute_chunithm_rating(ds, score):
 
     return 0.0
 
+@DeprecationWarning
 def parse_level(ds):
     return f"{int(ds)}+" if int((ds * 10) % 10) >= 6 else str(int(ds))
 

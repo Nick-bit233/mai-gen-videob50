@@ -1,22 +1,19 @@
-import csv
-import glob
-import json
-import os
-import re
 import json
 import requests
 
-from utils.dxnet_extension import compute_rating
 from utils.DataUtils import (
     FC_PROXY_ENDPOINT,
     fish_to_new_record_format,
     lxns_to_new_record_format,
-    chart_type_str2value,
-    read_mmbl_tsv,
-    filter_mmbl_b50,
+    compute_rating,
+    read_mtbl_tsv,
     read_maimai_html,
     load_metadata,
-    exact_match_chart
+    exact_match_chart,
+    mgbl_to_unified,
+    mtbl_to_unified,
+    dxjs_to_unified,
+    filter_unified_b50
 )
 
 LXNS_API_BASE = "https://maimai.lxns.net"  # 落雪查分器API基础URL
@@ -439,143 +436,103 @@ def filter_maimai_ap_data(data, source, match_version=False, top_len=50):
     return ap_data
 
 ################################################
-# Origin B50 data file finders
-################################################
-
-@DeprecationWarning
-def find_origin_data(username, file_type = "html", game_type = "maimai"):
-    """查找原始B50数据文件
-    
-    Args:
-        username: 用户名
-        file_type: 文件类型，html / json / tsv
-        game_type: 游戏类型，maimai 或 chunithm
-    """
-    data_dir = "chunithm_datas" if game_type == "chunithm" else "b50_datas"
-    DATA_ROOT = f"./{data_dir}/{username}"
-    # 1. Check for the {username}.html
-    user_data_file = f"{DATA_ROOT}/{username}.{file_type}"
-    if os.path.exists(user_data_file):
-        with open(user_data_file, 'r', encoding="utf-8") as f:
-            if file_type == "html":
-                origin_data = f.read()
-            elif file_type == "json":
-                origin_data = json.load(f)
-            elif file_type == "tsv":
-                reader = csv.DictReader(f, delimiter='\t')
-                origin_data = [row for row in reader]
-            print(f"Info: Found {file_type.upper()} file matching username: {user_data_file}")
-            return origin_data
-
-    # 2. Check for the default HTML file name
-    if file_type == "html":
-        default_html_file = f"{DATA_ROOT}/maimai DX NET－Music for DX RATING－.html"
-        if os.path.exists(default_html_file):
-            with open(default_html_file, 'r', encoding="utf-8") as f:
-                html_raw = f.read()
-                print(f"Info: Default DX rating HTML file found: {default_html_file}")
-                return html_raw
-
-    # 3. Try to find any other `.html` or dxrating-export file
-        html_files = glob.glob(f"{DATA_ROOT}/*.html")
-        if html_files:
-            with open(html_files[0], 'r', encoding="utf-8") as f:
-                html_raw = f.read()
-                print(f"Warning: No specific HTML file found, using the first available file: {html_files[0]}")
-                return html_raw
-    elif file_type == "json":
-        json_files = glob.glob(f"{DATA_ROOT}/dxrating.export-*.json")
-        if json_files:
-            with open(json_files[-1], 'r', encoding="utf-8") as f:
-                json_raw = f.read()
-                print(f"Warning: No specific JSON file found, using the last available file: {json_files[-1]}")
-                return json_raw
-
-    # Raise an exception if no file is found
-    raise Exception(f"Error: No {file_type.upper()} file found in the user's folder.")
-
-################################################
-# Read B50 from dxrating.net export
-################################################
-
-@DeprecationWarning
-def read_dxrating_json(b50_raw_file, username, params):
-    dxrating_json = find_origin_data(username, "json")
-    # Iterate songs and save as JSON
-    b50_json = {
-        "charts": {
-            "dx": [],
-            "sd": []
-        },
-        "rating": -1,
-        "username": username
-    }
-    from utils.dxnet_extension import ChartManager
-    manager = ChartManager()
-    song_id_placeholder = 0 # Avoid same file names for downloaded videos
-    for song in dxrating_json:
-        song_id_placeholder -= 1 # -1 ~ -35 = b35, -36 ~ -50 = b15, assume full b35
-        song_json = parse_dxrating_json(song, song_id_placeholder)
-        song_json = manager.fill_json(song_json)
-        if song_id_placeholder >= -35:
-            b50_json["charts"]["sd"].append(song_json)
-        else:
-            b50_json["charts"]["dx"].append(song_json)
-
-    b50_json["rating"] = manager.total_rating
-
-    # Write b50 JSON to raw file
-    with open(b50_raw_file, 'w', encoding="utf-8") as f:
-        json.dump(b50_json, f, ensure_ascii = False, indent = 4)
-    return b50_json
-
-@DeprecationWarning
-def parse_dxrating_json(song_json, song_id_placeholder):
-    LEVEL_DIV_LABEL = ["basic", "advanced", "expert", "master", "remaster"]
-
-    # Initialise chart JSON
-    chart = {
-        "achievements": 0,
-        "ds": 0,
-        "dxScore": 0,
-        "fc": "",
-        "fs": "",
-        "level": "0",
-        "level_index": -1,
-        "level_label": "easy",
-        "ra": 0,
-        "rate": "",
-        "song_id": song_id_placeholder,
-        "title": "",
-        "type": "",
-    }
-
-    chart["achievements"] = song_json["achievementRate"]
-
-    sheet_id_parts = song_json["sheetId"].split("__dxrt__")
-    if len(sheet_id_parts) != 3:
-        print(f"Warning: can not resolve sheetId \"{song_json.get('sheetId')}\" at position {-song_id_placeholder}")
-        return chart
-    
-    chart["title"] = sheet_id_parts[0]
-    chart["type"] = "DX" if sheet_id_parts[1] == "dx" else "SD"
-    for idx, level in enumerate(LEVEL_DIV_LABEL):
-        if sheet_id_parts[2] == level.lower():
-            chart["level_index"] = idx
-            chart["level_label"] = LEVEL_LABEL[idx]
-            break
-    return chart
-
-################################################
 # Generate archive data from local data input
 ################################################
 
-def generate_archive_data_from_mmbl(mmbl_data, username, params) -> dict:
+@DeprecationWarning
+def generate_archive_data_from_mgbl(mgbl_data, username, params) -> dict:
     """
-    Generate initialised profile for dataset from MMBL data.
+    Extract song data from Mai-gen booklet output and form archive data.
 
     Args:
-        mmbl_data: list of dicts converted from MMBL TSV data
+        mgbl_data: Mai-gen booklet output JSON, example
+            {
+                "host": "maimaidx-eng.com",
+                "rating": 11451,
+                "scores": [
+                    {
+                        "songName": "Xaleid◆scopiX",
+                        "difficulty": "Re:MASTER",
+                        "level": "15",
+                        "achievement": "99.7325%",
+                        "dxscore": 4396,
+                        "sync": "sync",
+                        "combo": "fc",
+                        "type": "DX",
+                        "raw_difficulty_id": 4,
+                        "isNew": true
+                    },
+                    {...}
+                ]
+            }
+        username: user's name for recording
+        params (dict): example params -> see unify_user_gamedata function for detail
+
+    Returns:
+        new_archive_data (dict): initialized profile data for database insertion, including initial_records list
+    """
+    game_type = params.get("type", "maimai")
+    query = params.get("query", "all")
+    filter = params.get("filter", {})
+    tag = filter.get("tag", "")
+    sub_type_tag = ""
+
+    if game_type == "maimai":
+        if query == "all":
+            sub_type_tag = tag if tag else "best"
+            try:
+                record_data = None #filter_mgbl_b50(mgbl_data["scores"], filter)
+            except:
+                raise ValueError("Error: 解析MGBL数据时发生未知错误。")
+        else:
+            raise ValueError("Error: Only \"all\" query is supported for Mai-gen booklet data.")
+    else:
+        raise ValueError("Error: Only MAIMAI DX is supported for Mai-gen booklet data")
+    
+    # Keep the same database ordering as generate_archive_data
+    for i in range(len(record_data)):
+        record_data[i]['order_in_archive'] = len(record_data) - i
+
+    game_version = GAME_VERSION_LABELS["Not Specified"]
+    if filter and filter.get("b15_versions", -1) >= 0:
+        if mgbl_data["host"] == "maimaidx-eng.com":
+            game_version = GAME_VERSION_LABELS["latest_INT"]
+        else:
+            game_version = GAME_VERSION_LABELS["latest_JP"]
+
+    local_rating = sum(record['dx_rating'] for record in record_data)
+    if local_rating != mgbl_data["rating"]:
+        print(f"""
+            ==============================================================================
+            Warning: 计算得到的rating {local_rating} 与从官网读取并录入存档的rating {mgbl_data['rating']} 不一致。请检查以下情况，必要时在"编辑数据"页面手动调整相关谱面。
+            0. 如果正在使用带有特殊筛选条件或全版本B50筛选, 属正常现象, 但还请检查...
+            1. 数据来自国际服且现与日服的大版本不一致, B50可能包含了定数有变动的谱面;
+            2. B50中存在未解锁的门曲, 如"有明/Ariake"、"宙天"等, 这些曲目的成绩无法被直接读取;
+            3. B50中存在同名的曲目, 如"Trust"、"Link"等, 请检查是否读取了错误的谱面;
+            4. B50中存在被改动过名称的曲目, 如"Help me, ERINNNNNN!!"等, 请检查谱面信息;
+            5. 潜在B50中存在近期被删除或国际服独占曲目, 如"全世界共通リズム感テスト"，这些曲目无法被检索;
+            6. 近期您的数据源服务器有大版本更新, 我们的数据库可能尚未及时更新相关数据。
+            ==============================================================================
+        """)
+
+    new_archive_data = {
+        "game_type": game_type,
+        "sub_type": sub_type_tag,
+        "username": username,
+        "rating_mai": local_rating,
+        "rating_chu": 0.0,
+        "game_version": game_version,
+        "initial_records": record_data
+    }
+    return new_archive_data
+
+@DeprecationWarning
+def generate_archive_data_from_mtbl(mtbl_data, username, params) -> dict:
+    """
+    Generate initialised profile for dataset from MTBL data.
+
+    Args:
+        mtbl_data: list of dicts converted from MTBL TSV data
         username: user's name for recording
         params (dict): example params -> see unify_user_gamedata function for details
 
@@ -584,23 +541,23 @@ def generate_archive_data_from_mmbl(mmbl_data, username, params) -> dict:
     """
     game_type = params.get("type", "maimai")
     query = params.get("query", "best")
-    filter = params.get("filter", None)
+    filter = params.get("filter", {})
+    tag = filter.get("tag", "")
     sub_type_tag = ""
 
     if game_type == "maimai":
         if query == "all":
-            tag = filter.get("tag", None)
             sub_type_tag = tag if tag else "best"
             try:
-                record_data = filter_mmbl_b50(mmbl_data, filter)
+                record_data = None #filter_mtbl_b50(mtbl_data, filter)
             except KeyError:
-                raise ValueError("Error: MMBL数据格式不正确，缺少必要字段。请检查选择的数据源类型或MMBL导出数据的设置。")
+                raise ValueError("Error: MTBL数据格式不正确，缺少必要字段。请检查选择的数据源类型或MTBL导出数据的设置。")
         else:
-            raise ValueError("Error: Only \"all\" query is supported for MMBL data for now")
+            raise ValueError("Error: Only \"all\" query is supported for MTBL data for now")
     else:
-        raise ValueError("Error: Only MAIMAI DX is supported for MMBL data")
+        raise ValueError("Error: Only MAIMAI DX is supported for MTBL data")
     
-    # Keep the same database ordering as generate_archive_data_from_fish
+    # Keep the same database ordering as generate_archive_data
     for i in range(len(record_data)):
         record_data[i]['order_in_archive'] = len(record_data) - i
 
@@ -622,6 +579,69 @@ def generate_archive_data_from_mmbl(mmbl_data, username, params) -> dict:
         "initial_records": record_data
     }
     return new_archive_data
+
+def generate_archive_data_from_unified(unified_data: list, username, params) -> dict:
+    game_type = params.get("type", "maimai")
+    query = params.get("query", "all")
+    filter = params.get("filter", {})
+    tag = filter.get("tag", "")
+
+    if game_type != "maimai":
+        raise ValueError("Error: Only MAIMAI DX is supported for unified data.")
+    if query == "all" and not filter:
+        print("Warning: query is set to \"all\" but no filter provided.")
+
+    sub_type_tag = tag if tag else "best"
+
+    try:
+        record_data = filter_unified_b50(unified_data, filter)
+    except KeyError:
+        raise ValueError("Error: 数据格式不正确，缺少必要字段。请检查选择的数据源类型或导出数据的设置。")
+
+    for i in range(len(record_data)):
+        record_data[i]['order_in_archive'] = len(record_data) - i
+
+    # game_version
+    source_rating = params.get("mgbl_rating", None)
+    source_host = params.get("mgbl_host", None)
+    b15_versions = filter.get("b15_versions", -1) if filter else -1 # 不区分B15时为-1
+    if b15_versions >= 0:
+        if source_host == "maimaidx-eng.com":
+            game_version = GAME_VERSION_LABELS["latest_INT"]
+        elif source_host:
+            game_version = GAME_VERSION_LABELS["latest_JP"]
+        elif b15_versions == 0:
+            game_version = GAME_VERSION_LABELS["latest_INT"]
+        elif b15_versions >= 1:
+            game_version = GAME_VERSION_LABELS["latest_JP"]
+    else:
+        game_version = GAME_VERSION_LABELS["Not Specified"]
+
+    local_rating = sum(record['dx_rating'] for record in record_data)
+
+    # rating 校验 (仅 mgbl 提供 source_rating)
+    if source_rating is not None and local_rating != source_rating:
+        print(f"""
+            ==============================================================================
+            Warning: 计算得到的rating {local_rating} 与从官网读取并录入存档的rating {source_rating} 不一致。请检查以下情况，必要时在"编辑数据"页面手动调整相关谱面。
+            0. 如果正在使用带有特殊筛选条件或全版本B50筛选, 属正常现象, 但还请检查...
+            1. 数据来自国际服且现与日服的大版本不一致, B50可能包含了定数有变动的谱面;
+            2. B50中存在同名的曲目, 如"Trust"、"Link"等;
+            3. B50中存在被改动过名称的曲目, 如"Help me, ERINNNNNN!!"等;
+            4. 潜在B50中存在近期被删除或国际服独占曲目, 如"全世界共通リズム感テスト"，这些曲目无法被检索;
+            5. 近期您的数据源服务器有大版本更新, 我们的数据库可能尚未及时更新相关数据。
+            ==============================================================================
+        """)
+
+    return {
+        "game_type": game_type,
+        "sub_type": sub_type_tag,
+        "username": username,
+        "rating_mai": local_rating,
+        "rating_chu": 0.0,
+        "game_version": game_version,
+        "initial_records": record_data
+    }
 
 def generate_archive_data_from_html(html_data, username, params = None) -> dict:
     """
@@ -646,6 +666,9 @@ def generate_archive_data_from_html(html_data, username, params = None) -> dict:
             # For the data structure of raw_record, see the return value of parse_maimai_html
             query = raw_record["query"]
             chart_data = exact_match_chart(query, songs_metadata)
+            if not chart_data:
+                print(f"Warning: 无法匹配谱面{query}, 已自动跳过。如果缺失的数据是\"全世界共通リズム感テスト\"属正常现象。")
+                continue
             dx_rating = compute_rating(chart_data["difficulty"], float(raw_record["achievement"]))
             record = {
                 'chart_data': chart_data,
@@ -665,7 +688,7 @@ def generate_archive_data_from_html(html_data, username, params = None) -> dict:
     else:
         raise ValueError("Error: Only MAIMAI DX is supported for HTML data")
     
-    # Keep the same database ordering as generate_archive_data_from_fish
+    # Keep the same database ordering as generate_archive_data
     for i in range(len(record_data)):
         record_data[i]['order_in_archive'] = len(record_data) - i
 
@@ -684,7 +707,7 @@ def generate_archive_data_from_html(html_data, username, params = None) -> dict:
 # Unify user imported texts to internal format
 ################################################
 
-def unify_user_gamedata(raw_file_path, username, params, source="mmbl") -> dict:
+def unify_user_gamedata(raw_file_path, username, params, source="mgbl") -> dict:
     """
     Unify user imported data. First, process with read_x methods to get JSON-like dict data. Then, generate archive data with generate_x methods for database insertion.
 
@@ -695,7 +718,7 @@ def unify_user_gamedata(raw_file_path, username, params, source="mmbl") -> dict:
             type (str): game type, only "maimai" is supported
             query (str): query type, only "best" supported... currently?
             filter (dict): filter conditions, example: {"tag": "ap", "b15_versions": 0}
-        source (str): the source of the input data, "mmbl" or "html" currently supported
+        source (str): the source of the input data
     
     Returns:
         Generated archive data.
@@ -703,16 +726,32 @@ def unify_user_gamedata(raw_file_path, username, params, source="mmbl") -> dict:
     data_input = params.get("data_input", None)
     if not data_input:
         print("Error: 读取用户输入的文本数据时发生错误，文本框可能为空？")
-        
-    if source == "mmbl":
-        mmbl_data = read_mmbl_tsv(data_input, params)
-        # 将初步转译为dict的数据保存
+    
+    if source == "mgbl":
+        mgbl_data = json.loads(data_input)
         with open(raw_file_path, "w", encoding="utf-8") as f:
-            json.dump(mmbl_data, f, ensure_ascii=False, indent=4)
-        
-        return generate_archive_data_from_mmbl(mmbl_data, username, params)
+            json.dump(mgbl_data, f, ensure_ascii=False, indent=4)
+        unified_data = mgbl_to_unified(mgbl_data["scores"], params)
+        params["mgbl_rating"] = mgbl_data.get("rating")
+        params["mgbl_host"] = mgbl_data.get("host")
+        return generate_archive_data_from_unified(unified_data, username, params)
+    
+    elif source == "dxjs":
+        dxjs_data = json.loads(data_input)
+        with open(raw_file_path, "w", encoding="utf-8") as f:
+            json.dump(dxjs_data, f, ensure_ascii=False, indent=4)
+        unified_data = dxjs_to_unified(dxjs_data, params)
+        return generate_archive_data_from_unified(unified_data, username, params)
+
+    elif source == "mtbl":
+        mtbl_data = read_mtbl_tsv(data_input, params)
+        with open(raw_file_path, "w", encoding="utf-8") as f:
+            json.dump(mtbl_data, f, ensure_ascii=False, indent=4)
+        unified_data = mtbl_to_unified(mtbl_data, params)
+        return generate_archive_data_from_unified(unified_data, username, params)
     
     elif source == "html":
+        # HTML数据源直接提供可信B50，单独处理
         html_data = read_maimai_html(data_input, params)
         # 将半成品的dict数据保存
         with open(raw_file_path, "w", encoding="utf-8") as f:
@@ -722,124 +761,3 @@ def unify_user_gamedata(raw_file_path, username, params, source="mmbl") -> dict:
     
     else:
         raise ValueError(f"Invalid source {source} for unifying user game data input")
-
-
-################################################
-# Update local cache files (Deprecated old INT data updater)
-################################################
-
-@DeprecationWarning
-def update_b50_data_int(raw_file_path, data_type, username, params) -> dict:
-    parser_map = {
-        "html": read_maimai_html,
-        "json": read_dxrating_json,
-        "mmbl": read_mmbl_tsv
-    }
-    data_parser = parser_map.get(data_type, read_maimai_html)
-
-    # building b50_raw
-    parsed_data = data_parser(raw_file_path, username, params)
-    # building b50_config
-    return generate_data_file_int(parsed_data, params)
-
-@DeprecationWarning
-def generate_data_file_int(parsed_data, params) -> dict:
-    type = params.get("type", "maimai")
-    query = params.get("query", "best")
-    filter = params.get("filter", None)
-
-    sub_type_tag = ""
-    to_modify_data = None
-    if type == "maimai":
-        if query == "best": # HTML/JSON only provides best query
-            sub_type_tag = "best"
-            # split b50 data
-            charts_data = parsed_data["charts"]
-            b35_data = charts_data["sd"]
-            b15_data = charts_data["dx"]
-
-            for i in range(len(b35_data)):
-                song = b35_data[i]
-                song['clip_title_name'] = f"PastBest_{i + 1}"
-
-            for i in range(len(b15_data)):
-                song = b15_data[i]
-                song['clip_title_name'] = f"NewBest_{i + 1}"
-            
-            # 合并b35_data和b15_data到同一列表
-            to_modify_data = b35_data + b15_data
-        elif query == "all": # all query supports if and only if data type is MMBL
-            if not filter:
-                raise ValueError("Error: 请求错误，直接数据输入且query=\"all\"时应该具有filter参数。")
-            else:
-                tag = filter.get("tag", None)
-                top_len = filter.get("top", 50)
-                if tag in ["best", "ap"]:
-                    sub_type_tag = tag
-                    data_list = filter_maimai_ap_data(parsed_data, top_len)
-                    if len(data_list) < top_len:
-                        print(f"Warning: 仅筛选到{len(data_list)}条有效数据，生成实际数据长度小于top_len={top_len}的配置。")
-                    to_modify_data = data_list
-                else:
-                    raise ValueError("Error: 目前仅支持tag为ap的查询类型。")
-        # 统一转换为数据库记录格式
-        new_record_data = [fish_to_new_record_format(song, type) for song in to_modify_data]
-
-        new_archive_data = {
-            "type": type,
-            "sub_type": sub_type_tag,
-            "username": parsed_data["username"],
-            "rating": parsed_data["rating"],
-            "game_version": "latest_INTL",
-            "initial_records": new_record_data
-        }
-        return new_archive_data
-    else:
-        raise ValueError("Only MAIMAI DX is supported for now")   
-
-################################################
-# Deprecated: data merger
-################################################
-
-@DeprecationWarning
-def merge_b50_data(new_b50_data, old_b50_data):
-    """
-    合并两份b50数据，使用新数据的基本信息但保留旧数据中的视频相关信息
-    
-    Args:
-        new_b50_data (list): 新的b50数据（不含video_info_list和video_info_match）
-        old_b50_data (list): 旧的b50数据（youtube版或bilibili版）
-    
-    Returns:
-        tuple: (合并后的b50数据列表, 更新计数)
-    """
-    # 检查数据长度是否一致
-    if len(new_b50_data) != len(old_b50_data):
-        print(f"Warning: 新旧b50数据长度不一致，将使用新数据替换旧数据。")
-        return new_b50_data, 0
-    
-    # 创建旧数据的复合键映射表
-    old_song_map = {
-        (song['song_id'], song['level_index'], song['type']): song 
-        for song in old_b50_data
-    }
-    
-    # 按新数据的顺序创建合并后的列表
-    merged_b50_data = []
-    keep_count = 0
-    for new_song in new_b50_data:
-        song_key = (new_song['song_id'], new_song['level_index'], new_song['type'])
-        if song_key in old_song_map:
-            # 如果记录已存在，使用新数据但保留原有的视频信息
-            cached_song = old_song_map[song_key]
-            new_song['video_info_list'] = cached_song.get('video_info_list', [])
-            new_song['video_info_match'] = cached_song.get('video_info_match', {})
-            if new_song == cached_song:
-                keep_count += 1
-        else:
-            new_song['video_info_list'] = []
-            new_song['video_info_match'] = {}
-        merged_b50_data.append(new_song)
-
-    update_count = len(new_b50_data) - keep_count
-    return merged_b50_data, update_count

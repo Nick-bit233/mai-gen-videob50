@@ -201,6 +201,40 @@ def lxns_api_instructions():
     **注意**：请妥善保管您的API密钥，不要泄露给他人，本项目仅将此密钥保存在本地，不会上传或分享给任何第三方。
     """)
 
+@st.dialog("国际服/日服数据导入说明")
+def other_data_import_guide():
+    # 加载markdown
+    guide_path = os.path.join(os.path.dirname(__file__), "..", "docs", "DataImportGuide.md")
+    res_dir = os.path.join(os.path.dirname(__file__), "..", "md_res")
+    with open(guide_path, "r", encoding="utf-8") as f:
+        guide_md = f.read()
+    # 准备js脚本
+    js_src = "https://yelonnotxtd.github.io/load_maimai_score.js"
+    js_loader = f"""javascript:(function(){{
+        var s=document.createElement('script');
+        s.src='{js_src}';
+        document.head.appendChild(s);
+    }})();"""
+    js_loader = re.sub(r'\s+', ' ', js_loader).strip()
+
+    # 按图片行拆分
+    # pattern = re.compile(r"(!\[([^\]]*)\]\(([^)]+)\))") # ![alt](path) 正则
+    pattern = re.compile(r"(!\[([^\]]*)\]\(([^)]+)\)|<!--MGBL_LINK-->)")
+    last_end = 0
+    for match in pattern.finditer(guide_md):
+        before = guide_md[last_end:match.start()]
+        if before.strip():
+            st.markdown(before)
+        if match.group(0).startswith("!"):
+            img_path = os.path.join(res_dir, os.path.basename(match.group(3)))
+            st.image(img_path, use_container_width=False)
+        else: # 处理<!--MGBL_LINK-->占位符
+            st.markdown(f"<div><a href=\"{js_loader}\">Mai-gen Booklet 成绩加载工具</a></div>", unsafe_allow_html=True)
+        last_end = match.end()
+    remaining = guide_md[last_end:]
+    if remaining.strip():
+        st.markdown(remaining)
+
 @st.dialog("删除存档确认")
 def confirm_delete_archive(username: str, archive_name: str):
     """Asks for confirmation and deletes an archive from the database."""
@@ -227,7 +261,7 @@ def handle_new_data(username: str, source: str, params: dict = None):
     raw_file_path = f"{get_user_base_dir(username)}/{username}_{source}_raw_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     try:
         # 重构：查分，并创建存档，原始数据缓存于raw_file_path
-        if source in ["mmbl", "html"]: #, "json"]:
+        if source in ["mgbl", "html", "dxjs", "mtbl"]:
             new_archive_data = unify_user_gamedata(
                 raw_file_path=raw_file_path,
                 source=source,
@@ -583,84 +617,101 @@ if st.session_state.get('config_saved', False):
                 
 
         # Data from DX Web (INTL/JP Server)
-        with st.expander("🌏 从官网手动导入数据 (国际服/日服)"):
-            st.warning("✅ 国际服/日服数据已更新MMBL导入支持，绝赞测试中！")
+        with st.expander("🌏 手动导入数据 (国际服/日服)"):
+            st.warning("✅ 我们的国际服/日服数据书签页导入工具Mai-gen Booklet绝赞测试中!")
             if G_type == "maimai":
                 st.write("请将获取的数据文本粘贴到下方输入框中，并选择对应的数据源类型和其他信息。")
 
-                if st.toggle("💡 展开查看数据获取指南"):
-                    # TODO: Claude写的分段加载markdown图片/文本，后续可以封装成工具方法
-                    _guide_path = os.path.join(os.path.dirname(__file__), "..", "docs", "DataImportGuide.md")
-                    _res_dir = os.path.join(os.path.dirname(__file__), "..", "md_res")
+                if st.button("💡 点击查看数据获取指南", key="read_other_data_import_guide"):
+                    other_data_import_guide()
 
-                    with open(_guide_path, "r", encoding="utf-8") as f:
-                        _guide_md = f.read()
-
-                    st.divider()
-                    # 按图片行拆分
-                    pattern = re.compile(r"(!\[([^\]]*)\]\(([^)]+)\))") # ![alt](path) 正则
-                    last_end = 0
-                    for match in pattern.finditer(_guide_md):
-                        # 图片前的文本
-                        before = _guide_md[last_end:match.start()]
-                        if before.strip():
-                            st.markdown(before)
-                        # 图片
-                        img_path = os.path.join(_res_dir, os.path.basename(match.group(3)))
-                        st.image(img_path)
-                        last_end = match.end()
-                    # 最后一张图片后的文本
-                    remaining = _guide_md[last_end:]
-                    if remaining.strip():
-                        st.markdown(remaining)
-                    st.divider()
-
-                DATA_SOURCE_OPTIONS = ["Maimai Booklet (MMBL, 推荐)", "maimai DX Net (HTML, 不含FC状态等信息)"] #, "dxrating (JSON)"]
-                MMBL_VERSION_OPTIONS = ["国际服 (PRiSM PLUS & CiRCLE)", "日服 (CiRCLE & CiRCLE PLUS)", "全版本 (取全曲最高50条成绩，生成AP50/FC50时推荐)"]
+                DATA_SOURCE_OPTIONS = ["官网-MGBL (推荐)", "官网-HTML (仅基础信息)", "DXrating", "官网-MTBL (不推荐, 即将移除)"]
+                MGBL_VERSION_OPTIONS = ["自动筛选B15", "不筛选 (取全版本最高50条成绩, 进行有特殊筛选的生成时推荐)"]
+                DXJS_EXPORT_OPTIONS = ["B50记录JSON (版本筛选: 自动)", "所有记录JSON (版本筛选: 无筛选)"]
+                MTBL_VERSION_OPTIONS = ["国际服 (PRiSM PLUS & CiRCLE)", "日服 (CiRCLE & CiRCLE PLUS)", "全版本 (取全曲最高50条成绩，生成AP50/FC50时推荐)"]
                 FILTER_TAG_OPTIONS = ["无筛选 (根据版本筛选B35+B15或整体B50)", "极50 (只筛选FC以上成绩)", "神50 (只筛选AP以上成绩)"]
 
                 data_source = st.radio("选择导入的数据源类型：", options=DATA_SOURCE_OPTIONS, key="data_source")
+
                 if data_source == DATA_SOURCE_OPTIONS[0]:
-                    mmbl_version = st.radio("B15对应版本 (仅影响MMBL数据源)", options=MMBL_VERSION_OPTIONS, key="mmbl_version")
-                    filter_tag = st.radio("特殊筛选条件 (仅影响MMBL数据源)", options=FILTER_TAG_OPTIONS, key="filter_tag")
+                    mgbl_version = st.radio("B15筛选设置", options=MGBL_VERSION_OPTIONS, key="mgbl_version")
+                else:
+                    mgbl_version = None
+
+                if data_source == DATA_SOURCE_OPTIONS[2]:
+                    dxjs_export = st.radio("导出的JSON类型", options=DXJS_EXPORT_OPTIONS, key="dxjs_export_option")
+                    st.radio("B15筛选模式取决于JSON类型", options=("自动: 前35条为B35, 后续为B15" if dxjs_export == DXJS_EXPORT_OPTIONS[0] else "不筛选 (取全版本最高50条成绩)"), key="dxjs_version")
+                    if dxjs_export == DXJS_EXPORT_OPTIONS[0]:
+                        st.info("ℹ️ dxrating.net导出的B50记录JSON仅包括基础成绩. 如需要FC/FS状态等, 请在后续步骤手动编辑.")
+                    if dxjs_export == DXJS_EXPORT_OPTIONS[1]:
+                        filter_tag = st.radio("特殊筛选条件", options=FILTER_TAG_OPTIONS, key="filter_tag")
+
+                if data_source == DATA_SOURCE_OPTIONS[3]:
+                    mtbl_version = st.radio("B15对应版本", options=MTBL_VERSION_OPTIONS, key="mtbl_version")
+                else:
+                    mtbl_version = None
+                
+                if data_source in [DATA_SOURCE_OPTIONS[0], DATA_SOURCE_OPTIONS[3]]:
+                    filter_tag = st.radio("特殊筛选条件", options=FILTER_TAG_OPTIONS, key="filter_tag")
+                else:
+                    filter_tag = None
 
                 data_input = st.text_area("请粘贴获取到的原始数据", height=200)
 
                 if st.button("从粘贴内容创建新存档"):
                     if data_input:
-                        query = "best"
+                        # 配置参数并调用数据处理函数
+                        query = "all"
                         filter = {}
-                        if data_source == DATA_SOURCE_OPTIONS[0]:
-                            file_type = "mmbl"
-                            query = "all" # MMBL固定返回全部数据
 
-                            # 用户指明自己的数据源服务器
-                            if mmbl_version == MMBL_VERSION_OPTIONS[0]:
-                                filter["b15_versions"] = 0
-                            elif mmbl_version == MMBL_VERSION_OPTIONS[1]:
-                                filter["b15_versions"] = 1
-                            else:
-                                filter["b15_versions"] = -1
-                            # AP50需要修改filter
-                            if filter_tag == FILTER_TAG_OPTIONS[1]:
-                                filter["tag"] = "fc"
-                            elif filter_tag == FILTER_TAG_OPTIONS[2]:
-                                filter["tag"] = "ap"
+                        if data_source == DATA_SOURCE_OPTIONS[0]:
+                            file_type = "mgbl"
                         elif data_source == DATA_SOURCE_OPTIONS[1]:
                             file_type = "html"
-                        else:
-                            file_type = "json"
+                            query = "best"
+                        elif data_source == DATA_SOURCE_OPTIONS[2]:
+                            file_type = "dxjs"
+                            query = "best" if dxjs_export == DXJS_EXPORT_OPTIONS[0] else "all"
+                        elif data_source == DATA_SOURCE_OPTIONS[3]:
+                            file_type = "mtbl"
+                        
+                        if mgbl_version:
+                            filter["b15_versions"] = 1 if mgbl_version == MGBL_VERSION_OPTIONS[0] else -1
 
-                        handle_new_data(username, source=file_type,
-                                        params={"type": "maimai", "query": query,
-                                                "data_input": data_input,
-                                                "filter": filter})
+                        if not mtbl_version:
+                            pass
+                        elif mtbl_version == MTBL_VERSION_OPTIONS[0]:
+                            filter["b15_versions"] = 0
+                        elif mtbl_version == MTBL_VERSION_OPTIONS[1]:
+                            filter["b15_versions"] = 1
+                        elif mtbl_version == MTBL_VERSION_OPTIONS[2]:
+                            filter["b15_versions"] = -1
+
+                        if filter_tag and filter_tag == FILTER_TAG_OPTIONS[0]:
+                            pass
+                        elif filter_tag == FILTER_TAG_OPTIONS[1]:
+                            filter["tag"] = "fc"
+                        elif filter_tag == FILTER_TAG_OPTIONS[2]:
+                            filter["tag"] = "ap"
+
+                        # TODO: “平替地板”筛选条件，当地板同分谱面溢出时，保留这些谱面让用户自己删除不想要的
+                        print(f"DEBUG: radio options - data_source: {data_source}, mgbl_version: {mgbl_version}, mtbl_version: {mtbl_version}, filter_tag: {filter_tag}")
+                        print(f"DEBUG: processed parameters - file_type: {file_type}, query: {query}, filter: {filter}")
+                        handle_new_data(
+                            username,
+                            source=file_type,
+                            params={
+                                "type": "maimai",
+                                "query": query,
+                                "data_input": data_input,
+                                "filter": filter
+                            })
                     else:
                         st.warning("输入框内容为空。")
             else:
                 st.warning(f"暂未支持从国际服/日服数据导入中二节奏数据，如有需要请在左侧导航栏使用自定义分表功能手动配置。")
-        with st.expander("💡 数据在神秘的服务器里？加入交流群，说不定就能实装呢？"):
-            st.write("加入QQ群：[994702414](https://qm.qq.com/q/ogt02jHEjK)")
+        # with st.expander("💡 数据在神秘的舞萌服务器里？加入交流群，说不定就能实装呢？"):
+        #     st.write("加入QQ群：[994702414](https://qm.qq.com/q/ogt02jHEjK)")
     # --- Navigation ---
     st.divider()
     if st.session_state.get('data_updated_step1', False) and st.session_state.get('archive_name'):
