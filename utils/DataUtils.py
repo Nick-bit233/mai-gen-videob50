@@ -22,9 +22,9 @@ LXNS_API_ENDPOINT = "https://assets.lxns.net"  # 落雪查分器api
 
 # Version tags from MTBL, used for filtering B15 records from MBL exported data.
 DEFAULT_B15_VERSION = [
-    ["PRiSM PLUS", "CiRCLE"],
-    ["CiRCLE", "CiRCLE PLUS"],
-    []
+    ["CiRCLE", "CiRCLE PLUS"], # 0 index 国际服，2026年7月下旬更新至CiRCLE+
+    ["CiRCLE", "CiRCLE PLUS"], # 1 index 日服，预计2026年9月更新
+    [] # -1 index，用于标注不区分版本
 ]
 
 def get_otoge_db_api_endpoint(game_type) -> str:
@@ -1454,6 +1454,7 @@ def mujs_to_unified(mujs_data: list, params: dict = None) -> list:
 
     return unified
 
+@DeprecationWarning
 def mtbl_to_unified(mtbl_data: list, params: dict = None) -> list:
     """
     Unify data format from output of read_mtbl_tsv
