@@ -13,6 +13,7 @@ from utils.DataUtils import (
     mgbl_to_unified,
     mtbl_to_unified,
     dxjs_to_unified,
+    mujs_to_unified,
     filter_unified_b50
 )
 
@@ -741,6 +742,13 @@ def unify_user_gamedata(raw_file_path, username, params, source="mgbl") -> dict:
         with open(raw_file_path, "w", encoding="utf-8") as f:
             json.dump(dxjs_data, f, ensure_ascii=False, indent=4)
         unified_data = dxjs_to_unified(dxjs_data, params)
+        return generate_archive_data_from_unified(unified_data, username, params)
+
+    elif source == "mujs":
+        mujs_data = json.loads(data_input)
+        with open(raw_file_path, "w", encoding="utf-8") as f:
+            json.dump(mujs_data, f, ensure_ascii=False, indent=4)
+        unified_data = mujs_to_unified(mujs_data, params)
         return generate_archive_data_from_unified(unified_data, username, params)
 
     elif source == "mtbl":

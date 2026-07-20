@@ -644,6 +644,7 @@ def exact_match_chart(query, songs_data, game_type="maimai") -> dict:
             "title": "FFT", # Must be exactly matching the title in metadata
             "level_index": 3, # Master
             "chart_type": 0,  # standard
+            "artist": "cybermiso", # optional query parameter
         }
         songs_data: list of dict, the loaded metadata for the game type
         game_type: str, only "maimai" used currently, as this is a method for parsing HTML source.
@@ -653,7 +654,11 @@ def exact_match_chart(query, songs_data, game_type="maimai") -> dict:
         # Don't use 'get' here to ensure we raise error if any of the required fields is missing
         for song in songs_data:
             title = song.get('title', '')
+            artist = song.get('artist', None)
             if query["title"] == title: # Must be exact match
+                if query.get("artist") and query["artist"] != artist:
+                    print(f"Info: 对曲目{query['title']}进行了精确匹配，但指定的artist {query['artist']}与元数据中的artist {artist}不匹配，跳过该曲目。")
+                    continue # If artist is specified in query, it must match
                 charts = song.get('charts_info', [])
                 for c in charts:
                     c_level_index = c.get('difficulty', -1)
@@ -1297,9 +1302,156 @@ def dxjs_to_unified(dxjs_data: list, params: dict = None) -> list:
             "fc_status": combo,
             "fs_status": sync,
             "is_new": (not is_all_data) and len(unified) >= 35, # don't match version if parsing all data
-            # no ds provided, so leave it blank and wait filter_unified to query from metadata
+            "ds": None, # leave it blank and wait filter_unified to query from metadata
             "raw_data": entry
         })
+    return unified
+
+def mujs_to_unified(mujs_data: list, params: dict = None) -> list:
+    """
+    Unify data format from output of MUJS API. Use either "userGeneralDataList" or "userMusicDetailList" to collect (filtered) B50, depending on parameters.
+
+    Args:
+        mujs_data: list of dict (JSON), example
+            {
+                ...
+                "userGeneralDataList": [
+                    ...
+                    {
+                        "propertyKey": "recent_rating",
+                        "propertyValue": "11730:3:24512:1008295,11004:3:20000:1005565, ... ,689:2:19006:1007621"
+                    },
+                    {
+                        "propertyKey": "recent_rating_new",
+                        "propertyValue": ...
+                    }
+                ],
+                "userMusicDetailList": [
+                    {
+                        "musicId": 47,
+                        "level": 4,
+                        "playCount": 6,
+                        "achievement": 981777,
+                        "comboStatus": 0,
+                        "syncStatus": 0,
+                        "deluxscoreMax": 1776,
+                        "scoreRank": 9,
+                        "extNum1": 0
+                    },
+                    ...
+                ],
+                ...
+            }
+        params: dict, use query to determine which data to parse, "best" or "all"
+    """
+
+    def get_song_by_munet_id(id: int):
+        chart_type = 0 if id < 10000 else 1
+        song = index_songs_metadata("maimai", "fish", id, chart_type)
+        if not song:
+            print(f"Warning: 无法在水鱼id中找到{id}对应的歌曲元数据，已返回None。")
+        return song
+
+    query = params["query"]
+    unified = []
+
+    if query == "best":
+        general_list = mujs_data.get("userGeneralDataList", [])
+        for entry in general_list:
+            property_key = entry.get("propertyKey", "")
+            property_value = entry.get("propertyValue", "")
+            is_new = (property_key == "recent_rating_new")
+            if not property_value:
+                continue
+            for segment in property_value.split(","):
+                segment = segment.strip()
+                if not segment:
+                    continue
+                parts = segment.split(":")
+                if len(parts) < 4:
+                    continue
+                munet_id = int(parts[0])
+                level_index = int(parts[1])
+                # parts[2] is 'ver', not used directly here
+                achievement_raw = int(parts[3])
+                achievement = achievement_raw / 10000.0
+                achievement_str = f"{achievement:.4f}"
+
+                chart_type = 0 if munet_id < 10000 else 1
+                song = get_song_by_munet_id(munet_id)
+                title = song.get("title", "") if song else ""
+                artist = song.get("artist", None) if song else None
+                # Warn if title is empty
+                if not title:
+                    print(f"Warning: 无法在水鱼id中找到{munet_id}对应的歌曲元数据，已返回空标题。")
+
+                unified.append({
+                    "query": {
+                        "title": title,
+                        "artist": artist,
+                        "level_index": level_index,
+                        "chart_type": chart_type
+                    },
+                    "achievement": achievement_str,
+                    "is_new": is_new,
+                    "ds": None,
+                    "raw_data": segment
+                })
+    elif query == "all":
+        # Determine b15_ver_prefix from userGeneralDataList's "recent_rating_new"
+        b15_ver_prefix = ""
+        for entry in mujs_data.get("userGeneralDataList", []):
+            if entry.get("propertyKey", "") == "recent_rating_new":
+                prop_value = entry.get("propertyValue", "")
+                if prop_value:
+                    first_segment = prop_value.split(",")[0].strip()
+                    if first_segment:
+                        b15_ver_prefix = first_segment.split(":")[2][:2] # id:level:26501:achv -> 26
+                break
+
+        for detail in mujs_data.get("userMusicDetailList", []):
+            music_id = detail.get("musicId", 0)
+            level_index = detail.get("level", 0)
+            achievement_raw = detail.get("achievement", 0)
+            combo_status = detail.get("comboStatus", 0)
+            sync_status = detail.get("syncStatus", 0)
+            play_count = detail.get("playCount", 0)
+
+            song = get_song_by_munet_id(music_id)
+            title = song.get("title", "") if song else ""
+            artist = song.get("artist", None) if song else None
+            chart_type = 0 if music_id < 10000 else 1
+            if not title:
+                print(f"Warning: 无法在水鱼id中找到{music_id}对应的歌曲元数据，已跳过该成绩。")
+                continue
+                
+            achievement = achievement_raw / 10000.0
+            achievement_str = f"{achievement:.4f}"
+
+            # Determine is_new by checking song.version prefix
+            is_new = False
+            if song and b15_ver_prefix:
+                song_version = song.get("version")
+                if song_version is not None:
+                    ver_str = str(song_version)
+                    is_new = len(ver_str) >= 5 and ver_str.startswith(b15_ver_prefix)
+
+            unified.append({
+                "query": {
+                    "title": title,
+                    "artist": artist,
+                    "level_index": level_index,
+                    "chart_type": chart_type
+                },
+                "achievement": achievement_str,
+                "fc_status": combo_status,
+                "fs_status": sync_status,
+                "is_new": is_new,
+                "ds": None,
+                "play_count": play_count,
+                "raw_data": detail
+            })
+
     return unified
 
 def mtbl_to_unified(mtbl_data: list, params: dict = None) -> list:
@@ -1379,13 +1531,13 @@ def filter_unified_b50(unified_data: list, filter: dict, game_type="maimai") -> 
             "chart_data": chart_data,
             "order_in_archive": 0,
             "achievement": entry["achievement"],
-            "fc_status": entry["fc_status"],
-            "fs_status": entry["fs_status"],
+            "fc_status": entry.get("fc_status", "none"),
+            "fs_status": entry.get("fs_status", "none"),
             "dx_score": entry.get("dx_score", 0),
             "dx_rating": dx_rating,
             "chuni_rating": 0,
-            "play_count": 0,
-            "clip_title_name": "",
+            "play_count": entry.get("play_count", 0),
+            "clip_title_name": "", # Fill this later
             "raw_data": json.dumps(entry["raw_data"], ensure_ascii=True)
         }
         return (i, record)
