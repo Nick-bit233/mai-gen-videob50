@@ -630,6 +630,7 @@ if st.session_state.get('config_saved', False):
                 DXJS_EXPORT_OPTIONS = ["B50记录JSON (自动区分B15)", "所有记录JSON (不区分版本)"]
                 MUJS_VERSION_OPTIONS = ["默认B50 (特殊筛选条件不生效)", "全部成绩 (自动区分版本)", "全部成绩 (不区分版本)"]
                 MTBL_VERSION_OPTIONS = ["国际服 (PRiSM PLUS & CiRCLE)", "日服 (CiRCLE & CiRCLE PLUS)", "全版本 (取全曲最高50条成绩，生成AP50/FC50时推荐)"]
+                KEEP_FLOOR_OPTIONS = ["不保留", "保留"]
                 FILTER_TAG_OPTIONS = ["无筛选 (根据版本区分B35+B15或整体B50)", "极50 (只筛选FC以上成绩)", "神50 (只筛选AP以上成绩)"]
 
                 data_source = st.radio("选择导入的数据源类型：", options=DATA_SOURCE_OPTIONS, key="data_source")
@@ -665,8 +666,10 @@ if st.session_state.get('config_saved', False):
                 )
                 if show_filter:
                     filter_tag = st.radio("特殊筛选条件", options=FILTER_TAG_OPTIONS, key="filter_tag")
+                    keep_floor = st.radio("B35/B15范围外的地板同分谱面", options=KEEP_FLOOR_OPTIONS, key="keep_floor")
                 else:
                     filter_tag = None
+                    keep_floor = None
 
                 data_input = st.text_area("请粘贴获取到的原始数据", height=200)
 
@@ -707,6 +710,9 @@ if st.session_state.get('config_saved', False):
                             query_filter["tag"] = "fc"
                         elif filter_tag == FILTER_TAG_OPTIONS[2]:
                             query_filter["tag"] = "ap"
+
+                        if keep_floor == KEEP_FLOOR_OPTIONS[1]:
+                            query_filter["keep_floor"] = True  # 保留平替地板谱面
 
                         # TODO: "平替地板"筛选条件，当地板同分谱面溢出时，保留这些谱面让用户自己删除不想要的
                         print(f"DEBUG: radio options - data_source: {data_source}, mgbl_version: {mgbl_version}, mtbl_version: {mtbl_version}, filter_tag: {filter_tag}")

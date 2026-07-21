@@ -22,8 +22,8 @@ LXNS_API_ENDPOINT = "https://assets.lxns.net"  # 落雪查分器api
 
 # Version tags from MTBL, used for filtering B15 records from MBL exported data.
 DEFAULT_B15_VERSION = [
-    ["CiRCLE", "CiRCLE PLUS"], # 0 index 国际服，2026年7月下旬更新至CiRCLE+
-    ["CiRCLE", "CiRCLE PLUS"], # 1 index 日服，预计2026年9月更新
+    ["CiRCLE", "CiRCLE PLUS"], # 0 index 国际服，2026年7月23日更新至CiRCLE PLUS
+    ["CiRCLE", "CiRCLE PLUS"], # 1 index 日服，预计2026年9月更新新版本
     [] # -1 index，用于标注不区分版本
 ]
 
