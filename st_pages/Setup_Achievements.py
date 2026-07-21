@@ -628,7 +628,7 @@ if st.session_state.get('config_saved', False):
                 DATA_SOURCE_OPTIONS = ["官网-MGBL (推荐)", "官网-HTML (仅基础信息)", "DXrating", "MuNET网站导出的JSON", "官网-MTBL (不推荐, 即将移除)"]
                 MGBL_VERSION_OPTIONS = ["自动区分B15版本", "不筛选 (取全版本最高50条成绩, 进行有特殊筛选的生成时推荐)"]
                 DXJS_EXPORT_OPTIONS = ["B50记录JSON (自动区分B15)", "所有记录JSON (不区分版本)"]
-                MUJS_VERSION_OPTIONS = ["默认B50 (特殊筛选条件不生效)", "全部成绩 (自动区分版本)", "全部成绩 (不区分版本)"]
+                MUJS_VERSION_OPTIONS = ["默认B50 (特殊筛选条件不可用)", "全部成绩 (自动区分版本, 不准确)", "全部成绩 (不区分版本)"]
                 MTBL_VERSION_OPTIONS = ["国际服 (PRiSM PLUS & CiRCLE)", "日服 (CiRCLE & CiRCLE PLUS)", "全版本 (取全曲最高50条成绩，生成AP50/FC50时推荐)"]
                 KEEP_FLOOR_OPTIONS = ["不保留", "保留"]
                 FILTER_TAG_OPTIONS = ["无筛选 (根据版本区分B35+B15或整体B50)", "极50 (只筛选FC以上成绩)", "神50 (只筛选AP以上成绩)"]

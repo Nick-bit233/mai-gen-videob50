@@ -1398,15 +1398,24 @@ def mujs_to_unified(mujs_data: list, params: dict = None) -> list:
                     "raw_data": segment
                 })
     elif query == "all":
-        # Determine b15_ver_prefix from userGeneralDataList's "recent_rating_new"
-        b15_ver_prefix = ""
+        # Determine b15_ver_prefixes from userGeneralDataList's "recent_rating_new"
+        # Collect up to 2 different version prefixes (first 3 chars) by iterating segments
+        b15_ver_prefixes = []
         for entry in mujs_data.get("userGeneralDataList", []):
             if entry.get("propertyKey", "") == "recent_rating_new":
                 prop_value = entry.get("propertyValue", "")
                 if prop_value:
-                    first_segment = prop_value.split(",")[0].strip()
-                    if first_segment:
-                        b15_ver_prefix = first_segment.split(":")[2][:2] # id:level:26501:achv -> 26
+                    for segment in prop_value.split(","):
+                        segment = segment.strip()
+                        if not segment:
+                            continue
+                        parts = segment.split(":")
+                        if len(parts) >= 3:
+                            prefix = parts[2][:3]
+                            if prefix and prefix not in b15_ver_prefixes:
+                                b15_ver_prefixes.append(prefix)
+                            if len(b15_ver_prefixes) >= 2:
+                                break
                 break
 
         for detail in mujs_data.get("userMusicDetailList", []):
@@ -1430,11 +1439,11 @@ def mujs_to_unified(mujs_data: list, params: dict = None) -> list:
 
             # Determine is_new by checking song.version prefix
             is_new = False
-            if song and b15_ver_prefix:
+            if song and b15_ver_prefixes:
                 song_version = song.get("version")
                 if song_version is not None:
                     ver_str = str(song_version)
-                    is_new = len(ver_str) >= 5 and ver_str.startswith(b15_ver_prefix)
+                    is_new = len(ver_str) >= 5 and any(ver_str.startswith(p) for p in b15_ver_prefixes)
 
             unified.append({
                 "query": {
@@ -1506,12 +1515,14 @@ def filter_unified_b50(unified_data: list, filter: dict, game_type="maimai") -> 
         match_b15 = False
         best_past_len = 50
         best_new_len = 0
+        keep_floor = False
         tag = ""
     else:
         b15_versions = DEFAULT_B15_VERSION[filter.get("b15_versions", -1)]
         match_b15 = bool(b15_versions)
         best_past_len = filter.get("best_past_len", 35 if match_b15 else 50)
         best_new_len = filter.get("best_new_len", 15 if match_b15 else 0)
+        keep_floor = filter.get("keep_floor", False)
         tag = filter.get("tag", "").lower()
 
     if tag:
@@ -1550,8 +1561,27 @@ def filter_unified_b50(unified_data: list, filter: dict, game_type="maimai") -> 
     new_results = [r for r in (to_record(i, e) for i, e in tagged if e["is_new"]) if r] if match_b15 else []
     past_results = [r for r in (to_record(i, e) for i, e in tagged if not match_b15 or not e["is_new"]) if r]
 
-    new_results = sorted(new_results, key=sort_key)[:best_new_len]
-    past_results = sorted(past_results, key=sort_key)[:best_past_len]
+    # new_results = sorted(new_results, key=sort_key)[:best_new_len]
+    # past_results = sorted(past_results, key=sort_key)[:best_past_len]
+
+    new_results = sorted(new_results, key=sort_key)
+    # Look for more charts on best floors
+    if keep_floor and len(new_results) > best_new_len > 0:
+        cutoff_rating = new_results[best_new_len - 1][1]["dx_rating"]
+        keep_new_len = best_new_len
+        while keep_new_len < len(new_results) and new_results[keep_new_len][1]["dx_rating"] == cutoff_rating:
+            keep_new_len += 1
+        new_results = new_results[:keep_new_len]
+    else:
+        new_results = new_results[:best_new_len]
+
+    past_results = sorted(past_results, key=sort_key)
+    if keep_floor and len(past_results) > best_past_len > 0:
+        cutoff_rating = past_results[best_past_len - 1][1]["dx_rating"]
+        keep_past_len = best_past_len
+        while keep_past_len < len(past_results) and past_results[keep_past_len][1]["dx_rating"] == cutoff_rating:
+            keep_past_len += 1
+        past_results = past_results[:keep_past_len]
 
     record_data = []
     best_prefix = "Best" if not tag else tag.upper()
