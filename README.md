@@ -13,6 +13,7 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 以下小补丁来自@[奕凌Yelon](https://github.com/YelonNotXTD)
 
 - ✨ **新增数据源**: 现在可以读取MuNET导出的JSON作为B50数据源了！但由于元数据完整度受限和[Dxrating](https://github.com/gekichumai/dxrating)的bug修复，我们依旧建议MuNET玩家使用DXrating网站作为中转导入成绩。
+- ✨ B50平替地板: 在一些国际服/日服数据导入方式中，现在可以保留多个与B35/B15地板同分的成绩。
 - 🛠️ 修复了在特定导入模式下，B50筛选条件不生效的bug；
 - 🛠️ 移除了maimai booklet导入方式的支持。
 
