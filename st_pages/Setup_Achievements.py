@@ -268,12 +268,6 @@ def handle_new_data(username: str, source: str, params: dict = None):
                 username=username,
                 params=params,
             )
-        # elif source == "intl":
-        #     new_archive_data = update_b50_data_int(
-        #         b50_raw_file=raw_file_path,
-        #         username=username,
-        #         params=params
-        #     )
         elif source in ["fish", "lxns"]:
             new_archive_data = fetch_user_gamedata(
                 raw_file_path=raw_file_path,
@@ -630,7 +624,7 @@ if st.session_state.get('config_saved', False):
                 DXJS_EXPORT_OPTIONS = ["B50记录JSON (自动区分B15)", "所有记录JSON (不区分版本)"]
                 # MuNET导出谱面成绩只有乐曲id，当前metadata不包含国服以外曲目的id，暂时无法查曲目
                 MUJS_VERSION_OPTIONS = ["默认B50 (特殊筛选条件不可用)"] #, "全部成绩 (自动区分版本, 不准确)", "全部成绩 (不区分版本)"]
-                # MTBL_VERSION_OPTIONS = ["国际服 (PRiSM PLUS & CiRCLE)", "日服 (CiRCLE & CiRCLE PLUS)", "全版本 (取全曲最高50条成绩，生成AP50/FC50时推荐)"]
+                VERSION_OPTIONS = ["国际服 (CiRCLE & CiRCLE PLUS)", "日服 (CiRCLE & CiRCLE PLUS)", "全版本 (取全曲最高50条成绩，生成AP50/FC50时推荐)"]
                 KEEP_FLOOR_OPTIONS = ["不保留", "保留"]
                 FILTER_TAG_OPTIONS = ["无筛选 (根据版本区分B35+B15或整体B50)", "极50 (只筛选FC以上成绩)", "神50 (只筛选AP以上成绩)"]
 
@@ -655,11 +649,6 @@ if st.session_state.get('config_saved', False):
                     mujs_version = st.radio("读取成绩类型", options=MUJS_VERSION_OPTIONS, key="mujs_version")
                 else:
                     mujs_version = None
-
-                # if data_source == DATA_SOURCE_OPTIONS[4]:
-                #     mtbl_version = st.radio("B15对应版本", options=MTBL_VERSION_OPTIONS, key="mtbl_version")
-                # else:
-                #     mtbl_version = None
 
                 # Show filter_tag radio only when the selected data source supports filtering
                 show_filter = (
@@ -693,20 +682,18 @@ if st.session_state.get('config_saved', False):
                         elif data_source == DATA_SOURCE_OPTIONS[3]:
                             file_type = "mujs"
                             query_type = "best" if mujs_version == MUJS_VERSION_OPTIONS[0] else "all"
-                        # elif data_source == DATA_SOURCE_OPTIONS[4]:
-                        #    file_type = "mtbl"
 
                         # Only the variable matching the current file_type's prefix should be non-None
                         if file_type == "mgbl" and mgbl_version:
                             query_filter["b15_versions"] = -1 if mgbl_version == MGBL_VERSION_OPTIONS[-1] else 1
-                        elif file_type == "mujs" and mujs_version:
+                        elif file_type == "mujs": # and mujs_version:
                             query_filter["b15_versions"] = 1 # -1 if mujs_version == MUJS_VERSION_OPTIONS[-1] else 1
-                        # elif file_type == "mtbl" and mtbl_version:
-                        #     if mtbl_version == MTBL_VERSION_OPTIONS[0]:
+                        # elif general_version:
+                        #     if general_version == VERSION_OPTIONS[0]:
                         #         query_filter["b15_versions"] = 0
-                        #     elif mtbl_version == MTBL_VERSION_OPTIONS[1]:
+                        #     elif general_version == VERSION_OPTIONS[1]:
                         #         query_filter["b15_versions"] = 1
-                        #     elif mtbl_version == MTBL_VERSION_OPTIONS[2]:
+                        #     elif general_version == VERSION_OPTIONS[2]:
                         #         query_filter["b15_versions"] = -1
 
                         if filter_tag == FILTER_TAG_OPTIONS[1]:
