@@ -1046,8 +1046,10 @@ def filter_mgbl_b50(mgbl_scores: list, filter: dict) -> List[dict]:
 
 # ---------------------------
 # MTBL data parsing methods
+# TODO: Delete these methods
 # ---------------------------
 
+@DeprecationWarning
 def read_mtbl_tsv(data_input, params):
     """
     MTBL exports TSV data with a header row and multiple chart data rows.
@@ -1600,9 +1602,6 @@ def filter_unified_b50(unified_data: list, filter: dict, game_type="maimai") -> 
 
     new_results = [r for r in (to_record(i, e) for i, e in tagged if e["is_new"]) if r] if match_b15 else []
     past_results = [r for r in (to_record(i, e) for i, e in tagged if not match_b15 or not e["is_new"]) if r]
-
-    # new_results = sorted(new_results, key=sort_key)[:best_new_len]
-    # past_results = sorted(past_results, key=sort_key)[:best_past_len]
 
     new_results = sorted(new_results, key=sort_key)
     # Look for more charts on best floors
