@@ -261,7 +261,7 @@ def handle_new_data(username: str, source: str, params: dict = None):
     raw_file_path = f"{get_user_base_dir(username)}/{username}_{source}_raw_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     try:
         # 重构：查分，并创建存档，原始数据缓存于raw_file_path
-        if source in ["mgbl", "html", "dxjs", "mtbl"]:
+        if source in ["mgbl", "html", "dxjs", "mujs", "mtbl"]:
             new_archive_data = unify_user_gamedata(
                 raw_file_path=raw_file_path,
                 source=source,
@@ -628,7 +628,8 @@ if st.session_state.get('config_saved', False):
                 DATA_SOURCE_OPTIONS = ["官网-MGBL (推荐)", "官网-HTML (仅基础信息)", "DXrating", "MuNET网站导出的JSON", "官网-MTBL (不推荐, 即将移除)"]
                 MGBL_VERSION_OPTIONS = ["自动区分B15版本", "不筛选 (取全版本最高50条成绩, 进行有特殊筛选的生成时推荐)"]
                 DXJS_EXPORT_OPTIONS = ["B50记录JSON (自动区分B15)", "所有记录JSON (不区分版本)"]
-                MUJS_VERSION_OPTIONS = ["默认B50 (特殊筛选条件不可用)", "全部成绩 (自动区分版本, 不准确)", "全部成绩 (不区分版本)"]
+                # MuNET导出谱面成绩只有乐曲id，当前metadata不包含国服以外曲目的id，暂时无法查曲目
+                MUJS_VERSION_OPTIONS = ["默认B50 (特殊筛选条件不可用)"] #, "全部成绩 (自动区分版本, 不准确)", "全部成绩 (不区分版本)"]
                 MTBL_VERSION_OPTIONS = ["国际服 (PRiSM PLUS & CiRCLE)", "日服 (CiRCLE & CiRCLE PLUS)", "全版本 (取全曲最高50条成绩，生成AP50/FC50时推荐)"]
                 KEEP_FLOOR_OPTIONS = ["不保留", "保留"]
                 FILTER_TAG_OPTIONS = ["无筛选 (根据版本区分B35+B15或整体B50)", "极50 (只筛选FC以上成绩)", "神50 (只筛选AP以上成绩)"]
@@ -649,6 +650,8 @@ if st.session_state.get('config_saved', False):
                     dxjs_export = None
 
                 if data_source == DATA_SOURCE_OPTIONS[3]:
+                    st.info("""ℹ️ 由于乐曲元数据来源限制, 对于国服未实装的曲目无法查询到曲名、定数等。请手动补全您需要的部分。
+                            \n这些曲目仅能保留谱面成绩、等级(Expert/Master等)、类型(SD/DX), 但成绩之间在B35/B15的相对顺序保持一致。您可以根据相对顺位与成绩后的小数点填入标题等您需要的信息。""")
                     mujs_version = st.radio("读取成绩类型", options=MUJS_VERSION_OPTIONS, key="mujs_version")
                 else:
                     mujs_version = None
@@ -662,7 +665,7 @@ if st.session_state.get('config_saved', False):
                 show_filter = (
                     data_source in [DATA_SOURCE_OPTIONS[0], DATA_SOURCE_OPTIONS[4]]
                     or (data_source == DATA_SOURCE_OPTIONS[2] and dxjs_export != DXJS_EXPORT_OPTIONS[0])
-                    or (data_source == DATA_SOURCE_OPTIONS[3] and mujs_version != MUJS_VERSION_OPTIONS[0])
+                    # or (data_source == DATA_SOURCE_OPTIONS[3] and mujs_version != MUJS_VERSION_OPTIONS[0])
                 )
                 if show_filter:
                     filter_tag = st.radio("特殊筛选条件", options=FILTER_TAG_OPTIONS, key="filter_tag")
@@ -695,9 +698,9 @@ if st.session_state.get('config_saved', False):
 
                         # Only the variable matching the current file_type's prefix should be non-None
                         if file_type == "mgbl" and mgbl_version:
-                            query_filter["b15_versions"] = 1 if mgbl_version == MGBL_VERSION_OPTIONS[0] else -1
+                            query_filter["b15_versions"] = -1 if mgbl_version == MGBL_VERSION_OPTIONS[-1] else 1
                         elif file_type == "mujs" and mujs_version:
-                            query_filter["b15_versions"] = 1 if mujs_version == MUJS_VERSION_OPTIONS[1] else -1
+                            query_filter["b15_versions"] = 1 # -1 if mujs_version == MUJS_VERSION_OPTIONS[-1] else 1
                         elif file_type == "mtbl" and mtbl_version:
                             if mtbl_version == MTBL_VERSION_OPTIONS[0]:
                                 query_filter["b15_versions"] = 0

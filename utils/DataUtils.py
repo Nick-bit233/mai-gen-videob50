@@ -1360,9 +1360,13 @@ def mujs_to_unified(mujs_data: list, params: dict = None) -> list:
         for entry in general_list:
             property_key = entry.get("propertyKey", "")
             property_value = entry.get("propertyValue", "")
+            if property_key not in ["recent_rating", "recent_rating_new"]:
+                continue
             is_new = (property_key == "recent_rating_new")
             if not property_value:
                 continue
+
+            best_index_current = -1
             for segment in property_value.split(","):
                 segment = segment.strip()
                 if not segment:
@@ -1381,12 +1385,18 @@ def mujs_to_unified(mujs_data: list, params: dict = None) -> list:
                 song = get_song_by_munet_id(munet_id)
                 title = song.get("title", "") if song else ""
                 artist = song.get("artist", None) if song else None
-                # Warn if title is empty
+                # Use a supporting index for not-found songs
                 if not title:
-                    print(f"Warning: 无法在水鱼id中找到{munet_id}对应的歌曲元数据，已返回空标题。")
+                    best_index = best_index_current
+                    name_placeholder = ("NewBest曲目" if is_new else "PastBest曲目") + str(best_index)
+                    title = name_placeholder
+                else:
+                    best_index = None
+                best_index_current -= 1
 
                 unified.append({
                     "query": {
+                        "id": munet_id,
                         "title": title,
                         "artist": artist,
                         "level_index": level_index,
@@ -1395,9 +1405,10 @@ def mujs_to_unified(mujs_data: list, params: dict = None) -> list:
                     "achievement": achievement_str,
                     "is_new": is_new,
                     "ds": None,
+                    "best_index": best_index,
                     "raw_data": segment
                 })
-    elif query == "all":
+    elif query == "all": # 这个分支目前不会被调用
         # Determine b15_ver_prefixes from userGeneralDataList's "recent_rating_new"
         # Collect up to 2 different version prefixes (first 3 chars) by iterating segments
         b15_ver_prefixes = []
@@ -1510,6 +1521,7 @@ def filter_unified_b50(unified_data: list, filter: dict, game_type="maimai") -> 
         "ap": lambda e: e.get("fc_status", "") in ["ap", "app"],
         "fc": lambda e: e.get("fc_status", "") in ["fc", "fcp", "ap", "app"],
     }
+    negative_dx_rating_support_sort = False # 对于MuNET导出等有B50成绩但找不到曲目信息时，统一化数据时会在dx_rating留下负值标记其相对位置
 
     if not filter:
         match_b15 = False
@@ -1535,6 +1547,34 @@ def filter_unified_b50(unified_data: list, filter: dict, game_type="maimai") -> 
     def to_record(i, entry):
         chart_data = exact_match_chart(entry["query"], SONGS_METADATA, game_type=game_type)
         if not chart_data:
+            if entry.get("best_index", None):
+                print(f"Info: 检测到辅助信息 best_index={entry['best_index']}, 正在填补必要信息。")
+                nonlocal negative_dx_rating_support_sort
+                negative_dx_rating_support_sort = True
+                record = {
+                    "chart_data": {
+                        "game_type": game_type,
+                        "song_id": entry["query"]["title"],
+                        "chart_type": entry["query"]["chart_type"],
+                        "level_index": entry["query"]["level_index"],
+                        "difficulty": 0.0,
+                        "song_name": entry["query"]["title"],
+                        "artist": None,
+                        "max_dx_score": 0,
+                        "video_path": None
+                    },
+                    "order_in_archive": 0,
+                    "achievement": entry["achievement"],
+                    "fc_status": "none",
+                    "fs_status": "none",
+                    "dx_score": 0,
+                    "dx_rating": entry["best_index"],
+                    "chuni_rating": 0,
+                    "play_count": 0,
+                    "clip_title_name": "", # Fill this later
+                    "raw_data": json.dumps(entry["raw_data"], ensure_ascii=True)
+                }
+                return (i, record)
             print(f"Warning: 无法匹配谱面 {entry['query']}，已跳过。")
             return None
         difficulty = entry["ds"] if entry.get("ds") else chart_data["difficulty"]
@@ -1582,6 +1622,29 @@ def filter_unified_b50(unified_data: list, filter: dict, game_type="maimai") -> 
         while keep_past_len < len(past_results) and past_results[keep_past_len][1]["dx_rating"] == cutoff_rating:
             keep_past_len += 1
         past_results = past_results[:keep_past_len]
+
+    def dx_rating_support_ordering(results):
+        """当在 dx_rating 标记了负值作为辅助排序序号使用, 保证成绩的相对位置不变"""
+        split_idx = 0
+        while split_idx < len(results) and results[split_idx][1]["dx_rating"] >= 0:
+            split_idx += 1
+        # 如果没有发现负值辅助排序, 直接返回原始列表
+        if split_idx == len(results):
+            return results
+        
+        normal_items = results[:split_idx]
+        special_items = results[split_idx:]
+        
+        # 特殊元素已按目标位置从小到大排列，正序插入
+        result = normal_items.copy()
+        for item in special_items:
+            target_pos = abs(item[1]["dx_rating"]) - 1 # dx_rating = -x => target position = x - 1
+            result.insert(target_pos, item)
+        return result
+
+    if negative_dx_rating_support_sort:
+        new_results = dx_rating_support_ordering(new_results)
+        past_results = dx_rating_support_ordering(past_results)
 
     record_data = []
     best_prefix = "Best" if not tag else tag.upper()
