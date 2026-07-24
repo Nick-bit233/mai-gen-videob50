@@ -203,6 +203,14 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
     请检查你的python环境和`ffmpeg`是否安装正确，确保其路径已添加到系统环境变量或项目根目录中。
 
+### 图片生成相关
+
+- 所有曲目的成绩图片生成时都没有曲绘：
+
+    尝试访问[该链接](https://otoge-db.net/maimai/jacket/866ca42598db8c01.png)，如果不能加载到一个FFT曲绘说明网络无法链接到otoge-db。该数据库服务器不在境内，但通常不需要科学上网访问。
+
+    请检查杀毒软件/防火墙/路由器设置等任何可能拦截网站访问行为的因素。
+
 ### 视频抓取相关
 
 - 搜索视频步骤中，扫码登录后出现如下报错：
