@@ -1,7 +1,7 @@
 javascript:(async function() {
     const host = window.location.hostname;
     const baseUrl = "https://" + host + "/maimai-mobile";
-    const b15VersionIds = host.includes("maimaidx-eng.com") ? [24, 25] : [25, 26];
+    const b15VersionIds = host.includes("maimaidx-eng.com") ? [25, 26] : [25, 26];
 
     const CONFIG = {
         homeUrl: baseUrl + "/home",

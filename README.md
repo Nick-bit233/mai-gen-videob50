@@ -8,6 +8,15 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 ## 更新速览
 
+`v1.2.4` 开发版本更新
+
+以下小补丁来自@[奕凌Yelon](https://github.com/YelonNotXTD)
+
+- ✨ **新增数据源**: 现在可以读取MuNET导出的JSON作为B50数据源了！但由于元数据完整度受限和[Dxrating](https://github.com/gekichumai/dxrating)的bug修复，我们依旧建议MuNET玩家使用DXrating网站作为中转导入成绩。
+- ✨ B50平替地板: 在一些国际服/日服数据导入方式中，现在可以保留多个与B35/B15地板同分的成绩。
+- 🛠️ 修复了在特定导入模式下，B50筛选条件不生效的bug；
+- 🛠️ 移除了maimai booklet导入方式的支持。
+
 `v1.2.3` 开发版本更新
 
 以下功能翻新来自@[奕凌Yelon](https://github.com/YelonNotXTD)
@@ -107,10 +116,9 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 - [x] [DXrating](https://dxrating.net/rating)：支持国服/国际服/日服
 
-- [x] 基于[Maimai Booklet](https://myjian.github.io/mai-tools/#howto)导出的[国际服](https://maimaidx-eng.com/maimai-mobile/home/ratingTargetMusic/)/[日服](https://maimaidx.jp/maimai-mobile/home/ratingTargetMusic/) 官网成绩
+以下为非官方游玩渠道的数据导入。
 
-> 更新计划: 因为该书签工具开发者有"看一眼主页就能发现的问题"，在未来版本我们会支持以其他方式从官网读取您的成绩，以筛选各种B50并生成视频的方式。届时我们会取消引用该工具并不再解析该工具输出的TSV数据。
-
+- [x] MuNET导出的成绩数据JSON（有没有好心观众提供一个网站？）
 
 ### 流媒体源支持情况
 
@@ -194,6 +202,14 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
     ```
 
     请检查你的python环境和`ffmpeg`是否安装正确，确保其路径已添加到系统环境变量或项目根目录中。
+
+### 图片生成相关
+
+- 所有曲目的成绩图片生成时都没有曲绘：
+
+    尝试访问[该链接](https://otoge-db.net/maimai/jacket/866ca42598db8c01.png)，如果不能加载到一个FFT曲绘说明网络无法链接到otoge-db。该数据库服务器不在境内，但通常不需要科学上网访问。
+
+    请检查杀毒软件/防火墙/路由器设置等任何可能拦截网站访问行为的因素。
 
 ### 视频抓取相关
 

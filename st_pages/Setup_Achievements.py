@@ -261,19 +261,13 @@ def handle_new_data(username: str, source: str, params: dict = None):
     raw_file_path = f"{get_user_base_dir(username)}/{username}_{source}_raw_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     try:
         # 重构：查分，并创建存档，原始数据缓存于raw_file_path
-        if source in ["mgbl", "html", "dxjs", "mtbl"]:
+        if source in ["mgbl", "html", "dxjs", "mujs"]:
             new_archive_data = unify_user_gamedata(
                 raw_file_path=raw_file_path,
                 source=source,
                 username=username,
                 params=params,
             )
-        # elif source == "intl":
-        #     new_archive_data = update_b50_data_int(
-        #         b50_raw_file=raw_file_path,
-        #         username=username,
-        #         params=params
-        #     )
         elif source in ["fish", "lxns"]:
             new_archive_data = fetch_user_gamedata(
                 raw_file_path=raw_file_path,
@@ -625,11 +619,14 @@ if st.session_state.get('config_saved', False):
                 if st.button("💡 点击查看数据获取指南", key="read_other_data_import_guide"):
                     other_data_import_guide()
 
-                DATA_SOURCE_OPTIONS = ["官网-MGBL (推荐)", "官网-HTML (仅基础信息)", "DXrating", "官网-MTBL (不推荐, 即将移除)"]
-                MGBL_VERSION_OPTIONS = ["自动筛选B15", "不筛选 (取全版本最高50条成绩, 进行有特殊筛选的生成时推荐)"]
-                DXJS_EXPORT_OPTIONS = ["B50记录JSON (版本筛选: 自动)", "所有记录JSON (版本筛选: 无筛选)"]
-                MTBL_VERSION_OPTIONS = ["国际服 (PRiSM PLUS & CiRCLE)", "日服 (CiRCLE & CiRCLE PLUS)", "全版本 (取全曲最高50条成绩，生成AP50/FC50时推荐)"]
-                FILTER_TAG_OPTIONS = ["无筛选 (根据版本筛选B35+B15或整体B50)", "极50 (只筛选FC以上成绩)", "神50 (只筛选AP以上成绩)"]
+                DATA_SOURCE_OPTIONS = ["官网-MGBL (推荐)", "官网-HTML (仅基础信息)", "DXrating", "MuNET网站导出的JSON"]
+                MGBL_VERSION_OPTIONS = ["自动区分B15版本", "不筛选 (取全版本最高50条成绩, 进行有特殊筛选的生成时推荐)"]
+                DXJS_EXPORT_OPTIONS = ["B50记录JSON (自动区分B15)", "所有记录JSON (不区分版本)"]
+                # MuNET导出谱面成绩只有乐曲id，当前metadata不包含国服以外曲目的id，暂时无法查曲目
+                MUJS_VERSION_OPTIONS = ["默认B50 (特殊筛选条件不可用)"] #, "全部成绩 (自动区分版本, 不准确)", "全部成绩 (不区分版本)"]
+                VERSION_OPTIONS = ["国际服 (CiRCLE & CiRCLE PLUS)", "日服 (CiRCLE & CiRCLE PLUS)", "全版本 (取全曲最高50条成绩，生成AP50/FC50时推荐)"]
+                KEEP_FLOOR_OPTIONS = ["不保留", "保留"]
+                FILTER_TAG_OPTIONS = ["无筛选 (根据版本区分B35+B15或整体B50)", "极50 (只筛选FC以上成绩)", "神50 (只筛选AP以上成绩)"]
 
                 data_source = st.radio("选择导入的数据源类型：", options=DATA_SOURCE_OPTIONS, key="data_source")
 
@@ -643,68 +640,79 @@ if st.session_state.get('config_saved', False):
                     st.radio("B15筛选模式取决于JSON类型", options=("自动: 前35条为B35, 后续为B15" if dxjs_export == DXJS_EXPORT_OPTIONS[0] else "不筛选 (取全版本最高50条成绩)"), key="dxjs_version")
                     if dxjs_export == DXJS_EXPORT_OPTIONS[0]:
                         st.info("ℹ️ dxrating.net导出的B50记录JSON仅包括基础成绩. 如需要FC/FS状态等, 请在后续步骤手动编辑.")
-                    if dxjs_export == DXJS_EXPORT_OPTIONS[1]:
-                        filter_tag = st.radio("特殊筛选条件", options=FILTER_TAG_OPTIONS, key="filter_tag")
+                else:
+                    dxjs_export = None
 
                 if data_source == DATA_SOURCE_OPTIONS[3]:
-                    mtbl_version = st.radio("B15对应版本", options=MTBL_VERSION_OPTIONS, key="mtbl_version")
+                    st.info("""ℹ️ 由于乐曲元数据来源限制, 对于国服未实装的曲目无法查询到曲名、定数等。请手动补全您需要的部分。
+                            \n这些曲目仅能保留谱面成绩、等级(Expert/Master等)、类型(SD/DX), 但成绩之间在B35/B15的相对顺序保持一致。您可以根据相对顺位与成绩后的小数点填入标题等您需要的信息。""")
+                    mujs_version = st.radio("读取成绩类型", options=MUJS_VERSION_OPTIONS, key="mujs_version")
                 else:
-                    mtbl_version = None
-                
-                if data_source in [DATA_SOURCE_OPTIONS[0], DATA_SOURCE_OPTIONS[3]]:
+                    mujs_version = None
+
+                # Show filter_tag radio only when the selected data source supports filtering
+                show_filter = (
+                    data_source in [DATA_SOURCE_OPTIONS[0]]
+                    or (data_source == DATA_SOURCE_OPTIONS[2] and dxjs_export != DXJS_EXPORT_OPTIONS[0])
+                    # or (data_source == DATA_SOURCE_OPTIONS[3] and mujs_version != MUJS_VERSION_OPTIONS[0])
+                )
+                if show_filter:
                     filter_tag = st.radio("特殊筛选条件", options=FILTER_TAG_OPTIONS, key="filter_tag")
+                    keep_floor = st.radio("B35/B15范围外的地板同分谱面", options=KEEP_FLOOR_OPTIONS, key="keep_floor")
                 else:
                     filter_tag = None
+                    keep_floor = None
 
                 data_input = st.text_area("请粘贴获取到的原始数据", height=200)
 
                 if st.button("从粘贴内容创建新存档"):
                     if data_input:
                         # 配置参数并调用数据处理函数
-                        query = "all"
-                        filter = {}
+                        query_type = "all"
+                        query_filter = {}
 
                         if data_source == DATA_SOURCE_OPTIONS[0]:
                             file_type = "mgbl"
                         elif data_source == DATA_SOURCE_OPTIONS[1]:
                             file_type = "html"
-                            query = "best"
+                            query_type = "best"
                         elif data_source == DATA_SOURCE_OPTIONS[2]:
                             file_type = "dxjs"
-                            query = "best" if dxjs_export == DXJS_EXPORT_OPTIONS[0] else "all"
+                            query_type = "best" if dxjs_export == DXJS_EXPORT_OPTIONS[0] else "all"
                         elif data_source == DATA_SOURCE_OPTIONS[3]:
-                            file_type = "mtbl"
-                        
-                        if mgbl_version:
-                            filter["b15_versions"] = 1 if mgbl_version == MGBL_VERSION_OPTIONS[0] else -1
+                            file_type = "mujs"
+                            query_type = "best" if mujs_version == MUJS_VERSION_OPTIONS[0] else "all"
 
-                        if not mtbl_version:
-                            pass
-                        elif mtbl_version == MTBL_VERSION_OPTIONS[0]:
-                            filter["b15_versions"] = 0
-                        elif mtbl_version == MTBL_VERSION_OPTIONS[1]:
-                            filter["b15_versions"] = 1
-                        elif mtbl_version == MTBL_VERSION_OPTIONS[2]:
-                            filter["b15_versions"] = -1
+                        # Only the variable matching the current file_type's prefix should be non-None
+                        if file_type == "mgbl" and mgbl_version:
+                            query_filter["b15_versions"] = -1 if mgbl_version == MGBL_VERSION_OPTIONS[-1] else 1
+                        elif file_type == "mujs": # and mujs_version:
+                            query_filter["b15_versions"] = 1 # -1 if mujs_version == MUJS_VERSION_OPTIONS[-1] else 1
+                        # elif general_version:
+                        #     if general_version == VERSION_OPTIONS[0]:
+                        #         query_filter["b15_versions"] = 0
+                        #     elif general_version == VERSION_OPTIONS[1]:
+                        #         query_filter["b15_versions"] = 1
+                        #     elif general_version == VERSION_OPTIONS[2]:
+                        #         query_filter["b15_versions"] = -1
 
-                        if filter_tag and filter_tag == FILTER_TAG_OPTIONS[0]:
-                            pass
-                        elif filter_tag == FILTER_TAG_OPTIONS[1]:
-                            filter["tag"] = "fc"
+                        if filter_tag == FILTER_TAG_OPTIONS[1]:
+                            query_filter["tag"] = "fc"
                         elif filter_tag == FILTER_TAG_OPTIONS[2]:
-                            filter["tag"] = "ap"
+                            query_filter["tag"] = "ap"
 
-                        # TODO: “平替地板”筛选条件，当地板同分谱面溢出时，保留这些谱面让用户自己删除不想要的
-                        print(f"DEBUG: radio options - data_source: {data_source}, mgbl_version: {mgbl_version}, mtbl_version: {mtbl_version}, filter_tag: {filter_tag}")
-                        print(f"DEBUG: processed parameters - file_type: {file_type}, query: {query}, filter: {filter}")
+                        if keep_floor == KEEP_FLOOR_OPTIONS[1]:
+                            query_filter["keep_floor"] = True  # 保留平替地板谱面
+
+                        print(f"DEBUG: processed parameters - file_type: {file_type}, query_type: {query_type}, query_filter: {query_filter}")
                         handle_new_data(
                             username,
                             source=file_type,
                             params={
                                 "type": "maimai",
-                                "query": query,
+                                "query": query_type,
                                 "data_input": data_input,
-                                "filter": filter
+                                "filter": query_filter
                             })
                     else:
                         st.warning("输入框内容为空。")
