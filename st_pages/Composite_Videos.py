@@ -241,7 +241,6 @@ if st.button("开始生成视频", use_container_width=True, type="primary"):
                         video_trans_time=trans_time,
                         full_last_clip=False,
                         use_gpu_accel=gpu_accel,
-                        use_baked_fade=False if gpu_accel else None,
                         progress_callback=progress_cb
                     )
                     st.write(f"【{output_info['info']}")
@@ -260,8 +259,8 @@ st.divider()
 with st.expander("展开其他视频生成方案"):
     st.warning("⚠️ 请注意，此区域的功能未经充分测试，不保证生成视频的效果或稳定性，请谨慎使用。")
     with st.container(border=True):
-        st.write("【简单模式】直接拼接视频片段为完整视频（无过渡效果）")
-        st.info("使用此模式可以降低视频生成过程中的内存占用，但视频片段之间将只有黑屏过渡。此模式支持GPU加速。")
+        st.write("【低内存模式】生成完整视频")
+        st.info("GPU 加速时将使用低内存 xfade 转场拼接；CPU 路线仍使用直接拼接视频片段的简单模式。")
         if st.button("直接拼接方式生成完整视频"):
             save_video_render_config()
             video_res = (v_res_width, v_res_height)
@@ -272,10 +271,10 @@ with st.expander("展开其他视频生成方案"):
                 st.error(f"❌ FFmpeg 版本检查失败: {e}")
                 st.stop()
             if gpu_accel:
-                # GPU快速模式：方案B（烘焙黑场过渡 + 流拷贝）
+                # GPU 低内存模式：未烘焙片段 + transition island xfade/concat
                 try:
                     progress_cb = _make_st_progress(st.container())
-                    with st.spinner("正在使用GPU加速快速模式生成完整视频……"):
+                    with st.spinner("正在使用GPU低内存模式生成完整视频……"):
                         output_info = render_complete_full_video(
                             username=username,
                             game_type=G_type,
@@ -291,13 +290,12 @@ with st.expander("展开其他视频生成方案"):
                             video_trans_time=trans_time,
                             full_last_clip=False,
                             use_gpu_accel=True,
-                            use_baked_fade=True,
                             progress_callback=progress_cb
                         )
                         st.write(f"【{output_info['info']}")
-                    st.success("GPU快速模式生成完成！点击上方按钮打开文件夹查看视频")
+                    st.success("GPU低内存模式生成完成！点击上方按钮打开文件夹查看视频")
                 except Exception as e:
-                    st.error(f"GPU快速模式生成失败，错误: {e}，转到控制台查看详情")
+                    st.error(f"GPU低内存模式生成失败，错误: {e}，转到控制台查看详情")
             else:
                 # CPU快速模式：原有逻辑
                 with st.spinner("正在生成所有视频片段……"):

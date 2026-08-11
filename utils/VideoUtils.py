@@ -951,7 +951,7 @@ def render_complete_full_video(
         use_gpu_accel: bool = None, use_baked_fade: bool = None, progress_callback=None):
     """ 根据完整配置合成完整视频，并保存到指定路径的文件。
         当 use_gpu_accel=True 时，先用 GPU 加速渲染所有片段，再用 FFmpeg 拼接。
-        use_baked_fade: True=烘焙黑场过渡+流拷贝, False=xfade+硬件编码, None=读取配置文件
+        use_baked_fade: 已废弃，仅为兼容旧调用保留。GPU 路线默认使用低内存 transition island + concat。
     """
     # 检查是否启用 GPU 加速
     if use_gpu_accel is None:
@@ -972,76 +972,39 @@ def render_complete_full_video(
                 # 检测硬件编码器
                 hw_codec, hw_codec_name = detect_hw_encoder()
 
-                # 判断转场模式：
-                #   use_baked_fade=True  → 烘焙黑场过渡 + 流拷贝拼接（快速，但只能fade through black）
-                #   use_baked_fade=False → xfade 真交叉淡入淡出 + 硬件编码拼接（默认）
-                if use_baked_fade is None:
-                    use_baked_fade = read_global_config().get('GPU_USE_BAKED_FADE', False)
+                # 第一步：渲染未烘焙转场的标准片段。转场由后续 FFmpeg island 管线完成。
+                t_step = time.perf_counter()
+                render_all_clips_accel(
+                    game_type=game_type,
+                    style_config=style_config,
+                    main_configs=main_configs,
+                    video_output_path=video_output_path,
+                    video_res=video_res,
+                    video_bitrate=video_bitrate,
+                    intro_configs=intro_configs,
+                    ending_configs=ending_configs,
+                    auto_add_transition=False,
+                    trans_time=video_trans_time,
+                    force_render=True,
+                    fps=video_fps,
+                    progress_callback=progress_callback
+                )
+                print(f"[Timer] 步骤1 - 渲染所有片段耗时: {time.perf_counter() - t_step:.2f}s")
 
-                if video_trans_enable and not use_baked_fade:
-                    # === 模式A: xfade + 硬件编码（真交叉淡入淡出）===
-                    print(f"[GPU] 转场模式: xfade + {hw_codec_name}")
-
-                    # 第一步：渲染片段（不烘焙淡入淡出）
-                    t_step = time.perf_counter()
-                    render_all_clips_accel(
-                        game_type=game_type,
-                        style_config=style_config,
-                        main_configs=main_configs,
-                        video_output_path=video_output_path,
-                        video_res=video_res,
-                        video_bitrate=video_bitrate,
-                        intro_configs=intro_configs,
-                        ending_configs=ending_configs,
-                        auto_add_transition=False,
-                        trans_time=video_trans_time,
-                        force_render=True,
-                        fps=video_fps,
-                        progress_callback=progress_callback
-                    )
-                    print(f"[Timer] 步骤1 - 渲染所有片段耗时: {time.perf_counter() - t_step:.2f}s")
-
-                    # 第二步：xfade 拼接（使用硬件编码器）
-                    t_step = time.perf_counter()
-                    print(f"[AccelRenderer] 正在拼接完整视频（xfade + {hw_codec_name}）...")
-                    output_file = combine_full_video_direct(
+                # 第二步：低内存拼接
+                t_step = time.perf_counter()
+                if video_trans_enable:
+                    print(f"[GPU] 转场模式: transition island xfade + concat + {hw_codec_name}")
+                    output_file = combine_full_video_xfade_islands(
                         video_output_path,
-                        auto_add_transition=True,
                         trans_time=video_trans_time,
                         codec=hw_codec,
                         bitrate=video_bitrate,
                         video_fps=video_fps
                     )
-                    print(f"[Timer] 步骤2 - 视频拼接(xfade)耗时: {time.perf_counter() - t_step:.2f}s")
+                    print(f"[Timer] 步骤2 - 视频拼接(transition island)耗时: {time.perf_counter() - t_step:.2f}s")
                 else:
-                    # === 模式B: 烘焙黑场过渡 + 流拷贝（或无转场）===
-                    if video_trans_enable:
-                        print("[GPU] 转场模式: 烘焙黑场过渡 + 流拷贝")
-                    else:
-                        print("[GPU] 无转场模式: 直接流拷贝拼接")
-
-                    # 第一步：渲染片段（根据需要烘焙淡入淡出）
-                    t_step = time.perf_counter()
-                    render_all_clips_accel(
-                        game_type=game_type,
-                        style_config=style_config,
-                        main_configs=main_configs,
-                        video_output_path=video_output_path,
-                        video_res=video_res,
-                        video_bitrate=video_bitrate,
-                        intro_configs=intro_configs,
-                        ending_configs=ending_configs,
-                        auto_add_transition=video_trans_enable,
-                        trans_time=video_trans_time,
-                        force_render=True,
-                        fps=video_fps,
-                        progress_callback=progress_callback
-                    )
-                    print(f"[Timer] 步骤1 - 渲染所有片段耗时: {time.perf_counter() - t_step:.2f}s")
-
-                    # 第二步：流拷贝拼接（无需重编码）
-                    t_step = time.perf_counter()
-                    print("[AccelRenderer] 正在拼接完整视频（流拷贝模式）...")
+                    print("[GPU] 无转场模式: 直接流拷贝拼接")
                     output_file = combine_full_video_direct(
                         video_output_path,
                         auto_add_transition=False,
@@ -1231,6 +1194,262 @@ def _get_video_duration(filepath: str) -> float:
         return float(result.stdout.strip())
     except ValueError:
         return 0.0
+
+
+def _format_seconds(value: float) -> str:
+    return f"{max(0.0, float(value)):.6f}"
+
+
+def _run_subprocess_checked(cmd: list, stage: str):
+    result = subprocess.run(cmd, capture_output=True, text=True, errors='replace')
+    if result.returncode != 0:
+        stderr = (result.stderr or result.stdout or "").strip()
+        if len(stderr) > 2000:
+            stderr = stderr[-2000:]
+        raise RuntimeError(f"{stage} 失败，返回码 {result.returncode}: {stderr}")
+    return result
+
+
+def _get_libx264_encoder_args():
+    return ['-c:v', 'libx264', '-preset', 'fast', '-crf', '18']
+
+
+def _get_encoder_args_with_fallback(codec: str, bitrate: str, force_software: bool = False) -> list:
+    if force_software or not codec or codec == 'libx264':
+        return _get_libx264_encoder_args()
+    try:
+        from utils.AccelRenderer import get_ffmpeg_encoder_args
+        return get_ffmpeg_encoder_args(codec, bitrate)
+    except ImportError:
+        return _get_libx264_encoder_args()
+
+
+def _run_ffmpeg_encode_with_fallback(cmd_prefix: list, output_path: str,
+                                     codec: str, bitrate: str, stage: str):
+    attempts = []
+    if codec and codec != 'libx264':
+        attempts.append((codec, _get_encoder_args_with_fallback(codec, bitrate)))
+    attempts.append(('libx264', _get_libx264_encoder_args()))
+
+    last_error = None
+    used_codecs = set()
+    for codec_name, encoder_args in attempts:
+        if codec_name in used_codecs:
+            continue
+        used_codecs.add(codec_name)
+        if os.path.exists(output_path):
+            os.remove(output_path)
+        cmd = cmd_prefix + encoder_args + [
+            '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
+            output_path
+        ]
+        try:
+            _run_subprocess_checked(cmd, f"{stage} ({codec_name})")
+            if codec_name != codec and codec and codec != 'libx264':
+                print(f"[Info] {stage}: 硬件编码失败后已回退 libx264")
+            return
+        except RuntimeError as e:
+            last_error = e
+            if codec_name != 'libx264':
+                print(f"[Warning] {stage}: {codec_name} 编码失败，尝试回退 libx264")
+                continue
+            raise
+    if last_error:
+        raise last_error
+
+
+def _render_xfade_body_segment(input_path: str, start: float, duration: float,
+                               output_path: str, codec: str, bitrate: str,
+                               video_fps: int, stage: str):
+    filter_complex = (
+        f"[0:v]trim=start={_format_seconds(start)}:duration={_format_seconds(duration)},"
+        f"setpts=PTS-STARTPTS,fps={video_fps},format=yuv420p,settb=AVTB[v];"
+        f"[0:a]atrim=start={_format_seconds(start)}:duration={_format_seconds(duration)},"
+        f"asetpts=PTS-STARTPTS,aresample=48000:async=1:first_pts=0,"
+        f"asetpts=N/SR/TB,aformat=sample_fmts=fltp:channel_layouts=stereo[a]"
+    )
+    cmd_prefix = [
+        get_ffmpeg_binary('ffmpeg'), '-y', '-hide_banner', '-loglevel', 'warning',
+        '-i', input_path,
+        '-filter_complex', filter_complex,
+        '-map', '[v]', '-map', '[a]'
+    ]
+    _run_ffmpeg_encode_with_fallback(cmd_prefix, output_path, codec, bitrate, stage)
+
+
+def _render_xfade_transition_segment(left_path: str, right_path: str,
+                                     left_start: float, duration: float,
+                                     output_path: str, codec: str, bitrate: str,
+                                     video_fps: int, stage: str):
+    duration_s = _format_seconds(duration)
+    filter_complex = (
+        f"[0:v]trim=start={_format_seconds(left_start)}:duration={duration_s},"
+        f"setpts=PTS-STARTPTS,fps={video_fps},format=yuv420p,settb=AVTB[v0];"
+        f"[1:v]trim=start=0:duration={duration_s},"
+        f"setpts=PTS-STARTPTS,fps={video_fps},format=yuv420p,settb=AVTB[v1];"
+        f"[v0][v1]xfade=transition=fade:duration={duration_s}:offset=0,"
+        f"format=yuv420p,settb=AVTB[vout];"
+        f"[0:a]atrim=start={_format_seconds(left_start)}:duration={duration_s},"
+        f"asetpts=PTS-STARTPTS,aresample=48000:async=1:first_pts=0,"
+        f"asetpts=N/SR/TB,aformat=sample_fmts=fltp:channel_layouts=stereo[a0];"
+        f"[1:a]atrim=start=0:duration={duration_s},"
+        f"asetpts=PTS-STARTPTS,aresample=48000:async=1:first_pts=0,"
+        f"asetpts=N/SR/TB,aformat=sample_fmts=fltp:channel_layouts=stereo[a1];"
+        f"[a0][a1]acrossfade=d={duration_s}:c1=tri:c2=tri,"
+        f"aresample=48000:async=1:first_pts=0,asetpts=N/SR/TB[aout]"
+    )
+    cmd_prefix = [
+        get_ffmpeg_binary('ffmpeg'), '-y', '-hide_banner', '-loglevel', 'warning',
+        '-i', left_path, '-i', right_path,
+        '-filter_complex', filter_complex,
+        '-map', '[vout]', '-map', '[aout]'
+    ]
+    _run_ffmpeg_encode_with_fallback(cmd_prefix, output_path, codec, bitrate, stage)
+
+
+def _concat_island_segments(segment_paths: list, list_file: str, output_path: str,
+                            video_fps: int):
+    with open(list_file, 'w', encoding='utf-8') as f:
+        for path in segment_paths:
+            safe_path = os.path.abspath(path).replace('\\', '/').replace("'", "'\\''")
+            f.write(f"file '{safe_path}'\n")
+
+    copy_cmd = [
+        get_ffmpeg_binary('ffmpeg'), '-y', '-hide_banner', '-loglevel', 'warning',
+        '-f', 'concat', '-safe', '0',
+        '-i', list_file,
+        '-c', 'copy',
+        output_path
+    ]
+    try:
+        _run_subprocess_checked(copy_cmd, "transition island 最终 concat")
+        return
+    except RuntimeError as e:
+        print(f"[Warning] 最终 concat 流拷贝失败，将回退重编码: {e}")
+
+    reencode_cmd = [
+        get_ffmpeg_binary('ffmpeg'), '-y', '-hide_banner', '-loglevel', 'warning',
+        '-f', 'concat', '-safe', '0',
+        '-i', list_file,
+        '-vf', f'fps={video_fps},format=yuv420p',
+        '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
+        '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
+        output_path
+    ]
+    _run_subprocess_checked(reencode_cmd, "transition island 最终 concat 重编码")
+
+
+def combine_full_video_xfade_islands(video_clip_path: str, trans_time: float = 1,
+                                     codec: str = None, bitrate: str = "5000k",
+                                     video_fps: int = 60,
+                                     temp_dir_name: str = "xfade_islands_tmp"):
+    """低内存 xfade 拼接：每次只处理相邻两个片段的转场窗口，再 concat。
+
+    此函数服务于 GPU 渲染路线，内部仅调用 FFmpeg/FFprobe，不依赖 MoviePy。
+    """
+    print("[Info] --------------------开始 transition island 低内存拼接-------------------")
+    t_concat_start = time.perf_counter()
+    import re
+
+    video_files = [f for f in os.listdir(video_clip_path)
+                   if f.endswith(".mp4") and re.match(r'^\d+_', f)]
+    sorted_files = sort_video_files(video_files)
+    if not sorted_files:
+        raise ValueError("Error: 没有有效的视频片段文件！")
+    if len(sorted_files) == 1 or trans_time <= 0:
+        return combine_full_video_direct(video_clip_path, auto_add_transition=False,
+                                         trans_time=trans_time, video_fps=video_fps)
+
+    file_paths = [os.path.join(video_clip_path, f) for f in sorted_files]
+    durations = []
+    for fp in file_paths:
+        duration = _get_video_duration(fp)
+        if duration <= 0:
+            raise ValueError(f"无法获取视频时长: {fp}")
+        durations.append(duration)
+
+    frame_epsilon = 1 / max(video_fps, 1)
+    transition_times = []
+    for i in range(len(file_paths) - 1):
+        max_duration = min(
+            float(trans_time),
+            durations[i] / 2 - frame_epsilon,
+            durations[i + 1] / 2 - frame_epsilon
+        )
+        transition_times.append(max_duration if max_duration > frame_epsilon else 0.0)
+
+    output_path = os.path.join(video_clip_path, "final_output.mp4")
+    temp_dir = os.path.join(video_clip_path, temp_dir_name)
+    if os.path.exists(temp_dir):
+        shutil.rmtree(temp_dir)
+    os.makedirs(temp_dir, exist_ok=True)
+
+    generated_segments = []
+    success = False
+    try:
+        segment_index = 0
+        for i, file_path in enumerate(file_paths):
+            left_transition = transition_times[i - 1] if i > 0 else 0.0
+            right_transition = transition_times[i] if i < len(transition_times) else 0.0
+            body_start = left_transition
+            body_end = durations[i] - right_transition
+            body_duration = body_end - body_start
+
+            if body_duration > frame_epsilon:
+                body_path = os.path.join(temp_dir, f"{segment_index:04d}_body_{i:04d}.mp4")
+                print(f"[Island] 生成主体片段 {i + 1}/{len(file_paths)}: "
+                      f"start={body_start:.3f}, duration={body_duration:.3f}")
+                _render_xfade_body_segment(
+                    file_path,
+                    body_start,
+                    body_duration,
+                    body_path,
+                    codec,
+                    bitrate,
+                    video_fps,
+                    f"主体片段 {i + 1}"
+                )
+                generated_segments.append(body_path)
+                segment_index += 1
+            else:
+                print(f"[Island] 跳过过短主体片段 {i + 1}: duration={body_duration:.3f}")
+
+            if i < len(file_paths) - 1:
+                transition_duration = transition_times[i]
+                if transition_duration > frame_epsilon:
+                    transition_path = os.path.join(temp_dir, f"{segment_index:04d}_transition_{i:04d}_{i + 1:04d}.mp4")
+                    left_start = durations[i] - transition_duration
+                    print(f"[Island] 生成转场 {i + 1}->{i + 2}: duration={transition_duration:.3f}")
+                    _render_xfade_transition_segment(
+                        file_path,
+                        file_paths[i + 1],
+                        left_start,
+                        transition_duration,
+                        transition_path,
+                        codec,
+                        bitrate,
+                        video_fps,
+                        f"转场 {i + 1}->{i + 2}"
+                    )
+                    generated_segments.append(transition_path)
+                    segment_index += 1
+                else:
+                    print(f"[Island] 片段 {i + 1}->{i + 2} 太短，退化为无转场拼接")
+
+        if not generated_segments:
+            raise RuntimeError("transition island 未生成任何有效临时片段")
+
+        list_file = os.path.join(temp_dir, "concat_list.txt")
+        _concat_island_segments(generated_segments, list_file, output_path, video_fps)
+        success = True
+        print(f"[Timer] transition island 拼接总耗时: {time.perf_counter() - t_concat_start:.2f}s")
+        return output_path
+    except Exception as e:
+        print(f"[Error] transition island 拼接失败，临时文件保留在: {temp_dir}")
+        raise RuntimeError(f"transition island 拼接失败: {e}。临时文件保留在: {temp_dir}") from e
+    finally:
+        if success and os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
 
 
 def _combine_with_xfade(video_clip_path: str, sorted_files: list,
