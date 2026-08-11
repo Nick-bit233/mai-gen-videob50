@@ -16,6 +16,23 @@ db_handler = get_database_handler()
 G_type = st.session_state.get('game_type', 'maimai')
 
 # Helper functions
+def is_video_matching_platform(video: dict, dl_type: str) -> bool:
+    url = video.get('url', '')
+    vid = video.get('id', '')
+
+    # Bilibili 判定: URL 含 bilibili.com/video/ 或 ID 是 BV+12位
+    is_bilibili = ("bilibili.com/video/" in url or
+                   (vid.startswith("BV") and len(vid) == 12))
+    # YouTube 判定: URL 含 youtube.com / youtu.be 或 ID 是 11位字母数字+-_
+    is_youtube = ("youtube.com" in url or "youtu.be" in url or
+                  (len(vid) == 11 and vid.replace('-', '').replace('_', '').isalnum()))
+
+    if dl_type == "bilibili":
+        return is_bilibili
+    elif dl_type == "youtube":
+        return is_youtube
+    return True  # 未知类型不过滤
+
 def get_web_search_url(chart_data, dl_type):
     game_type = chart_data['game_type']
     title_name = chart_data['song_name']
@@ -159,30 +176,35 @@ def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instanc
         extra_search_placeholder = st.empty()
 
         if video_info:
-            page_count = video_info.get('page_count', 1)
-            p_index = video_info['p_index'] 
-            if p_index >= page_count:
-                p_index = page_count - 1  # 重置到最大页数范围内
-                video_info['p_index'] = p_index
             update_match_info(match_info_placeholder, video_info=video_info)
-            if has_multiple_pages:  
+            if has_multiple_pages:
+                p_index = video_info['p_index']
+                if p_index >= page_count:
+                    p_index = page_count - 1  # 重置到最大页数范围内
+                    video_info['p_index'] = p_index
                 if change_video_page_button:
                     change_video_page(song, p_index)
 
             # 获取当前所有搜索得到的视频信息
             st.write("请检查上述视频信息与谱面是否匹配。如果有误，请从下方备选结果中选择正确的视频。")
 
+            # 过滤掉非当前下载器平台的视频
             if to_match_videos:
+                filtered_videos = [v for v in to_match_videos if is_video_matching_platform(v, st.session_state.downloader_type)]
+            else:
+                filtered_videos = []
+
+            if filtered_videos:
                 with match_list_placeholder.container(border=True):
                     # 视频链接指定
                     video_options = []
-                    for i, video in enumerate(to_match_videos):
+                    for i, video in enumerate(filtered_videos):
                         title = escape_markdown_text(video['title'])
                         page_count_str = f"    【分p总数：{video['page_count']}】" if 'page_count' in video else ""
                         video_options.append(
                             f"[{i+1}] {title}({video['duration']}秒) [🔗{video['id']}]({video['url']}) {page_count_str}"
                         )
-                    
+
                     selected_index = st.radio(
                         "搜索备选结果:",
                         options=range(len(video_options)),
@@ -192,7 +214,7 @@ def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instanc
                     )
 
                     if st.button("【确认】保存此信息", key=f"confirm_selected_match_{c_id}", type="primary"):
-                        song['video_info_match'] = to_match_videos[selected_index]
+                        song['video_info_match'] = filtered_videos[selected_index]
                         # 将meta信息保存到数据库
                         db_handler.update_chart_video_metadata(c_id, song['video_info_match'])
                         st.toast("配置已保存！")
