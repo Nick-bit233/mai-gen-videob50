@@ -4,6 +4,12 @@ from utils.DataUtils import load_metadata
 from db_utils.DataMigration import old_data_migration
 from utils.themes import THEME_COLORS, DEFAULT_STYLES
 from utils.WebAgentUtils import st_init_cache_pathes
+from utils.video_metadata import (
+    VideoMetadataError,
+    get_video_manifest_status,
+    should_update_video_manifest,
+    update_video_manifest,
+)
 import datetime
 import os
 import json
@@ -140,7 +146,7 @@ with col_header2:
                 st.session_state.theme = "Verse"
                 change_theme(THEME_COLORS["chunithm"]["Verse"])
     G_type = st.session_state.get('game_type', 'maimai')
-    st.caption(f"当前版本 v1.2.1 |\
+    st.caption(f"当前版本 v1.2.5 |\
                Created by: [Nickbit](https://github.com/Nick-bit233), \
                Thanks to: [MetallicAllex](https://github.com/MetallicAllex), \
                [YelonNotXTD](https://github.com/YelonNotXTD), \
@@ -255,7 +261,8 @@ elif G_type == "chunithm":
     metadata_path = "music_metadata/chuni_fusion_data.json"
 metadata_ready = os.path.exists(metadata_path)
 
-col_status1, col_status2 = st.columns(2)
+status_columns = st.columns(3 if G_type == "maimai" else 2)
+col_status1, col_status2 = status_columns[0], status_columns[1]
 with col_status1:
     # 数据库状态
     try:
@@ -269,6 +276,17 @@ with col_status2:
         st.success("📚 乐曲元数据已就绪")
     else:
         st.warning("⚠️ 乐曲元数据未初始化")
+
+if G_type == "maimai":
+    with status_columns[2]:
+        try:
+            video_metadata_status = get_video_manifest_status()
+            st.success(
+                f"🎬 视频 Metadata 已就绪（{video_metadata_status['usable_asset_count']} 条）"
+            )
+        except VideoMetadataError:
+            video_metadata_status = None
+            st.warning("⚠️ 视频 Metadata 未初始化")
 
 # 主要操作区域
 st.markdown("### 🚀 开始使用")
@@ -343,6 +361,54 @@ with st.container(border=True):
         with st.expander("错误详情"):
             import traceback
             st.code(traceback.format_exc())            
+
+if G_type == "maimai":
+    st.markdown("#### 🎬 更新视频 Metadata")
+    with st.container(border=True):
+        try:
+            status = get_video_manifest_status()
+            st.caption(
+                f"当前版本：{status['metadata_store_version']} · "
+                f"生成时间：{status['generated_at']} · "
+                f"可用来源：{status['usable_asset_count']}"
+            )
+        except VideoMetadataError as exc:
+            status = None
+            st.warning(f"本地视频 Metadata 不可用：{exc}")
+
+        auto_update_needed = should_update_video_manifest()
+        if auto_update_needed and not st.session_state.get(
+            "video_metadata_auto_update_attempted", False
+        ):
+            st.session_state.video_metadata_auto_update_attempted = True
+            with st.spinner("正在检查视频 Metadata 更新..."):
+                result = update_video_manifest()
+            if result.updated:
+                st.success(
+                    f"✅ 视频 Metadata 已更新：{result.metadata_store_version}，"
+                    f"共 {result.usable_asset_count} 条可用来源"
+                )
+                st.rerun()
+            else:
+                st.warning(result.message)
+        elif not auto_update_needed:
+            st.info("ℹ️ 最近 24 小时内已成功检查视频 Metadata")
+
+        if st.button(
+            "🔄 主动更新视频 Metadata",
+            key="manual_update_video_metadata",
+            use_container_width=True,
+        ):
+            with st.spinner("正在更新视频 Metadata..."):
+                result = update_video_manifest()
+            if result.updated:
+                st.success(
+                    f"✅ 已更新至 {result.metadata_store_version}，"
+                    f"共 {result.usable_asset_count} 条可用来源"
+                )
+                st.rerun()
+            else:
+                st.error(result.message)
 
 # 数据管理（危险区域）
 st.markdown("#### ⚠️ 本地数据管理")

@@ -6,6 +6,7 @@ import re
 
 from copy import deepcopy
 from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader
+from utils.video_download import download_one_video
 from utils.DataUtils import chart_type_value2str, level_index_to_label
 from utils.video_search_strategy import VideoSearchStrategy, SearchStrategy
 
@@ -235,46 +236,6 @@ def search_one_video(downloader, chart_data):
     ret_chart_data['video_info_list'] = []
     ret_chart_data['video_info_match'] = {}
     return ret_chart_data, output_info
-
-def download_one_video(downloader, db_handler, song, video_download_path, high_res=False):
-    chart_id = song.get('chart_id', None)
-    if not chart_id:
-        return {"status": "error", "info": f"Error: 错误的谱面数据，未找到chart_id，Skipping………"}
-    
-    # Do not use song_id in video file name, because song name may not consisted with windows file name rules
-    clip_file_name = f"{song['game_type']}-{song['chart_id']}-{song['level_index']}-{song['chart_type']}"
-    # this tag is only use for display readability
-    clip_tag = f"{song['song_name']}[{song['game_type']}-{song['chart_id']}-{song['level_index']}-{song['chart_type']}]" 
-    
-    # Check if video already exists
-    video_path = os.path.join(video_download_path, f"{clip_file_name}.mp4")
-    # 转换为绝对路径
-    abs_video_path = os.path.abspath(video_path)
-    if os.path.exists(video_path):
-        print(f"已找到谱面视频的缓存: {clip_tag}, Skipping………")
-        # Write video path info to database
-        db_handler.update_chart_video_path(chart_id=song['chart_id'], video_path=abs_video_path)
-        return {"status": "skip", "info": f"已找到谱面视频的缓存: {clip_tag}，跳过下载"}
-        
-    if 'video_info_match' not in song or not song['video_info_match']:
-        print(f"Error: 没有{clip_tag}的视频信息，Skipping………")
-        return {"status": "error", "info": f"Error: 没有{clip_tag}的视频信息，跳过下载"}
-    
-    video_info = song['video_info_match']
-    v_id = video_info['id']
-    try:
-        downloader.download_video(v_id, 
-                                clip_file_name, 
-                                video_download_path, 
-                                high_res=high_res,
-                                p_index=video_info.get('p_index', 0))
-        # Write video path info to database
-        db_handler.update_chart_video_path(chart_id=song['chart_id'], video_path=abs_video_path)
-        return {"status": "success", "info": f"下载{clip_tag}完成"}
-    except Exception as e:
-        print(f"Error: 谱面视频下载失败: {clip_tag}，文件名: {clip_file_name}.mp4，error: {e}")
-        return {"status": "error", "info": f"Error: 谱面视频下载失败: {clip_tag}"}
-
 
 def st_init_cache_pathes():
     cache_pathes = [

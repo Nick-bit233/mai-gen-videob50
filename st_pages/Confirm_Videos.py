@@ -7,8 +7,24 @@ import streamlit as st
 from typing import Dict, List, Optional
 from datetime import datetime
 from utils.PageUtils import escape_markdown_text, read_global_config, get_game_type_text
-from utils.WebAgentUtils import download_one_video, get_keyword
+from utils.WebAgentUtils import get_keyword
+from utils.video_download import download_one_video
+from utils.video_confirmation import (
+    is_chart_video_matched,
+    prioritize_unmatched_charts,
+    summarize_chart_video_matches,
+)
 from utils.DataUtils import get_record_tags_from_data_dict, level_index_to_label
+from utils.video_metadata import (
+    VideoMetadataError,
+    parse_bilibili_reference,
+    resolve_maimai_video,
+    video_info_platform,
+)
+from utils.video_source_mode import (
+    MAIMAI_METADATA_MODE,
+    expected_maimai_platform,
+)
 from db_utils.DatabaseDataHandler import get_database_handler
 
 G_config = read_global_config()
@@ -16,22 +32,30 @@ db_handler = get_database_handler()
 G_type = st.session_state.get('game_type', 'maimai')
 
 # Helper functions
+def mark_download_dirty():
+    st.session_state.download_completed = False
+    st.session_state.pop('video_download_summary', None)
+
+
+def persist_video_selection(chart: dict, video_info: dict) -> bool:
+    """Persist same-platform selections; preserve opposite-platform DB history."""
+    chart_id = chart['chart_id']
+    if G_type == 'maimai':
+        overrides = st.session_state.setdefault('video_session_overrides', {})
+        overrides[chart_id] = deepcopy(video_info)
+        existing = chart.get('video_metadata')
+        if existing and video_info_platform(existing) != video_info_platform(video_info):
+            return False
+    db_handler.update_chart_video_metadata(chart_id, video_info)
+    chart['video_metadata'] = deepcopy(video_info)
+    return True
+
+
 def is_video_matching_platform(video: dict, dl_type: str) -> bool:
-    url = video.get('url', '')
-    vid = video.get('id', '')
-
-    # Bilibili 判定: URL 含 bilibili.com/video/ 或 ID 是 BV+12位
-    is_bilibili = ("bilibili.com/video/" in url or
-                   (vid.startswith("BV") and len(vid) == 12))
-    # YouTube 判定: URL 含 youtube.com / youtu.be 或 ID 是 11位字母数字+-_
-    is_youtube = ("youtube.com" in url or "youtu.be" in url or
-                  (len(vid) == 11 and vid.replace('-', '').replace('_', '').isalnum()))
-
-    if dl_type == "bilibili":
-        return is_bilibili
-    elif dl_type == "youtube":
-        return is_youtube
-    return True  # 未知类型不过滤
+    platform = video_info_platform(video)
+    if dl_type not in {"bilibili", "youtube"}:
+        return False
+    return platform == dl_type
 
 def get_web_search_url(chart_data, dl_type):
     game_type = chart_data['game_type']
@@ -57,7 +81,7 @@ def convert_to_compatible_types(data):
         return {k: str(v) if isinstance(v, (int, float)) else v for k, v in data.items()}
     return data
 
-def st_download_video(placeholder, dl_instance, G_config, charts_data):
+def st_download_video(placeholder, dl_instance, G_config, charts_data, force_redownload=False):
     search_wait_time = G_config['SEARCH_WAIT_TIME']
     download_high_res = G_config['DOWNLOAD_HIGH_RES']
     video_download_path = f"./videos/downloads"
@@ -65,6 +89,7 @@ def st_download_video(placeholder, dl_instance, G_config, charts_data):
         with st.spinner("正在下载视频……"):
             progress_bar = st.progress(0)
             write_container = st.container(border=True, height=400)
+            summary = {"success": [], "skipped": [], "failed": []}
             i = 0
             record_len = len(charts_data)
             for song in charts_data:
@@ -72,23 +97,52 @@ def st_download_video(placeholder, dl_instance, G_config, charts_data):
                 i += 1
                 if 'video_info_match' not in song or not song['video_info_match']:
                     write_container.write(f"跳过({i}/{record_len}): {song['song_id']} ，因为没有视频信息而无法下载，请检查是否至少确定了一条视频信息")
+                    summary["failed"].append({"chart_id": c_id, "reason": "没有视频信息"})
                     continue
-                else:
-                    # 自动进行一次数据库保存
-                    db_handler.update_chart_video_metadata(c_id, song['video_info_match'])
-                
+
                 video_info = song['video_info_match']
-                title = escape_markdown_text(video_info['title'])
+                if not is_video_matching_platform(video_info, st.session_state.downloader_type):
+                    write_container.write(f"失败({i}/{record_len}): {song['song_id']} 的视频来源与当前模式不兼容")
+                    summary["failed"].append({"chart_id": c_id, "reason": "视频来源与当前模式不兼容"})
+                    continue
+
+                # 只持久化同平台信息；跨平台选择保留为本次会话覆盖。
+                persist_video_selection(song, video_info)
+
+                title = escape_markdown_text(video_info.get('title', video_info.get('id', '未知视频')))
                 progress_bar.progress(i / record_len, text=f"正在下载视频({i}/{record_len}): {title}")
                 
-                result = download_one_video(dl_instance, db_handler, song, video_download_path, download_high_res)
+                result = download_one_video(
+                    dl_instance,
+                    db_handler,
+                    song,
+                    video_download_path,
+                    download_high_res,
+                    force_redownload=force_redownload,
+                )
                 write_container.write(f"【{i}/{record_len}】{result['info']}")
+
+                if result['status'] == 'success':
+                    summary["success"].append(c_id)
+                elif result['status'] == 'skip':
+                    summary["skipped"].append(c_id)
+                else:
+                    summary["failed"].append({"chart_id": c_id, "reason": result['info']})
 
                 # 等待几秒，以减少被检测为bot的风险
                 if search_wait_time[0] > 0 and search_wait_time[1] > search_wait_time[0] and result['status'] == 'success':
                     time.sleep(random.randint(search_wait_time[0], search_wait_time[1]))
 
-            st.success("下载完成！请点击下一步按钮核对视频素材的详细信息。")
+            progress_bar.progress(1.0, text="下载任务已结束")
+            st.write(
+                f"成功：{len(summary['success'])}，跳过已有缓存：{len(summary['skipped'])}，失败：{len(summary['failed'])}"
+            )
+            if summary["failed"]:
+                st.error("仍有视频未成功准备，修正失败项后才能进入下一步。")
+                st.dataframe(summary["failed"], hide_index=True, width="stretch")
+            else:
+                st.success("下载完成！请点击下一步按钮核对视频素材的详细信息。")
+            return summary
 
 # streamlit component functions
 @st.dialog("分p视频指定", width="large")
@@ -97,41 +151,69 @@ def change_video_page(cur_chart_data, cur_p_index):
 
     cur_c_id = cur_chart_data['chart_id']
 
-    page_info = dl_instance.get_video_pages(cur_chart_data['video_info_match']['id'])
+    try:
+        page_info = dl_instance.get_video_pages(cur_chart_data['video_info_match']['id'])
+    except Exception as exc:
+        st.error(f"读取分P信息失败：{exc}")
+        return
+    if not isinstance(page_info, list) or not page_info:
+        st.warning("没有读取到可选的分P信息。")
+        return
     page_options = []
     for i, page in enumerate(page_info):
         if 'part' in page and 'duration' in page:
             page_options.append(f"P{i + 1}: {page['part']} ({page['duration']}秒)")
+    if not page_options:
+        st.warning("读取到的分P信息不完整，无法选择。")
+        return
 
     selected_p_index = st.radio(
         "请选择:",
         options=range(len(page_options)),
         format_func=lambda x: page_options[x],
-        index=cur_p_index,
+        index=min(max(cur_p_index, 0), len(page_options) - 1),
         key=f"radio_select_page_{cur_c_id}",
         label_visibility="visible"
     )
 
     if st.button("确定更新分p", key=f"confirm_selected_page_{cur_c_id}"):
         cur_chart_data['video_info_match']['p_index'] = selected_p_index
-        db_handler.update_chart_video_metadata(cur_c_id, cur_chart_data['video_info_match'])
+        cur_chart_data['video_info_match']['page_count'] = len(page_info)
+        cur_chart_data['video_info_match']['_page_count_known'] = True
+        persist_video_selection(cur_chart_data, cur_chart_data['video_info_match'])
+        mark_download_dirty()
         st.rerun()
 
-def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instance=None):
+def _render_editor_contents(placeholder, charts_data: Dict, current_index: int, dl_instance=None):
 
     def update_match_info(placeholder, video_info):
         with placeholder.container(border=True):
             # 使用封装的函数展示视频信息
-            id = video_info['id']
-            title = escape_markdown_text(video_info['title'])
+            id = video_info.get('id', '未知')
+            title = escape_markdown_text(video_info.get('title', id))
             st.markdown(f"- 视频标题：{title}")
-            st.markdown(f"- 链接：[🔗{id}]({video_info['url']}), 总时长: {video_info['duration']}秒")
+            st.markdown(
+                f"- 链接：[🔗{id}]({video_info.get('url', '')}), "
+                f"总时长: {video_info.get('duration', '未知')}秒"
+            )
+            if video_info.get('_origin'):
+                st.markdown(f"- 来源：`{video_info['_origin']}` / `{video_info_platform(video_info) or 'unknown'}`")
             page_info_empty = st.empty()
             # 只有在视频有分P时才显示分P信息（page_count > 1）
-            page_count = video_info.get('page_count', 1)
-            if page_count > 1 and 'p_index' in video_info:
-                page_info = dl_instance.get_video_pages(id)
+            page_count = int(video_info.get('page_count') or 1)
+            p_index = int(video_info.get('p_index') or 0)
+            if video_info_platform(video_info) == 'bilibili':
+                st.markdown(f"- Bilibili 分P：P{p_index + 1}")
+            if page_count > 1 and 'p_index' in video_info and video_info.get('_page_count_known', True):
+                try:
+                    page_info = dl_instance.get_video_pages(id)
+                except Exception as exc:
+                    page_info_empty.warning(f"读取分P详情失败：{exc}")
+                    return
                 p_index = video_info['p_index']
+                if not page_info or p_index >= len(page_info):
+                    page_info_empty.warning("保存的分P序号超出当前视频的可用范围。")
+                    return
                 with page_info_empty.container(border=False):
                     st.text(f"此视频具有{page_count}个分p，目前确认的分p序号为【{p_index + 1}】，子标题：【{page_info[p_index]['part']}】")
 
@@ -152,10 +234,17 @@ def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instanc
                             )
                         else:
                             st.write("没有找到分p信息")
-                
+            elif video_info_platform(video_info) == 'bilibili' and not video_info.get('_page_count_known', True):
+                page_info_empty.caption("该条目使用 Metadata 中的分P；如需核对或修改，可手动加载分P列表。")
+            # Metadata详情
+            if video_info.get('_chart_key') and video_info.get('_metadata_store_version'):
+                st.caption(f"chart_key：`{video_info['_chart_key']}` Metadata 版本：`{video_info['_metadata_store_version']}`")
+
     with placeholder.container(border=True):
         song = charts_data[current_index]
         c_id = song['chart_id']
+        source_mode = st.session_state.get('video_source_mode') if G_type == 'maimai' else None
+        metadata_mode = G_type == 'maimai' and source_mode == MAIMAI_METADATA_MODE
         # 获取当前匹配的视频信息
         # st.subheader(f"当前正在确认的记录信息 \n {record_ids[current_index]}")
         st.markdown(f"""<p style="color: #08337B;"><b>当前正在检查的谱面是: </b></p> <h4>{record_ids[current_index]} </h4>"""
@@ -169,16 +258,25 @@ def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instanc
 
         match_info_placeholder = st.empty()
         # 只有在有多个分P时才显示"修改分P视频"按钮
-        page_count = video_info.get('page_count', 1) if video_info else 1
+        page_count = int(video_info.get('page_count') or 1) if video_info else 1
         has_multiple_pages = page_count > 1 and has_p_index
-        change_video_page_button = st.button("修改分P视频", key=f"change_video_page_{c_id}", disabled=not has_multiple_pages)
+        can_load_bilibili_pages = bool(
+            video_info
+            and dl_instance
+            and video_info_platform(video_info) == "bilibili"
+        )
+        change_video_page_button = st.button(
+            "加载/修改分P" if can_load_bilibili_pages else "修改分P视频",
+            key=f"change_video_page_{c_id}",
+            disabled=not (has_multiple_pages or can_load_bilibili_pages),
+        )
         match_list_placeholder = st.empty()
         extra_search_placeholder = st.empty()
 
         if video_info:
             update_match_info(match_info_placeholder, video_info=video_info)
-            if has_multiple_pages:
-                p_index = video_info['p_index']
+            if has_multiple_pages or can_load_bilibili_pages:
+                p_index = int(video_info.get('p_index') or 0)
                 if p_index >= page_count:
                     p_index = page_count - 1  # 重置到最大页数范围内
                     video_info['p_index'] = p_index
@@ -214,146 +312,161 @@ def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instanc
                     )
 
                     if st.button("【确认】保存此信息", key=f"confirm_selected_match_{c_id}", type="primary"):
-                        song['video_info_match'] = filtered_videos[selected_index]
+                        selected_video = deepcopy(filtered_videos[selected_index])
+                        if G_type == 'maimai':
+                            selected_video.setdefault('_platform', st.session_state.downloader_type)
+                            selected_video.setdefault('_origin', 'metadata' if metadata_mode else 'search')
+                        song['video_info_match'] = selected_video
                         # 将meta信息保存到数据库
-                        db_handler.update_chart_video_metadata(c_id, song['video_info_match'])
+                        persisted = persist_video_selection(song, song['video_info_match'])
+                        mark_download_dirty()
                         st.toast("配置已保存！")
-                        update_match_info(match_info_placeholder, song['video_info_match'])
+                        if not persisted:
+                            st.caption("已作为本次会话选择使用；原平台数据库记录保持不变。")
+                        st.rerun()
             else:
-                match_list_placeholder.write("没有备选视频信息（至少需要进行过一次自动搜索）")
+                if metadata_mode:
+                    match_list_placeholder.write("没有额外的 Metadata 备选项。可手动输入 Bilibili 链接，或返回切换 YouTube 搜索。")
+                else:
+                    match_list_placeholder.write("没有备选视频信息（至少需要进行过一次自动搜索）")
         else:
-            match_info_placeholder.warning("未找到当前片段的匹配视频信息，请尝试重新进行上一步，或使用下方组件手动搜索！")
+            match_info_placeholder.warning("未找到当前片段的匹配视频信息，请返回上一步，或使用下方组件手动指定视频。")
             match_list_placeholder.write("没有备选视频信息")
 
-        # 如果搜索结果均不符合，手动输入地址：
-        with extra_search_placeholder.container(border=True): 
-            search_url = get_web_search_url(chart_data=song, dl_type=st.session_state.downloader_type)
-            
-            st.markdown('<p style="color: #08337B;"><b>以上都不对？手动输入谱面确认视频信息<b></p>', unsafe_allow_html=True)
-            
-            # 辅助函数：从URL中提取视频ID
-            def extract_video_id(input_text: str, dl_type: str) -> str:
-                """从URL或直接输入中提取视频ID"""
-                if not input_text:
-                    return ""
-                
-                input_text = input_text.strip()
-                
-                # 如果是YouTube
-                if dl_type == "youtube":
-                    # 检查是否是完整URL
-                    if "youtube.com/watch?v=" in input_text:
-                        # 提取v=后面的ID
-                        video_id = input_text.split("watch?v=")[1].split("&")[0].split("?")[0]
-                        return video_id
-                    elif "youtu.be/" in input_text:
-                        # 短链接格式
-                        video_id = input_text.split("youtu.be/")[1].split("?")[0].split("&")[0]
-                        return video_id
-                    elif input_text.startswith("http"):
-                        # 其他YouTube URL格式
-                        if "v=" in input_text:
-                            video_id = input_text.split("v=")[1].split("&")[0].split("?")[0]
-                            return video_id
-                    # 如果已经是ID格式（11位字符），直接返回
-                    if len(input_text) == 11 and input_text.replace('-', '').replace('_', '').isalnum():
-                        return input_text
-                    # 否则假设是ID
-                    return input_text
-                
-                # 如果是Bilibili
-                elif dl_type == "bilibili":
-                    # 检查是否是完整URL
-                    if "bilibili.com/video/" in input_text:
-                        # 提取BV号
-                        if "BV" in input_text:
-                            bv_start = input_text.find("BV")
-                            bv_end = bv_start + 12  # BV号是12位
-                            if bv_end <= len(input_text):
-                                return input_text[bv_start:bv_end]
-                        # 或者从URL路径中提取
-                        parts = input_text.split("/video/")
-                        if len(parts) > 1:
-                            bv_part = parts[1].split("?")[0].split("/")[0]
-                            if bv_part.startswith("BV"):
-                                return bv_part
-                    # 如果已经是BV号格式
-                    if input_text.startswith("BV") and len(input_text) == 12:
-                        return input_text
-                    # 否则假设是BV号
-                    return input_text
-                
-                # 默认返回原输入
+        # 如果匹配结果不正确，按当前来源模式手动指定。
+        with extra_search_placeholder.container(border=True):
+            st.markdown(
+                '<p style="color: #08337B;"><b>数据库中没有视频/匹配结果不对？手动指定谱面确认视频</b></p>',
+                unsafe_allow_html=True,
+            )
+
+            if metadata_mode:
+                default_metadata = None
+                try:
+                    default_metadata = resolve_maimai_video(song)
+                except VideoMetadataError as exc:
+                    st.warning(f"无法读取 Metadata 默认值：{exc}")
+                if st.button(
+                    "恢复 Metadata 默认值",
+                    key=f"restore_metadata_{c_id}",
+                    disabled=default_metadata is None,
+                ):
+                    song['video_info_match'] = default_metadata
+                    persisted = persist_video_selection(song, default_metadata)
+                    mark_download_dirty()
+                    st.toast("已恢复当前 Metadata 默认值")
+                    if not persisted:
+                        st.caption("已作为本次会话选择使用；原平台数据库记录保持不变。")
+                    st.rerun()
+
+            def extract_youtube_video_id(input_text: str) -> str:
+                input_text = (input_text or "").strip()
+                if "youtube.com/watch?v=" in input_text:
+                    return input_text.split("watch?v=")[1].split("&")[0]
+                if "youtu.be/" in input_text:
+                    return input_text.split("youtu.be/")[1].split("?")[0].split("&")[0]
+                if input_text.startswith("http") and "v=" in input_text:
+                    return input_text.split("v=")[1].split("&")[0]
                 return input_text
-            
+
             col1, col2 = st.columns(2)
             with col1:
-                replace_input = st.text_input(
-                    "视频链接或ID", 
-                    placeholder="支持输入完整链接或视频ID\n例如: https://youtube.com/watch?v=XXXXX 或 XXXXX",
-                    help="可以输入完整的视频链接（YouTube或Bilibili），系统会自动提取视频ID；也可以直接输入视频ID或BV号",
-                    key=f"replace_input_{c_id}"
-                )
-                st.caption(f"💡 提示：也可以直接输入视频ID（YouTube: 11位字符，B站: BV号）")
+                if metadata_mode:
+                    replace_input = st.text_input(
+                        "Bilibili 链接或 BV 号",
+                        placeholder="例如：https://www.bilibili.com/video/BV...?p=2",
+                        help="此操作只解析 BV 与分P，不调用 Bilibili 搜索或详情接口。",
+                        key=f"replace_input_{c_id}",
+                    )
+                else:
+                    replace_input = st.text_input(
+                        "YouTube 链接或视频 ID" if G_type == 'maimai' else "视频链接或 ID",
+                        key=f"replace_input_{c_id}",
+                    )
             with col2:
+                search_url = get_web_search_url(chart_data=song, dl_type=st.session_state.downloader_type)
                 st.markdown(f"[➡点击跳转到搜索页]({search_url})", unsafe_allow_html=True)
-                replace_p_number = st.number_input("分P序号（可选）", 
-                                            help="如果视频来源是bilibili且有分P，可以选择直接填写分P序号（分p序号可从网页端查询，当谱面确认视频的p数较多时，直接输入序号加载更快），否则请忽略",
-                                            min_value=1, max_value=999, value=1, key=f"replace_p_index_{c_id}")
+                replace_p_number = st.number_input(
+                    "分P序号（可选）",
+                    min_value=1,
+                    max_value=999,
+                    value=1,
+                    key=f"replace_p_index_{c_id}",
+                    disabled=st.session_state.downloader_type != 'bilibili',
+                )
 
-            # 搜索手动输入的id
-            to_replace_video_info = None
-            extra_search_button = st.button("获取视频信息并替换", 
-                                            key=f"search_replace_id_{c_id}",
-                                            disabled=dl_instance is None or not replace_input)
+            extra_search_button = st.button(
+                "保存手动 Bilibili 链接" if metadata_mode else "获取视频信息并替换",
+                key=f"search_replace_id_{c_id}",
+                disabled=dl_instance is None or not replace_input,
+            )
             if extra_search_button:
                 try:
-                    # 从输入中提取视频ID
-                    extracted_id = extract_video_id(replace_input, downloader_type)
-                    
-                    if not extracted_id:
-                        st.error("无法从输入中提取视频ID，请检查输入格式")
+                    if metadata_mode:
+                        replacement = parse_bilibili_reference(
+                            replace_input,
+                            title=song.get('song_name', ''),
+                            requested_pid=None if "p=" in replace_input else int(replace_p_number),
+                        )
                     else:
-                        # 显示提取的ID
-                        if extracted_id != replace_input:
-                            st.info(f"已从链接中提取视频ID: **{extracted_id}**")
-                        
-                        # 对于YouTube和Bilibili，都使用get_video_info直接通过ID获取视频信息
-                        to_replace_video_info = dl_instance.get_video_info(extracted_id)
-                except Exception as e:
-                    error_msg = str(e)
-                    st.error(f"获取视频信息失败: {error_msg}")
-                    if "400" in error_msg or "Bad Request" in error_msg:
-                        st.warning("""
-                        **可能的解决方案：**
-                        1. **检查视频ID是否正确**：确保输入的是有效的YouTube视频ID（11位字符）或B站BV号
-                        2. **更新库**：尝试更新相关库 `pip install --upgrade pytubefix bilibili-api-python`
-                        3. **配置认证**：在搜索配置页面启用 OAuth 或 PO Token 认证
-                        4. **使用代理**：如果网络受限，尝试配置代理服务器
-                        5. **检查视频可用性**：确保视频未被删除或设为私密
-                        """)
+                        if st.session_state.downloader_type == 'youtube':
+                            extracted_id = extract_youtube_video_id(replace_input)
+                        else:
+                            extracted_id = parse_bilibili_reference(
+                                replace_input,
+                                title=song.get('song_name', ''),
+                            )['id']
+                        if not extracted_id:
+                            raise ValueError("无法从输入中提取视频 ID")
+                        replacement = dl_instance.get_video_info(extracted_id)
+                        if not is_video_matching_platform(replacement, st.session_state.downloader_type):
+                            raise ValueError("输入的视频来源与当前来源模式不兼容")
+                        if st.session_state.downloader_type == 'bilibili':
+                            page_count = int(replacement.get('page_count') or 1)
+                            if page_count > 1:
+                                replacement['p_index'] = min(
+                                    int(replace_p_number) - 1,
+                                    page_count - 1,
+                                )
+                        if G_type == 'maimai':
+                            replacement['_origin'] = 'manual'
+                            replacement['_platform'] = 'youtube'
+
+                    if not is_video_matching_platform(replacement, st.session_state.downloader_type):
+                        raise ValueError("输入的视频来源与当前来源模式不兼容")
+                    song['video_info_match'] = replacement
+                    persisted = persist_video_selection(song, replacement)
+                    mark_download_dirty()
+                    st.success(f"已使用 {replacement['id']} 替换匹配信息。")
+                    st.toast("配置已保存！")
+                    if not persisted:
+                        st.caption("已作为本次会话选择使用；原平台数据库记录保持不变。")
+                    st.rerun()
+                except (VideoMetadataError, ValueError) as exc:
+                    st.error(str(exc))
+                except Exception as exc:
+                    st.error(f"获取视频信息失败：{exc}")
                     with st.expander("详细错误信息"):
                         st.code(traceback.format_exc())
 
-                if to_replace_video_info:
-                    to_replace_video_p_index = replace_p_number - 1 # 从1开始计数的用户输入转换为从0开始的索引
-                    to_replace_video_page_count = to_replace_video_info.get('page_count', 1)
-                    if to_replace_video_page_count > 1:  
-                        if to_replace_video_p_index >= to_replace_video_page_count:
-                            st.warning(f"输入的分P序号超出范围，当前视频只有{to_replace_video_page_count}个分P，将自动调整为最大可用分P")
-                            to_replace_video_p_index = to_replace_video_page_count - 1
-                        to_replace_video_info['p_index'] = to_replace_video_p_index
-                    
-                    st.success(f"已使用视频{to_replace_video_info['id']}替换匹配信息，详情：")
-                    
-                    # 构建详情文本，如果有分P信息则显示
-                    p_info = f", p{to_replace_video_p_index + 1}" if to_replace_video_page_count > 1 else ""
-                    st.markdown(f"【{to_replace_video_info['title']}】({to_replace_video_info['duration']}秒{p_info}) \
-                                [🔗{to_replace_video_info['id']}]({to_replace_video_info['url']})")
-                    song['video_info_match'] = to_replace_video_info
-                    db_handler.update_chart_video_metadata(c_id, song['video_info_match'])
-                    st.toast("配置已保存！")
-                    update_match_info(match_info_placeholder, song['video_info_match'])
+
+def update_editor(placeholder, charts_data: Dict, current_index: int, dl_instance=None):
+    song = charts_data[current_index]
+    matched = is_chart_video_matched(song, st.session_state.downloader_type)
+    if matched:
+        label = f"✅ {record_ids[current_index]}（已匹配，展开可检查或替换）"
+    else:
+        label = f"⚠️ {record_ids[current_index]}（未匹配，请展开并手动指定视频）"
+
+    with placeholder.container():
+        with st.expander(label, expanded=not matched):
+            editor_placeholder = st.empty()
+            _render_editor_contents(
+                editor_placeholder,
+                charts_data,
+                current_index,
+                dl_instance,
+            )
 
 # 快速跳转组件的实现
 def on_jump_to_record():
@@ -411,6 +524,15 @@ with st.expander(f"更换{data_name}存档"):
             if archive_data:
                 st.session_state.archive_name = selected_archive_name
                 st.success(f"已加载存档 **{selected_archive_name}**")
+                if G_type == 'maimai':
+                    for key in (
+                        'video_source_mode', 'video_source_results', 'video_session_overrides',
+                        'search_results',
+                        'downloader', 'downloader_type', 'download_completed',
+                        'current_index', 'record_selector',
+                    ):
+                        st.session_state.pop(key, None)
+                    st.switch_page("st_pages/Search_For_Videos.py")
                 st.rerun()
             else:
                 st.error("加载存档数据失败。")
@@ -424,7 +546,22 @@ else:
     downloader_type = ""
     dl_instance = None
     st.error("未找到缓存的下载器，无法进行手动搜索和下载视频！请在上一页保存配置！")
+    if G_type == 'maimai' and st.button("返回视频匹配页面", type="primary"):
+        st.switch_page("st_pages/Search_For_Videos.py")
     st.stop()
+
+source_mode = st.session_state.get('video_source_mode') if G_type == 'maimai' else None
+if G_type == 'maimai':
+    expected_downloader = expected_maimai_platform(source_mode)
+    if expected_downloader is None or downloader_type != expected_downloader:
+        st.error("当前 maimai 来源模式或下载器状态无效，请返回匹配页面重新进入。")
+        if st.button("返回视频匹配页面", type="primary"):
+            st.switch_page("st_pages/Search_For_Videos.py")
+        st.stop()
+    if source_mode == MAIMAI_METADATA_MODE:
+        st.success("当前数据源：Bilibili Metadata")
+    else:
+        st.info("当前数据源：Youtube（需手动搜索）")
 
 # 读取存档的charts信息（数据库中的，无视频信息或有旧的匹配信息）
 chart_list = db_handler.load_charts_of_archive_records(username, archive_name)
@@ -434,31 +571,171 @@ if not chart_list:
     st.stop()
 
 to_edit_chart_data = []
+session_overrides = st.session_state.get('video_session_overrides', {})
 for each in chart_list:
     c_data = deepcopy(each)
-    if each.get('video_metadata', None):  # 优先查找数据库中是否包含每个谱面的过往匹配信息
-        # print(f"{each['chart_id']}: type: {type(each['video_metadata'])} content: {each['video_metadata']}")
-        c_data['video_info_match'] = each['video_metadata']
+    session_override = session_overrides.get(each['chart_id'])
+    existing_video = each.get('video_metadata')
+    if session_override and is_video_matching_platform(session_override, downloader_type):
+        c_data['video_info_match'] = deepcopy(session_override)
+    elif existing_video and is_video_matching_platform(existing_video, downloader_type):
+        # Metadata 记录应由当前 manifest 刷新；历史/手动记录仍优先。
+        if not (
+            G_type == 'maimai'
+            and source_mode == MAIMAI_METADATA_MODE
+            and existing_video.get('_origin') == 'metadata'
+        ):
+            c_data['video_info_match'] = deepcopy(existing_video)
     to_edit_chart_data.append(c_data)
 
-# 从缓存中读取（本次会话的）搜索结果信息（如果有）
-search_result = st.session_state.get("search_results", None)
+# 从缓存中读取当前来源模式的结果信息（如果有）。
+if G_type == 'maimai' and source_mode == MAIMAI_METADATA_MODE:
+    search_result = st.session_state.get("video_source_results")
+else:
+    search_result = st.session_state.get("search_results")
 if search_result:
     for chart in to_edit_chart_data:
         key = chart['chart_id']
         ret_data = search_result.get(key, None)
         if ret_data:  # 如果有，使用缓存的搜索结果
-            chart['video_info_list'] = ret_data['video_info_list']
-            if not chart.get('video_info_match', None):  # 如果未从数据库中查找到过往匹配信息，使用默认搜索结果的第一位
-                chart['video_info_match'] = ret_data['video_info_match']
+            candidates = [
+                item for item in ret_data.get('video_info_list', [])
+                if is_video_matching_platform(item, downloader_type)
+            ]
+            chart['video_info_list'] = candidates
+            default_match = ret_data.get('video_info_match')
+            if (
+                not chart.get('video_info_match')
+                and default_match
+                and is_video_matching_platform(default_match, downloader_type)
+            ):
+                chart['video_info_match'] = deepcopy(default_match)
 else:
-    st.info("没有缓存的搜索结果，请尝试手动添加匹配视频信息！")
+    st.info("没有缓存的当前来源结果，请返回匹配页重新加载，或手动添加视频信息。")
 
-# 获取所有视频片段的ID
-record_ids = get_record_tags_from_data_dict(to_edit_chart_data)
-# 使用session_state来存储当前选择的视频片段索引
-if 'current_index' not in st.session_state:
+# 未匹配记录优先，组内仍保留存档原始顺序。
+to_edit_chart_data = prioritize_unmatched_charts(to_edit_chart_data, downloader_type)
+match_summary = summarize_chart_video_matches(to_edit_chart_data, downloader_type)
+
+base_record_ids = get_record_tags_from_data_dict(to_edit_chart_data)
+record_ids = [
+    (
+        f"✅ 已匹配 · {record_tag}"
+        if is_chart_video_matched(chart, downloader_type)
+        else f"⚠️ 未匹配 · {record_tag}"
+    )
+    for chart, record_tag in zip(to_edit_chart_data, base_record_ids)
+]
+
+order_signature = tuple(chart['chart_id'] for chart in to_edit_chart_data)
+if st.session_state.get('video_confirmation_order') != order_signature:
+    st.session_state.video_confirmation_order = order_signature
     st.session_state.current_index = 0
+    st.session_state.pop('record_selector', None)
+st.session_state.current_index = min(
+    max(st.session_state.get('current_index', 0), 0),
+    len(to_edit_chart_data) - 1,
+)
+
+
+def render_download_controls(unmatched_count: int):
+    with st.container(border=True):
+        st.markdown("### 📥 下载视频")
+        if unmatched_count:
+            st.warning(
+                f"还有 {unmatched_count} 个谱面未匹配。请先处理检查列表顶部的未匹配项，"
+                "全部补齐后即可开始下载。"
+            )
+        else:
+            st.success("全部谱面均已有当前来源的有效视频链接，可以直接开始下载。")
+
+        force_redownload = st.checkbox(
+            "覆盖已有视频缓存",
+            value=False,
+            help="启用后先下载到临时文件，下载成功才替换旧缓存；失败时保留旧文件。",
+            key="force_redownload_confirm_videos",
+        )
+        download_info_placeholder = st.empty()
+        st.session_state.setdefault('download_completed', False)
+        if st.button(
+            "全部已匹配，开始下载视频" if not unmatched_count else "补齐未匹配项后开始下载",
+            disabled=not dl_instance or unmatched_count > 0,
+            width="stretch",
+            type="primary",
+            key="start_confirmed_video_download",
+        ):
+            st.session_state.download_completed = False
+            st.session_state.pop('video_download_summary', None)
+            try:
+                summary = st_download_video(
+                    download_info_placeholder,
+                    dl_instance,
+                    G_config,
+                    to_edit_chart_data,
+                    force_redownload=force_redownload,
+                )
+                st.session_state.video_download_summary = summary
+                st.session_state.download_completed = not summary['failed']
+            except Exception as exc:
+                st.session_state.download_completed = False
+                st.error(f"下载过程中出现错误: {exc}, 请尝试重新下载")
+                st.error(f"详细错误信息: {traceback.format_exc()}")
+
+        failed_downloads = st.session_state.get(
+            'video_download_summary', {}
+        ).get('failed', [])
+        if failed_downloads:
+            failed_chart_ids = [item['chart_id'] for item in failed_downloads]
+            st.error(f"仍有 {len(failed_chart_ids)} 个失败项，不能进入下一步。")
+            if st.button("定位到第一个失败项", key="locate_first_failed_download"):
+                for index, chart in enumerate(to_edit_chart_data):
+                    if chart['chart_id'] == failed_chart_ids[0]:
+                        st.session_state.current_index = index
+                        break
+                st.rerun()
+
+        if st.button(
+            "进行下一步",
+            disabled=unmatched_count > 0 or not st.session_state.download_completed,
+            key="continue_after_video_download",
+        ):
+            st.switch_page("st_pages/Edit_Video_Content.py")
+
+
+with st.container(border=True):
+    st.markdown("### ✅ 匹配检查概况")
+    metric_columns = st.columns(3)
+    metric_columns[0].metric("全部谱面", match_summary['total'])
+    metric_columns[1].metric("已有有效匹配", match_summary['matched'])
+    metric_columns[2].metric("仍未匹配", match_summary['unmatched'])
+    if match_summary['unmatched'] == 0:
+        if G_type == 'maimai' and source_mode == MAIMAI_METADATA_MODE:
+            st.success(
+                "所有谱面均已命中已审核 Metadata 或可用的历史/手动 Bilibili 记录。"
+            )
+            st.caption(
+                f"已审核 Metadata：{match_summary['metadata']}；"
+                f"历史/手动记录：{match_summary['history_or_manual']}。"
+            )
+        else:
+            st.success("所有谱面均已有与当前来源模式兼容的视频链接。")
+        st.markdown(
+            "**如果这些匹配链接均正确，可以跳过逐条检查，直接从下方开始下载。**"
+        )
+    else:
+        st.warning(
+            f"有 {match_summary['unmatched']} 个谱面尚未匹配视频。"
+            "它们已自动排列在检查列表最前，请逐条展开并按照指引搜索和填写视频链接。"
+        )
+        if G_type == 'maimai' and source_mode == MAIMAI_METADATA_MODE:
+            st.caption(
+                "默认模式请粘贴 Bilibili 链接，或输入BV号并指定分P"
+            )
+
+# 全部命中时把下载入口前置，用户无需浏览逐条检查区域。
+if match_summary['unmatched'] == 0:
+    render_download_controls(0)
+    st.divider()
 
 # 快速跳转组件的容器
 selector_container = st.container(border=True)
@@ -470,6 +747,11 @@ update_editor(link_editor_placeholder,
               st.session_state.current_index, dl_instance)
 
 with selector_container: 
+    st.markdown("### 🔎 逐条检查与替换（可选）")
+    if match_summary['unmatched']:
+        st.caption("未匹配记录已排在最前；补齐一条后，下一条未匹配记录会继续置顶。")
+    else:
+        st.caption("所有记录已匹配。只有需要核对或替换时才需使用此区域。")
     # 显示当前视频片段的选择框
     clip_selector = st.selectbox(
         label=f"快速跳转到{data_name}记录", 
@@ -502,19 +784,9 @@ with col2:
         else:
             st.toast("已经是最后一个记录！")
 
-download_info_placeholder = st.empty()
-st.session_state.download_completed = False
-if st.button("确认当前配置，开始下载视频", disabled=not dl_instance, width="stretch", type="primary"):
-    try:
-        st_download_video(download_info_placeholder, dl_instance, G_config, to_edit_chart_data)
-        st.session_state.download_completed = True  # Reset error flag if successful
-    except Exception as e:
-        st.session_state.download_completed = False
-        st.error(f"下载过程中出现错误: {e}, 请尝试重新下载")
-        st.error(f"详细错误信息: {traceback.format_exc()}")
-
-if st.button("进行下一步", disabled=not st.session_state.download_completed):
-    st.switch_page("st_pages/Edit_Video_Content.py")
+if match_summary['unmatched']:
+    st.divider()
+    render_download_controls(match_summary['unmatched'])
 
 
 

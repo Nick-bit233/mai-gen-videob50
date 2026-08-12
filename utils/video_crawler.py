@@ -655,7 +655,7 @@ class PurePytubefixDownloader(Downloader):
         except Exception as e:
             print(f"下载视频时发生错误:")
             traceback.print_exc()
-            return None
+            raise
 
 class BilibiliQrCodeLoginSession:
     """

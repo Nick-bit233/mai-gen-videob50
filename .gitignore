@@ -187,6 +187,13 @@ cython_debug/
 *.html
 *.json
 
+# Bundled, reviewed maimai video metadata is part of the desktop release.
+!video_metadata/
+!video_metadata/asset-manifest.json
+
+# Keep existing ad-hoc test data ignored while tracking the focused v1.2.5 tests.
+tests/*
+
 # debug and test resources
 test_html.txt
 test_dxrating.txt

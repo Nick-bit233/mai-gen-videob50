@@ -8,6 +8,17 @@ from datetime import datetime
 from utils.PageUtils import read_global_config, write_global_config, get_game_type_text
 from utils.video_crawler import PurePytubefixDownloader, BilibiliDownloader, streamlit_login_bilibili, load_credential
 from utils.WebAgentUtils import search_one_video
+from utils.video_metadata import (
+    VideoMetadataError,
+    get_video_manifest_status,
+    resolve_maimai_video_sources,
+)
+from utils.video_source_mode import (
+    MAIMAI_METADATA_MODE,
+    MAIMAI_SOURCE_RESET_KEYS,
+    MAIMAI_YOUTUBE_MODE,
+    build_metadata_bilibili_downloader,
+)
 from db_utils.DatabaseDataHandler import get_database_handler
 
 G_config = read_global_config()
@@ -22,6 +33,383 @@ _customer_po_token = G_config.get('CUSTOMER_PO_TOKEN', '')
 
 db_handler = get_database_handler()
 G_type = st.session_state.get('game_type', 'maimai')
+
+
+def _reset_maimai_source_state(mode):
+    for key in MAIMAI_SOURCE_RESET_KEYS:
+        st.session_state.pop(key, None)
+    st.session_state.video_source_mode = mode
+    st.session_state.video_sources_ready = False
+
+
+def _mark_youtube_result(ret_data):
+    for video in ret_data.get("video_info_list", []) or []:
+        video["_origin"] = "search"
+        video["_platform"] = "youtube"
+    match = ret_data.get("video_info_match")
+    if match:
+        match["_origin"] = "search"
+        match["_platform"] = "youtube"
+    return ret_data
+
+
+def _render_maimai_archive_selector(username, archive_name):
+    archives = db_handler.get_user_save_list(username, game_type="maimai")
+    with st.expander("更换 B50 存档"):
+        if not archives:
+            st.warning("未找到任何存档。请先新建或加载存档。")
+            st.stop()
+        archive_names = [archive["archive_name"] for archive in archives]
+        try:
+            current_index = archive_names.index(archive_name)
+        except (ValueError, TypeError):
+            current_index = 0
+        selected_archive_name = st.selectbox(
+            "选择存档进行加载",
+            archive_names,
+            index=current_index,
+            key="maimai_video_archive_selector",
+        )
+        if st.button("加载此存档（只需要点击一次！）", key="load_maimai_video_archive"):
+            archive_id = db_handler.load_save_archive(username, selected_archive_name)
+            archive_data = db_handler.load_archive_metadata(username, selected_archive_name)
+            if not archive_id or not archive_data:
+                st.error("加载存档数据失败。")
+                return archive_name
+            st.session_state.archive_id = archive_id
+            st.session_state.archive_name = selected_archive_name
+            st.session_state.video_source_archive_key = f"maimai:{username}:{selected_archive_name}"
+            _reset_maimai_source_state(MAIMAI_METADATA_MODE)
+            st.success(f"已加载存档 **{selected_archive_name}**")
+            st.rerun()
+    return archive_name
+
+
+def _render_maimai_mode_switch(mode):
+    if mode == MAIMAI_METADATA_MODE:
+        st.success("当前来源：Bilibili Metadata（默认数据源，11+及以上谱面无需搜索）")
+        if st.button("改用 YouTube 搜索", key="request_youtube_mode"):
+            st.session_state.pending_video_source_mode = MAIMAI_YOUTUBE_MODE
+    else:
+        st.info("当前来源：YouTube 搜索（本次会话仅接受 YouTube 来源）")
+        if st.button("恢复默认 Bilibili Metadata", key="request_metadata_mode"):
+            st.session_state.pending_video_source_mode = MAIMAI_METADATA_MODE
+
+    pending_mode = st.session_state.get("pending_video_source_mode")
+    if pending_mode == MAIMAI_YOUTUBE_MODE:
+        with st.container(border=True):
+            st.warning(
+                "切换后，本次流程将停用数据库 Metadata 和所有 Bilibili 来源，"
+                "只能搜索、输入和下载 YouTube 视频。"
+            )
+            confirm_col, cancel_col = st.columns(2)
+            with confirm_col:
+                if st.button("确认切换到 YouTube", type="primary", use_container_width=True):
+                    _reset_maimai_source_state(MAIMAI_YOUTUBE_MODE)
+                    st.session_state.pop("pending_video_source_mode", None)
+                    st.rerun()
+            with cancel_col:
+                if st.button("取消", key="cancel_youtube_mode", use_container_width=True):
+                    st.session_state.pop("pending_video_source_mode", None)
+                    st.rerun()
+    elif pending_mode == MAIMAI_METADATA_MODE:
+        with st.container(border=True):
+            st.warning("返回默认模式将清除本次会话中的 YouTube 搜索结果。")
+            confirm_col, cancel_col = st.columns(2)
+            with confirm_col:
+                if st.button("确认恢复默认模式", type="primary", use_container_width=True):
+                    _reset_maimai_source_state(MAIMAI_METADATA_MODE)
+                    st.session_state.pop("pending_video_source_mode", None)
+                    st.rerun()
+            with cancel_col:
+                if st.button("取消", key="cancel_metadata_mode", use_container_width=True):
+                    st.session_state.pop("pending_video_source_mode", None)
+                    st.rerun()
+
+
+def _render_maimai_metadata_mode(username, archive_name):
+    chart_list = db_handler.load_charts_of_archive_records(username, archive_name)
+    if not chart_list:
+        st.warning("未找到任何谱面信息。请确认存档至少包含一条谱面记录。")
+        return
+
+    st.markdown("### 📚 Metadata 匹配结果")
+    try:
+        status = get_video_manifest_status()
+        st.caption(
+            f"版本：{status['metadata_store_version']} · "
+            f"生成时间：{status['generated_at']} · "
+            f"可用条目：{status['usable_asset_count']}"
+        )
+    except VideoMetadataError as exc:
+        st.error(f"无法加载视频 metadata：{exc}")
+    results, counts = resolve_maimai_video_sources(chart_list)
+
+    st.session_state.video_source_results = results
+    metric_cols = st.columns(4)
+    metric_cols[0].metric("数据库命中", counts["metadata"])
+    metric_cols[1].metric("已缓存（Bilibili）", counts["history"])
+    metric_cols[2].metric("非当前源缓存（YouTube）", counts["incompatible"])
+    metric_cols[3].metric("未命中", counts["missing"])
+    if counts["missing"] or counts["incompatible"]:
+        st.warning(
+            "⚠️ 存在未解决的谱面，可在下一页手动填写 Bilibili 链接补充，或切换到 YouTube 搜索模式。"
+        )
+    else:
+        st.success(
+            "✅ 所有谱面均匹配到有效来源，可以直接进入下一页下载！"
+        )
+
+    st.markdown("### 📥 下载设置")
+    use_proxy = st.checkbox(
+        "启用代理",
+        value=G_config.get("USE_PROXY", False),
+        key="metadata_bilibili_use_proxy",
+    )
+    proxy_address = st.text_input(
+        "代理地址",
+        value=G_config.get("PROXY_ADDRESS", "127.0.0.1:7890"),
+        disabled=not use_proxy,
+        key="metadata_bilibili_proxy",
+    )
+    download_high_res = st.checkbox(
+        "下载高分辨率视频",
+        value=G_config.get("DOWNLOAD_HIGH_RES", True),
+        key="metadata_bilibili_high_res",
+    )
+
+    if st.button("使用当前匹配并继续", type="primary", use_container_width=True):
+        G_config["USE_PROXY"] = use_proxy
+        G_config["PROXY_ADDRESS"] = proxy_address
+        G_config["DOWNLOAD_HIGH_RES"] = download_high_res
+        write_global_config(G_config)
+        try:
+            downloader_instance, credential_exc = build_metadata_bilibili_downloader(
+                BilibiliDownloader,
+                proxy=proxy_address if use_proxy else None,
+                credential_path="./cred_datas/bilibili_cred.pkl",
+                search_max_results=G_config.get("SEARCH_MAX_RESULTS", 3),
+            )
+            if credential_exc is not None:
+                st.warning(f"缓存凭证不可用，本次将匿名下载：{credential_exc}")
+            st.session_state.downloader = downloader_instance
+            st.session_state.downloader_type = "bilibili"
+            st.session_state.video_sources_ready = True
+            st.switch_page("st_pages/Confirm_Videos.py")
+        except Exception as exc:
+            st.error(f"初始化 Bilibili 下载器失败：{exc}")
+
+
+def _build_youtube_downloader(settings):
+    use_api = settings["use_youtube_api"]
+    if use_api:
+        return PurePytubefixDownloader(
+            proxy=settings["proxy_address"] if settings["use_proxy"] else None,
+            use_potoken=False,
+            use_oauth=False,
+            auto_get_potoken=False,
+            search_max_results=settings["search_max_results"],
+            use_api=True,
+            api_key=settings["youtube_api_key"],
+        )
+    use_potoken = settings["use_custom_po_token"] or settings["use_auto_po_token"]
+    return PurePytubefixDownloader(
+        proxy=settings["proxy_address"] if settings["use_proxy"] else None,
+        use_potoken=use_potoken,
+        use_oauth=settings["use_oauth"] if not use_potoken else False,
+        auto_get_potoken=settings["use_auto_po_token"],
+        search_max_results=settings["search_max_results"],
+        use_api=False,
+        api_key=None,
+    )
+
+
+def _search_maimai_youtube(username, archive_name, downloader_instance, wait_range):
+    chart_list = db_handler.load_charts_of_archive_records(username, archive_name)
+    results = st.session_state.setdefault("search_results", {})
+    progress = st.progress(0)
+    output = st.container(border=True, height=400)
+    for index, chart in enumerate(chart_list, start=1):
+        chart_id = chart["chart_id"]
+        progress.progress(
+            index / len(chart_list),
+            text=f"正在搜索 ({index}/{len(chart_list)}): {chart['song_name']}",
+        )
+        if chart_id in results and results[chart_id].get("video_info_list"):
+            output.write(f"跳过：{chart['song_name']}，本次会话已有 YouTube 结果")
+            continue
+        ret_data, output_info = search_one_video(downloader_instance, chart)
+        results[chart_id] = _mark_youtube_result(ret_data)
+        output.write(f"【{index}/{len(chart_list)}】{output_info}")
+        if index < len(chart_list) and wait_range[0] > 0 and wait_range[1] > wait_range[0]:
+            time.sleep(random.randint(wait_range[0], wait_range[1]))
+
+
+def _render_maimai_youtube_mode(username, archive_name):
+    st.markdown("### ⚙️ YouTube 搜索设置")
+    customer_token = G_config.get("CUSTOMER_PO_TOKEN") or {}
+    use_proxy = st.checkbox("启用代理", value=G_config.get("USE_PROXY", False), key="yt_use_proxy")
+    proxy_address = st.text_input(
+        "代理地址",
+        value=G_config.get("PROXY_ADDRESS", "127.0.0.1:7890"),
+        disabled=not use_proxy,
+        key="yt_proxy_address",
+    )
+    use_youtube_api = st.checkbox(
+        "使用 YouTube Data API v3 搜索",
+        value=G_config.get("USE_YOUTUBE_API", False),
+        key="yt_use_api",
+    )
+    youtube_api_key = ""
+    use_oauth = False
+    use_custom_po_token = False
+    use_auto_po_token = False
+    po_token = ""
+    visitor_data = ""
+    if use_youtube_api:
+        youtube_api_key = st.text_input(
+            "YouTube API Key",
+            value=G_config.get("YOUTUBE_API_KEY") or "",
+            type="password",
+            key="yt_api_key",
+        )
+        if not youtube_api_key:
+            st.warning("请填写 YouTube API Key 后再保存配置。")
+    else:
+        use_oauth = st.checkbox(
+            "使用 OAuth 登录",
+            value=G_config.get("USE_OAUTH", False),
+            key="yt_use_oauth",
+        )
+        po_mode = st.radio(
+            "PO Token 设置",
+            ["不使用", "使用自定义 PO Token", "自动获取 PO Token"],
+            index=(
+                1
+                if G_config.get("USE_CUSTOM_PO_TOKEN", False)
+                else 2 if G_config.get("USE_AUTO_PO_TOKEN", False) else 0
+            ),
+            disabled=use_oauth,
+            key="yt_po_mode",
+        )
+        use_custom_po_token = po_mode == "使用自定义 PO Token"
+        use_auto_po_token = po_mode == "自动获取 PO Token"
+        if use_custom_po_token:
+            po_token = st.text_input(
+                "自定义 PO Token",
+                value=customer_token.get("po_token", ""),
+                type="password",
+                key="yt_po_token",
+            )
+            visitor_data = st.text_input(
+                "Visitor Data",
+                value=customer_token.get("visitor_data", ""),
+                type="password",
+                key="yt_visitor_data",
+            )
+
+    search_max_results = st.number_input(
+        "备选搜索结果数量",
+        min_value=1,
+        max_value=10,
+        value=int(G_config.get("SEARCH_MAX_RESULTS", 3)),
+        key="yt_search_max_results",
+    )
+    configured_wait = tuple(G_config.get("SEARCH_WAIT_TIME", (1, 3)))
+    search_wait_time = st.select_slider(
+        "搜索间隔时间（秒）",
+        options=range(1, 60),
+        value=configured_wait,
+        key="yt_search_wait_time",
+    )
+    download_high_res = st.checkbox(
+        "下载高分辨率视频",
+        value=G_config.get("DOWNLOAD_HIGH_RES", True),
+        key="yt_download_high_res",
+    )
+    settings = {
+        "use_proxy": use_proxy,
+        "proxy_address": proxy_address,
+        "use_youtube_api": use_youtube_api,
+        "youtube_api_key": youtube_api_key,
+        "use_oauth": use_oauth,
+        "use_custom_po_token": use_custom_po_token,
+        "use_auto_po_token": use_auto_po_token,
+        "search_max_results": int(search_max_results),
+    }
+
+    save_disabled = use_youtube_api and not youtube_api_key
+    if st.button("保存 YouTube 配置", type="primary", disabled=save_disabled):
+        G_config["USE_PROXY"] = use_proxy
+        G_config["PROXY_ADDRESS"] = proxy_address
+        G_config["USE_YOUTUBE_API"] = use_youtube_api
+        G_config["YOUTUBE_API_KEY"] = youtube_api_key
+        G_config["USE_OAUTH"] = use_oauth
+        G_config["USE_CUSTOM_PO_TOKEN"] = use_custom_po_token
+        G_config["USE_AUTO_PO_TOKEN"] = use_auto_po_token
+        G_config["CUSTOMER_PO_TOKEN"] = {"po_token": po_token, "visitor_data": visitor_data}
+        G_config["SEARCH_MAX_RESULTS"] = int(search_max_results)
+        G_config["SEARCH_WAIT_TIME"] = tuple(search_wait_time)
+        G_config["DOWNLOAD_HIGH_RES"] = download_high_res
+        write_global_config(G_config)
+        st.session_state.youtube_mode_settings = settings
+        st.session_state.config_saved_step2 = True
+        st.success("YouTube 配置已保存。")
+
+    if st.session_state.get("config_saved_step2"):
+        if st.button("开始 YouTube 搜索", type="primary", use_container_width=True):
+            try:
+                active_settings = st.session_state.get("youtube_mode_settings", settings)
+                downloader_instance = _build_youtube_downloader(active_settings)
+                st.session_state.downloader = downloader_instance
+                st.session_state.downloader_type = "youtube"
+                _search_maimai_youtube(
+                    username,
+                    archive_name,
+                    downloader_instance,
+                    tuple(search_wait_time),
+                )
+                st.session_state.search_completed = True
+                st.success("YouTube 搜索完成，请进入下一步确认结果。")
+            except Exception as exc:
+                st.session_state.search_completed = False
+                st.error(f"YouTube 搜索失败：{exc}")
+                with st.expander("错误详情"):
+                    st.code(traceback.format_exc())
+    if st.session_state.get("search_completed"):
+        if st.button("进入视频确认和下载", type="primary", use_container_width=True):
+            st.switch_page("st_pages/Confirm_Videos.py")
+
+
+def _render_maimai_video_source_page():
+    st.header("🎬 匹配谱面确认视频")
+    st.markdown(f"> 您正在使用 **{get_game_type_text('maimai')}** 视频生成模式。")
+    username = st.session_state.get("username")
+    archive_name = st.session_state.get("archive_name")
+    if not username or not archive_name:
+        st.warning("请先在存档管理页面指定用户名并加载存档。")
+        return
+    st.write(f"当前用户名：**{username}**")
+    _render_maimai_archive_selector(username, archive_name)
+
+    archive_key = f"maimai:{username}:{st.session_state.get('archive_name')}"
+    if st.session_state.get("video_source_archive_key") != archive_key:
+        st.session_state.video_source_archive_key = archive_key
+        _reset_maimai_source_state(MAIMAI_METADATA_MODE)
+    mode = st.session_state.get("video_source_mode", MAIMAI_METADATA_MODE)
+    st.markdown("### 🎚️ 视频来源模式")
+    _render_maimai_mode_switch(mode)
+    if st.session_state.get("pending_video_source_mode"):
+        return
+    if mode == MAIMAI_YOUTUBE_MODE:
+        _render_maimai_youtube_mode(username, st.session_state.get("archive_name"))
+    else:
+        _render_maimai_metadata_mode(username, st.session_state.get("archive_name"))
+
+
+if G_type == "maimai":
+    _render_maimai_video_source_page()
+    st.stop()
 
 # =============================================================================
 # Page layout starts here

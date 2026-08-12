@@ -8,6 +8,11 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 ## 更新速览
 
+`v1.2.5` 开发版本更新
+
+- ✨ **maimai 默认视频源启用数据库 Metadata**：现在maimai模式下，不再要求登录或配置 Bilibili 搜索，对于所有Master/Re:Master谱面和所有11+以上的Expert谱面可自动查找匹配视频链接，此功能可避免因登录失败或搜索错误而产生的视频寻找困难问题。YouTube 搜索和中二模式暂未支持数据库 Metadata，仍然保持旧版方案。
+- 🛠️ **手动修正和覆盖**：如果数据源存在错误，或需要自定义非数据源覆盖的谱面，仍然可直接填写 BV/链接与分P来指定；覆盖已有缓存时先下载临时文件，成功后才替换旧文件。
+
 `v1.2.4` 开发版本更新
 
 以下小补丁来自@[奕凌Yelon](https://github.com/YelonNotXTD)
@@ -75,6 +80,23 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 - 遇到问题请参考[常见问题](#常见问题)一节。
 
 > 如果你具有基本的计算机和python知识，可以独立（或者LLM辅助）完成环境配置和脚本操作，可以直接clone仓库代码，参考[安装说明](#安装说明（从源代码启动）)部分开始使用。
+
+### 维护 maimai 视频 Metadata
+
+发布包必须包含 `video_metadata/asset-manifest.json`。维护者可以从完整审核 manifest 生成桌面公开版本：
+
+```powershell
+python scripts/build_desktop_video_metadata.py --input "C:\path\to\asset-manifest.latest.json"
+```
+
+脚本只输出已审核、非占位且具有有效 Bilibili BV、链接与分P的 maimai 条目，并拒绝重复 `chart_key` 或重复旧式谱面身份。它不会输出内部 OSS object key，也不会计算文件 hash。
+
+生成后按顺序手工发布到 OSS：
+
+1. `metadata_json/releases/<metadata_store_version>/asset-manifest.json`
+2. 确认版本文件可访问后，覆盖 `metadata_json/asset-manifest.json`
+
+桌面端固定从 `https://nickbit-maigen-images.oss-cn-shanghai.aliyuncs.com/metadata_json/asset-manifest.json` 更新；失败时继续使用本地文件，只有成功安装才记录 24 小时更新时间。
 
 ## 效果预览
 
