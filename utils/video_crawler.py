@@ -2,6 +2,7 @@ from pytubefix import YouTube, Search
 from bilibili_api import login_v2, user, search, video, Credential, sync, HEADERS
 from utils.PageUtils import download_temp_image_to_static
 from utils.AccelRenderer import get_ffmpeg_binary
+from utils.bilibili_auth import can_refresh_credential, validate_login_credential
 from typing import Tuple, Optional
 from abc import ABC, abstractmethod
 import os
@@ -130,6 +131,7 @@ def load_credential(credential_path):
                 sessdata=loaded_data.sessdata,
                 bili_jct=loaded_data.bili_jct,
                 buvid3=loaded_data.buvid3,
+                buvid4=getattr(loaded_data, 'buvid4', None),
                 dedeuserid=loaded_data.dedeuserid,
                 ac_time_value=loaded_data.ac_time_value
             )
@@ -146,8 +148,13 @@ def load_credential(credential_path):
         try:
             need_refresh = sync(credential.check_refresh())
             if need_refresh:
-                print("#####【bilibili登录凭据需要刷新，正在尝试刷新中……】")
-                sync(credential.refresh())
+                if can_refresh_credential(credential):
+                    print("#####【bilibili登录凭据需要刷新，正在尝试刷新中……】")
+                    sync(credential.refresh())
+                    with open(credential_path, 'wb') as f:
+                        pickle.dump(credential, f)
+                else:
+                    print("#####【bilibili登录凭据缺少刷新字段，将继续使用当前有效会话】")
         except:
             traceback.print_exc()
             print("#####【刷新bilibili登录凭据失败，请重新扫码登录】")
@@ -677,7 +684,7 @@ class BilibiliQrCodeLoginSession:
         from PIL import Image
         
         async def _generate():
-            self._qr_login = login_v2.QrCodeLogin(platform=login_v2.QrCodeLoginChannel.WEB)
+            self._qr_login = login_v2.QrCodeLogin(platform=login_v2.QrCodeLoginChannel.TV)
             await self._qr_login.generate_qrcode()
             self._generated = True
             # Picture.content 是 PNG 字节数据
@@ -762,17 +769,16 @@ def streamlit_login_bilibili(credential_path="cred_datas/bilibili_cred.pkl"):
         
         # 验证凭证
         try:
-            credential.raise_for_no_bili_jct()
-            credential.raise_for_no_sessdata()
+            validate_login_credential(credential)
+            if not sync(credential.check_valid()):
+                raise ValueError("扫码返回的登录会话无效，请重新扫码")
+            username = sync(user.get_self_info(credential))['name']
         except Exception as e:
             # 清理会话
             del st.session_state.bilibili_login_session
             if 'bilibili_qr_image' in st.session_state:
                 del st.session_state.bilibili_qr_image
             return (False, None, f"凭证验证失败: {str(e)}", None)
-        
-        # 获取用户名
-        username = sync(user.get_self_info(credential))['name']
         
         # 保存凭证
         os.makedirs(os.path.dirname(credential_path), exist_ok=True)
@@ -835,7 +841,7 @@ class BilibiliDownloader(Downloader):
         import qrcode_terminal
         
         async def _login():
-            qr = login_v2.QrCodeLogin(platform=login_v2.QrCodeLoginChannel.WEB)
+            qr = login_v2.QrCodeLogin(platform=login_v2.QrCodeLoginChannel.TV)
             await qr.generate_qrcode()
             
             # 获取二维码链接并在终端打印
@@ -871,13 +877,15 @@ class BilibiliDownloader(Downloader):
             return False
         
         try:
-            credential.raise_for_no_bili_jct()
-            credential.raise_for_no_sessdata()
-        except:
-            print("\n#####【登录失败，请重试】")
+            validate_login_credential(credential)
+            if not sync(credential.check_valid()):
+                raise ValueError("扫码返回的登录会话无效")
+            username = sync(user.get_self_info(credential))['name']
+        except Exception as e:
+            print(f"\n#####【登录失败: {str(e)}，请重试】")
             return False
         
-        print(f"\n#####【登录bilibili成功，登录账号为：{sync(user.get_self_info(credential))['name']}】")
+        print(f"\n#####【登录bilibili成功，登录账号为：{username}】")
         self.credential = credential
         with open(credential_path, 'wb') as f:
             pickle.dump(credential, f)
