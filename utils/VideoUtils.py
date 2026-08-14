@@ -948,10 +948,12 @@ def render_complete_full_video(
         video_res: tuple = (1920, 1080), video_bitrate: str = "4000k",
         video_fps: int = 60,
         video_trans_enable: bool = True, video_trans_time: float = 1.0, full_last_clip: bool = False,
-        use_gpu_accel: bool = None, use_baked_fade: bool = None, progress_callback=None):
+        use_gpu_accel: bool = None, use_baked_fade: bool = None, progress_callback=None,
+        force_render: bool = False):
     """ 根据完整配置合成完整视频，并保存到指定路径的文件。
         当 use_gpu_accel=True 时，先用 GPU 加速渲染所有片段，再用 FFmpeg 拼接。
         use_baked_fade: 已废弃，仅为兼容旧调用保留。GPU 路线默认使用低内存 transition island + concat。
+        force_render: 是否覆盖已存在的 GPU 渲染片段，默认保留并跳过同名片段。
     """
     # 检查是否启用 GPU 加速
     if use_gpu_accel is None:
@@ -985,7 +987,7 @@ def render_complete_full_video(
                     ending_configs=ending_configs,
                     auto_add_transition=False,
                     trans_time=video_trans_time,
-                    force_render=True,
+                    force_render=force_render,
                     fps=video_fps,
                     progress_callback=progress_callback
                 )

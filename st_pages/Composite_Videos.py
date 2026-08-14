@@ -241,7 +241,8 @@ if st.button("开始生成视频", use_container_width=True, type="primary"):
                         video_trans_time=trans_time,
                         full_last_clip=False,
                         use_gpu_accel=gpu_accel,
-                        progress_callback=progress_cb
+                        progress_callback=progress_cb,
+                        force_render=force_render_clip
                     )
                     st.write(f"【{output_info['info']}")
             st.success("完整视频生成结束！点击下方按钮打开视频所在文件夹")
@@ -290,7 +291,8 @@ with st.expander("展开其他视频生成方案"):
                             video_trans_time=trans_time,
                             full_last_clip=False,
                             use_gpu_accel=True,
-                            progress_callback=progress_cb
+                            progress_callback=progress_cb,
+                            force_render=force_render_clip
                         )
                         st.write(f"【{output_info['info']}")
                     st.success("GPU低内存模式生成完成！点击上方按钮打开文件夹查看视频")
