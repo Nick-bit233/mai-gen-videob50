@@ -14,10 +14,14 @@ from utils.video_metadata import (
     resolve_maimai_video_sources,
 )
 from utils.video_source_mode import (
+    BILIBILI_HIGH_RES_LOGIN_MAX_FAILURES,
     MAIMAI_METADATA_MODE,
     MAIMAI_SOURCE_RESET_KEYS,
     MAIMAI_YOUTUBE_MODE,
+    build_authenticated_bilibili_downloader,
     build_metadata_bilibili_downloader,
+    classify_bilibili_login_result,
+    register_bilibili_login_failure,
 )
 from db_utils.DatabaseDataHandler import get_database_handler
 
@@ -40,6 +44,15 @@ def _reset_maimai_source_state(mode):
         st.session_state.pop(key, None)
     st.session_state.video_source_mode = mode
     st.session_state.video_sources_ready = False
+
+
+def _clear_bilibili_qr_attempt():
+    for key in (
+        "metadata_bilibili_show_qr",
+        "bilibili_login_session",
+        "bilibili_qr_image",
+    ):
+        st.session_state.pop(key, None)
 
 
 def _mark_youtube_result(ret_data):
@@ -172,26 +185,138 @@ def _render_maimai_metadata_mode(username, archive_name):
         disabled=not use_proxy,
         key="metadata_bilibili_proxy",
     )
+    high_res_key = "metadata_bilibili_high_res"
+    high_res_fallback = st.session_state.get(
+        "metadata_bilibili_high_res_fallback",
+        False,
+    )
+    if high_res_key not in st.session_state:
+        st.session_state[high_res_key] = G_config.get("DOWNLOAD_HIGH_RES", True)
+    if high_res_fallback:
+        st.session_state[high_res_key] = False
     download_high_res = st.checkbox(
-        "下载高分辨率视频",
-        value=G_config.get("DOWNLOAD_HIGH_RES", True),
-        key="metadata_bilibili_high_res",
+        "下载高清视频（需要 Bilibili 二维码登录）",
+        key=high_res_key,
+        disabled=high_res_fallback,
+        help="普通画质可匿名下载；高清流需要有效的 Bilibili 登录。",
     )
 
-    if st.button("使用当前匹配并继续", type="primary", use_container_width=True):
+    authenticated_credential = st.session_state.get(
+        "metadata_bilibili_authenticated_credential"
+    )
+    authenticated_username = st.session_state.get(
+        "metadata_bilibili_authenticated_username"
+    )
+    if download_high_res:
+        if not st.session_state.get("metadata_bilibili_cached_credential_checked"):
+            st.session_state.metadata_bilibili_cached_credential_checked = True
+            try:
+                cached_credential, cached_username = load_credential(
+                    "./cred_datas/bilibili_cred.pkl"
+                )
+                if cached_credential is not None:
+                    st.session_state.metadata_bilibili_authenticated_credential = cached_credential
+                    st.session_state.metadata_bilibili_authenticated_username = cached_username
+                    authenticated_credential = cached_credential
+                    authenticated_username = cached_username
+            except Exception as exc:
+                st.session_state.metadata_bilibili_cached_credential_error = str(exc)
+
+        if authenticated_credential is not None:
+            account_text = f"，账号：{authenticated_username}" if authenticated_username else ""
+            st.success(f"✅ 登录凭证有效{account_text}")
+            st.session_state.metadata_bilibili_login_failures = 0
+            _clear_bilibili_qr_attempt()
+        else:
+            failures = st.session_state.get("metadata_bilibili_login_failures", 0)
+            remaining = BILIBILI_HIGH_RES_LOGIN_MAX_FAILURES - failures
+            st.warning(
+                "请使用哔哩哔哩客户端扫描二维码登录"
+            )
+            cached_error = st.session_state.get("metadata_bilibili_cached_credential_error")
+            if cached_error:
+                st.caption(f"未能复用本地登录凭证：{cached_error}")
+
+            login_label = "生成登录二维码" if failures == 0 else "重新生成登录二维码"
+            if st.button(
+                login_label,
+                key="metadata_bilibili_login_btn",
+                type="primary",
+                use_container_width=True,
+            ):
+                st.session_state.metadata_bilibili_show_qr = True
+                st.rerun()
+
+            if st.session_state.get("metadata_bilibili_show_qr", False):
+                success, credential, message, username = streamlit_login_bilibili(
+                    "./cred_datas/bilibili_cred.pkl"
+                )
+                login_state = classify_bilibili_login_result(
+                    success,
+                    credential,
+                    message,
+                )
+                if login_state == "success":
+                    st.session_state.metadata_bilibili_authenticated_credential = credential
+                    st.session_state.metadata_bilibili_authenticated_username = username
+                    st.session_state.metadata_bilibili_login_failures = 0
+                    _clear_bilibili_qr_attempt()
+                    st.rerun()
+                elif login_state == "pending":
+                    time.sleep(2)
+                    st.rerun()
+                else:
+                    failures, should_fallback = register_bilibili_login_failure(failures)
+                    st.session_state.metadata_bilibili_login_failures = failures
+                    _clear_bilibili_qr_attempt()
+                    if should_fallback:
+                        st.session_state.metadata_bilibili_high_res_fallback = True
+                        st.warning(
+                            "连续三次登录失败，已自动回退到普通画质。"
+                        )
+                        st.rerun()
+                    st.error(
+                        f"❌ {message}（第 {failures}/"
+                        f"{BILIBILI_HIGH_RES_LOGIN_MAX_FAILURES} 次失败）"
+                    )
+    else:
+        _clear_bilibili_qr_attempt()
+        if not high_res_fallback:
+            st.session_state.metadata_bilibili_login_failures = 0
+        else:
+            st.warning("因连续三次登录失败切换为普通画质下载，如需再次尝试登录请重启应用。")
+
+    high_res_ready = not download_high_res or authenticated_credential is not None
+    if st.button(
+        "继续下一步（使用当前匹配）",
+        type="primary",
+        use_container_width=True,
+        disabled=not high_res_ready,
+    ):
         G_config["USE_PROXY"] = use_proxy
         G_config["PROXY_ADDRESS"] = proxy_address
         G_config["DOWNLOAD_HIGH_RES"] = download_high_res
         write_global_config(G_config)
         try:
-            downloader_instance, credential_exc = build_metadata_bilibili_downloader(
-                BilibiliDownloader,
-                proxy=proxy_address if use_proxy else None,
-                credential_path="./cred_datas/bilibili_cred.pkl",
-                search_max_results=G_config.get("SEARCH_MAX_RESULTS", 3),
-            )
-            if credential_exc is not None:
-                st.warning(f"缓存凭证不可用，本次将匿名下载：{credential_exc}")
+            downloader_kwargs = {
+                "proxy": proxy_address if use_proxy else None,
+                "credential_path": "./cred_datas/bilibili_cred.pkl",
+                "search_max_results": G_config.get("SEARCH_MAX_RESULTS", 3),
+            }
+            if download_high_res:
+                downloader_instance = build_authenticated_bilibili_downloader(
+                    BilibiliDownloader,
+                    authenticated_credential,
+                    authenticated_username,
+                    **downloader_kwargs,
+                )
+            else:
+                downloader_instance, credential_exc = build_metadata_bilibili_downloader(
+                    BilibiliDownloader,
+                    **downloader_kwargs,
+                )
+                if credential_exc is not None:
+                    st.warning(f"缓存凭证不可用，本次将匿名下载：{credential_exc}")
             st.session_state.downloader = downloader_instance
             st.session_state.downloader_type = "bilibili"
             st.session_state.video_sources_ready = True

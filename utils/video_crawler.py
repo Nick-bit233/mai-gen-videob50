@@ -2,6 +2,7 @@ from pytubefix import YouTube, Search
 from bilibili_api import login_v2, user, search, video, Credential, sync, HEADERS
 from utils.PageUtils import download_temp_image_to_static
 from utils.AccelRenderer import get_ffmpeg_binary
+from utils.bilibili_auth import can_refresh_credential, validate_login_credential
 from typing import Tuple, Optional
 from abc import ABC, abstractmethod
 import os
@@ -128,27 +129,39 @@ def load_credential(credential_path):
             # 创建 Credential 实例
             credential = Credential(
                 sessdata=loaded_data.sessdata,
-                bili_jct=loaded_data.bili_jct,
-                buvid3=loaded_data.buvid3,
-                dedeuserid=loaded_data.dedeuserid,
-                ac_time_value=loaded_data.ac_time_value
+                bili_jct=getattr(loaded_data, 'bili_jct', None),
+                buvid3=getattr(loaded_data, 'buvid3', None),
+                buvid4=getattr(loaded_data, 'buvid4', None),
+                dedeuserid=getattr(loaded_data, 'dedeuserid', None),
+                ac_time_value=getattr(loaded_data, 'ac_time_value', None)
             )
-        except:
+            validate_login_credential(credential)
+        except Exception:
             traceback.print_exc()
             print("#####【bilibili登录凭证无效，请重新扫码登录】")
             return None, None
         
         # 验证凭证的有效性
-        is_valid = sync(credential.check_valid())
+        try:
+            is_valid = sync(credential.check_valid())
+        except Exception:
+            traceback.print_exc()
+            print("#####【检查bilibili登录凭证失败，请重新扫码登录】")
+            return None, None
         if not is_valid:
             print("#####【bilibili登录凭证已失效，请重新扫码登录】")
             return None, None
         try:
             need_refresh = sync(credential.check_refresh())
             if need_refresh:
-                print("#####【bilibili登录凭据需要刷新，正在尝试刷新中……】")
-                sync(credential.refresh())
-        except:
+                if can_refresh_credential(credential):
+                    print("#####【bilibili登录凭据需要刷新，正在尝试刷新中……】")
+                    sync(credential.refresh())
+                    with open(credential_path, 'wb') as f:
+                        pickle.dump(credential, f)
+                else:
+                    print("#####【登录凭据缺少刷新所需字段，继续使用当前有效会话】")
+        except Exception:
             traceback.print_exc()
             print("#####【刷新bilibili登录凭据失败，请重新扫码登录】")
             return None, None
@@ -677,7 +690,7 @@ class BilibiliQrCodeLoginSession:
         from PIL import Image
         
         async def _generate():
-            self._qr_login = login_v2.QrCodeLogin(platform=login_v2.QrCodeLoginChannel.WEB)
+            self._qr_login = login_v2.QrCodeLogin(platform=login_v2.QrCodeLoginChannel.TV)
             await self._qr_login.generate_qrcode()
             self._generated = True
             # Picture.content 是 PNG 字节数据
@@ -753,7 +766,12 @@ def streamlit_login_bilibili(credential_path="cred_datas/bilibili_cred.pkl"):
     qr_placeholder.image(st.session_state.bilibili_qr_image, caption="使用哔哩哔哩客户端扫描此二维码")
     
     # 检查登录状态
-    state, message = session.check_state()
+    try:
+        state, message = session.check_state()
+    except Exception as e:
+        st.session_state.pop('bilibili_login_session', None)
+        st.session_state.pop('bilibili_qr_image', None)
+        return (False, None, f"检查二维码状态失败: {str(e)}", None)
     status_placeholder.info(f"📱 {message}")
     
     if state == 'success':
@@ -762,35 +780,33 @@ def streamlit_login_bilibili(credential_path="cred_datas/bilibili_cred.pkl"):
         
         # 验证凭证
         try:
-            credential.raise_for_no_bili_jct()
-            credential.raise_for_no_sessdata()
+            validate_login_credential(credential)
+            if not sync(credential.check_valid()):
+                raise ValueError("Bilibili 会话无效")
+            username = sync(user.get_self_info(credential))['name']
         except Exception as e:
             # 清理会话
-            del st.session_state.bilibili_login_session
-            if 'bilibili_qr_image' in st.session_state:
-                del st.session_state.bilibili_qr_image
+            st.session_state.pop('bilibili_login_session', None)
+            st.session_state.pop('bilibili_qr_image', None)
             return (False, None, f"凭证验证失败: {str(e)}", None)
         
-        # 获取用户名
-        username = sync(user.get_self_info(credential))['name']
-        
         # 保存凭证
-        os.makedirs(os.path.dirname(credential_path), exist_ok=True)
+        credential_dir = os.path.dirname(credential_path)
+        if credential_dir:
+            os.makedirs(credential_dir, exist_ok=True)
         with open(credential_path, 'wb') as f:
             pickle.dump(credential, f)
         
         # 清理会话
-        del st.session_state.bilibili_login_session
-        if 'bilibili_qr_image' in st.session_state:
-            del st.session_state.bilibili_qr_image
+        st.session_state.pop('bilibili_login_session', None)
+        st.session_state.pop('bilibili_qr_image', None)
         
         return (True, credential, f"登录成功！", username)
     
     elif state == 'timeout':
         # 清理过期的二维码
-        if 'bilibili_qr_image' in st.session_state:
-            del st.session_state.bilibili_qr_image
-        del st.session_state.bilibili_login_session
+        st.session_state.pop('bilibili_qr_image', None)
+        st.session_state.pop('bilibili_login_session', None)
         return (False, None, "二维码已过期，请刷新页面重试", None)
     
     else:
@@ -835,7 +851,7 @@ class BilibiliDownloader(Downloader):
         import qrcode_terminal
         
         async def _login():
-            qr = login_v2.QrCodeLogin(platform=login_v2.QrCodeLoginChannel.WEB)
+            qr = login_v2.QrCodeLogin(platform=login_v2.QrCodeLoginChannel.TV)
             await qr.generate_qrcode()
             
             # 获取二维码链接并在终端打印
@@ -871,14 +887,18 @@ class BilibiliDownloader(Downloader):
             return False
         
         try:
-            credential.raise_for_no_bili_jct()
-            credential.raise_for_no_sessdata()
-        except:
+            validate_login_credential(credential)
+            if not sync(credential.check_valid()):
+                raise ValueError("Bilibili 会话无效")
+        except Exception:
             print("\n#####【登录失败，请重试】")
             return False
         
         print(f"\n#####【登录bilibili成功，登录账号为：{sync(user.get_self_info(credential))['name']}】")
         self.credential = credential
+        credential_dir = os.path.dirname(credential_path)
+        if credential_dir:
+            os.makedirs(credential_dir, exist_ok=True)
         with open(credential_path, 'wb') as f:
             pickle.dump(credential, f)
         return True
