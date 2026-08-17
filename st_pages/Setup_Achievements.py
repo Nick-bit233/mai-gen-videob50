@@ -148,11 +148,10 @@ def view_b50_data(username: str, archive_name: str):
             }
         )
     elif game_type == "chunithm":
-        # 使用math.floor截断ra到两位小数，格式化rank
-        import math
+        # 使用round截断ra到两位小数，格式化rank，math.floor可能由于浮点数精度导致16.24->16.23的问题
         for record in show_records:
             if 'ra' in record and isinstance(record['ra'], (int, float)):
-                record['ra'] = math.floor(record['ra'] * 100) / 100.0
+                record['ra'] = round(record['ra'] * 100) / 100.0
             # 确保play_count字段存在（可能是playCount）
             if 'play_count' not in record and 'playCount' in record:
                 record['play_count'] = record['playCount']
@@ -202,35 +201,69 @@ def lxns_api_instructions():
     """)
 
 @st.dialog("国际服/日服数据导入说明")
-def other_data_import_guide():
+def other_data_import_guide(game_type = "maimai"):
     # 加载markdown
-    guide_path = os.path.join(os.path.dirname(__file__), "..", "docs", "DataImportGuide.md")
+    file_name = "DataImportGuide.md" if game_type == "maimai" else "DataImportGuideChu.md"
+    guide_path = os.path.join(os.path.dirname(__file__), "..", "docs", file_name)
     res_dir = os.path.join(os.path.dirname(__file__), "..", "md_res")
     with open(guide_path, "r", encoding="utf-8") as f:
         guide_md = f.read()
-    # 准备js脚本
-    js_src = "https://yelonnotxtd.github.io/load_maimai_score.js"
-    js_loader = f"""javascript:(function(){{
-        var s=document.createElement('script');
-        s.src='{js_src}';
-        document.head.appendChild(s);
-    }})();"""
-    js_loader = re.sub(r'\s+', ' ', js_loader).strip()
 
-    # 按图片行拆分
-    # pattern = re.compile(r"(!\[([^\]]*)\]\(([^)]+)\))") # ![alt](path) 正则
-    pattern = re.compile(r"(!\[([^\]]*)\]\(([^)]+)\)|<!--MGBL_LINK-->)")
+    # 定义 JS 脚本字典：键为占位符名称，值为 [脚本URL, 显示文本]
+    js_src = {
+        "MGBL_LINK": [
+            "https://yelonnotxtd.github.io/load_maimai_score.js",
+            "Mai-gen Booklet 成绩加载工具"
+        ],
+        "CGBL_LINK": [
+            "https://yelonnotxtd.github.io/load_chuni_score.js",
+            "Chu-gen Booklet 成绩加载工具"
+        ],
+        "CRBL_LINK": [
+            "https://yelonnotxtd.github.io/load_chuni_score_rin.js",
+            "Chu-gen RinNET Booklet 成绩加载工具"
+        ],
+    }
+
+    # 构建 JS loader 的函数
+    def build_js_loader(script_url):
+        base = f"""javascript:(function(){{
+            var s=document.createElement('script');
+            s.src='{script_url}';
+            document.head.appendChild(s);
+        }})();"""
+        return re.sub(r'\s+', ' ', base).strip()
+
+    # 预生成所有 loader：键为占位符名称，值为 [loader, 显示文本]
+    js_loaders = {
+        key: [build_js_loader(url), display_text] 
+        for key, (url, display_text) in js_src.items()
+    }
+
+    # 修改正则：匹配图片 或 任意 HTML 注释占位符（如 <!--MGBL_LINK-->）
+    pattern = re.compile(r"(!\[([^\]]*)\]\(([^)]+)\)|<!--([^>]+)-->)")
     last_end = 0
     for match in pattern.finditer(guide_md):
         before = guide_md[last_end:match.start()]
         if before.strip():
             st.markdown(before)
         if match.group(0).startswith("!"):
+            # 处理图片
             img_path = os.path.join(res_dir, os.path.basename(match.group(3)))
             st.image(img_path, use_container_width=False)
-        else: # 处理<!--MGBL_LINK-->占位符
-            st.markdown(f"<div><a href=\"{js_loader}\">Mai-gen Booklet 成绩加载工具</a></div>", unsafe_allow_html=True)
+        else:
+            # 处理注释占位符 <!--xxx-->
+            placeholder = match.group(4).strip()  # 获取注释内容，如 "MGBL_LINK"
+            script_data = js_src.get(placeholder)
+            if script_data:
+                js_loader = js_loaders[placeholder][0]  # loader
+                display_text = js_loaders[placeholder][1]  # 显示文本
+                st.markdown(f"<div><a href=\"{js_loader}\">{display_text}</a></div>", unsafe_allow_html=True)
+            else:
+                # 如果找不到对应的 JS 脚本，可以忽略或显示提示
+                st.markdown(f"<!-- 未知占位符: {placeholder} -->", unsafe_allow_html=False)
         last_end = match.end()
+
     remaining = guide_md[last_end:]
     if remaining.strip():
         st.markdown(remaining)
@@ -261,7 +294,7 @@ def handle_new_data(username: str, source: str, params: dict = None):
     raw_file_path = f"{get_user_base_dir(username)}/{username}_{source}_raw_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     try:
         # 重构：查分，并创建存档，原始数据缓存于raw_file_path
-        if source in ["mgbl", "html", "dxjs", "mujs"]:
+        if source in ["mgbl", "html", "dxjs", "mujs", "crbl", "rin"]:
             new_archive_data = unify_user_gamedata(
                 raw_file_path=raw_file_path,
                 source=source,
@@ -612,8 +645,8 @@ if st.session_state.get('config_saved', False):
 
         # Data from DX Web (INTL/JP Server)
         with st.expander("🌏 手动导入数据 (国际服/日服)"):
-            st.warning("✅ 我们的国际服/日服数据书签页导入工具Mai-gen Booklet绝赞测试中!")
             if G_type == "maimai":
+                st.warning("✅ 我们的国际服/日服数据书签页导入工具Mai-gen Booklet绝赞测试中!")
                 st.write("请将获取的数据文本粘贴到下方输入框中，并选择对应的数据源类型和其他信息。")
 
                 if st.button("💡 点击查看数据获取指南", key="read_other_data_import_guide"):
@@ -716,8 +749,43 @@ if st.session_state.get('config_saved', False):
                             })
                     else:
                         st.warning("输入框内容为空。")
-            else:
-                st.warning(f"暂未支持从国际服/日服数据导入中二节奏数据，如有需要请在左侧导航栏使用自定义分表功能手动配置。")
+            else: # G_type == "chunithm"
+                st.write("请将获取的数据文本粘贴到下方输入框中，并选择对应的数据源类型和其他信息。")
+                if st.button("💡 点击查看数据获取指南", key="read_other_data_import_guide_chu"):
+                    other_data_import_guide(game_type="chunithm")
+
+                DATA_SOURCE_OPTIONS_CHU = ["Chu-gen RinNET Booklet 导出的B50", "RinNET玩家存档JSON"]
+                RIN_VERSION_OPTIONS = ["日服 (Mate)", "不筛选 (取全版本最高50条成绩, 进行有特殊筛选的生成时推荐)"]
+                N20_VERSION_OPTIONS = ["国际服 (X-VERSE-X)", "日服 (Mate)", "不筛选 (取全版本最高50条成绩, 进行有特殊筛选的生成时推荐)"]
+
+                data_source = st.radio("选择导入的数据源类型：", options=DATA_SOURCE_OPTIONS_CHU, key="data_source_chu")
+                query_type = "best"
+                query_filter = {}
+
+                if data_source == DATA_SOURCE_OPTIONS_CHU[0]:
+                    file_type = "crbl" # Chuni-gen Rin BookLet
+                    query_filter["n20_versions"] = 1
+                elif data_source == DATA_SOURCE_OPTIONS_CHU[1]:
+                    file_type = "rin"
+                    query_type = "all"
+
+
+                data_input = st.text_area("请粘贴获取到的原始数据", height=200)
+                if st.button("从粘贴内容创建新存档"):
+                    if data_input:
+                        handle_new_data(
+                            username,
+                            source=file_type,
+                            params={
+                                "type": "chunithm",
+                                "query": query_type,
+                                "data_input": data_input,
+                                "filter": query_filter
+                            })
+                    else:
+                        st.warning("输入框内容为空。")
+
+
         # with st.expander("💡 数据在神秘的舞萌服务器里？加入交流群，说不定就能实装呢？"):
         #     st.write("加入QQ群：[994702414](https://qm.qq.com/q/ogt02jHEjK)")
     # --- Navigation ---

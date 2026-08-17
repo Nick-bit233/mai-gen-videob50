@@ -26,6 +26,11 @@ DEFAULT_B15_VERSION = [
     ["CiRCLE", "CiRCLE PLUS"], # 1 index 日服，预计2026年9月更新新版本
     [] # -1 index，用于标注不区分版本
 ]
+DEFAULT_N20_VERSION = [
+    ["X-VERSE-X"], # 0 index 国际服
+    ["Mate"], # 1 index 日服
+    [] # -1 index，用于标注不区分版本
+]
 
 def get_otoge_db_api_endpoint(game_type) -> str:
     return f"https://otoge-db.net/{game_type}/jacket"  # otoge-db api
@@ -353,7 +358,7 @@ def chunithm_fc_status_to_label(fc_status: int) -> str:
         case _:
             return "none"
         
-def chunithm_fs_status_to_label(source, fs_status: str) -> str:
+def chunithm_fs_status_to_label(source, fs_status) -> str:
     if source == "lxns":
         match fs_status:
             case "fullchain2":  # 金 FULL CHAIN
@@ -364,6 +369,14 @@ def chunithm_fs_status_to_label(source, fs_status: str) -> str:
                 return "none"
     if source == "fish":
         return 'none'  # 水鱼查分器暂时不提供该字段
+    if fs_status is int:
+        match fs_status:
+            case 1:
+                return "fc"
+            case 2:
+                return "fcr"
+            case _:
+                return "none"
     return "none"
 
 # 已重构：现在从服务器融合数据源下载metadata
@@ -650,6 +663,7 @@ def exact_match_chart(query, songs_data, game_type="maimai") -> dict:
         game_type: str, only "maimai" used currently, as this is a method for parsing HTML source.
     """
     chart_data = {}
+    use_latest_level = True # 目前该函数只用于国际服/日服查曲
     if game_type == "maimai":
         # Don't use 'get' here to ensure we raise error if any of the required fields is missing
         for song in songs_data:
@@ -669,7 +683,7 @@ def exact_match_chart(query, songs_data, game_type="maimai") -> dict:
                             'song_id': song.get('title', ''),  # TODO: 替换为hash id
                             'chart_type': query["chart_type"],
                             'level_index': query["level_index"],
-                            'difficulty': str(get_level_value_from_chart_meta(c)),
+                            'difficulty': str(get_level_value_from_chart_meta(c, use_latest_level)),
                             'song_name': query["title"],
                             'artist': song.get('artist', None),
                             'max_dx_score': c.get('note_counts', {}).get('total', 0) * 3,  # 防止NULL
@@ -680,6 +694,33 @@ def exact_match_chart(query, songs_data, game_type="maimai") -> dict:
                     continue # SBGA把旧的歌名改了，导致第一次可能把DX查成SD
                 raise ValueError(f"Error: exactly matched song {query['title']}, but didn't find chart with level index {query['level_index']} with chart type {query['chart_type']}")
         # 国际服独占曲不在数据库中，可能会掉到这里
+        print(f"Warning: can't exactly match song with name {query['title']}")
+        return None
+    elif game_type == "chunithm":
+        for song in songs_data:
+            title = song.get('title', '')
+            artist = song.get('artist', None)
+            if query["title"] == title: # Must be exact match
+                if query.get("artist") and query["artist"] != artist:
+                    print(f"Info: 对曲目{query['title']}进行了精确匹配，但指定的artist {query['artist']}与元数据中的artist {artist}不匹配，跳过该曲目。")
+                    continue # If artist is specified in query, it must match
+                charts = song.get('charts_info', [])
+                for c in charts:
+                    c_level_index = c.get('difficulty', -1)
+                    if c_level_index == query["level_index"]:
+                        chart_data = {
+                            'game_type': 'chunithm',
+                            'song_id': song.get('title', ''),  # TODO: 替换为hash id
+                            'chart_type': 0,
+                            'level_index': query["level_index"],
+                            'difficulty': str(get_level_value_from_chart_meta(c, use_latest_level)),
+                            'song_name': query["title"],
+                            'artist': song.get('artist', None),
+                            'max_dx_score': 0,  # 不使用dx_score
+                            'video_path': None
+                        }
+                        return chart_data
+                raise ValueError(f"Error: exactly matched song {query['title']}, but didn't find chart with level index {query['level_index']} with chart type {query['chart_type']}")
         print(f"Warning: can't exactly match song with name {query['title']}")
         return None
     else:
@@ -927,281 +968,6 @@ def lxns_to_new_record_format(lxns_record: dict, game_type: str = "maimai") -> d
         raise ValueError("Unsupported game type for record conversion.")
 
     return record
-
-# ---------------------------
-# MGBL data parsing methods
-# ---------------------------
-
-@DeprecationWarning
-def filter_mgbl_b50(mgbl_scores: list, filter: dict) -> List[dict]:
-    """
-    Filter and parse B50 entries from raw MGBL exported data.
-
-    Args:
-        mgbl_scores: list of dict, raw MGBL score entries, example
-            [
-                {
-                    "songName": "Xaleid◆scopiX",
-                    "difficulty": "Re:MASTER",
-                    "level": "15",
-                    "achievement": "99.7325%",
-                    "dxScore": 4396,
-                    "maxDxScore": 6666,
-                    "sync": "sync",
-                    "combo": "fc",
-                    "type": "DX",
-                    "difficultyId": 4,
-                    "isNew": true
-                },
-                {...}
-            ]
-        filter: dict, see unify_user_gamedata function for detail
-    
-    Returns:
-        record_data: list of dict, will be stored in database
-    """
-    MGBL_FILTER_FUNCTIONS = {
-        "ap": lambda score: score.get("combo", "") in ["ap", "app"],
-        "fc": lambda score: score.get("combo", "") in ["fc", "fcp", "ap", "app"],
-    }
-    SONGS_METADATA = load_metadata("maimai")
-
-    def mgbl_to_record(i, score):
-        """
-        Search constant, compute rating, format record.
-        """
-        query = {
-            "title": score["songName"],
-            "level_index": score["difficultyId"],
-            "chart_type": chart_type_str2value(score["type"].lower(), fish_record_style=False)
-        }
-        chart_data = exact_match_chart(query, SONGS_METADATA, game_type="maimai")
-        if not chart_data:
-            print(f"Warning: 无法匹配谱面{query}, 已自动跳过。如果缺失的数据是\"全世界共通リズム感テスト\"属正常现象。")
-            return None
-        achievement = score.get("achievement", "101.0000%").rstrip("%")
-        dx_rating = compute_rating(chart_data["difficulty"], float(achievement))
-        record = {
-            'chart_data': chart_data,
-            'order_in_archive': 0, # Do not modify order here, will be set when inserting to DB
-            'achievement': achievement,
-            'fc_status': score["combo"],
-            'fs_status': score["sync"],
-            'dx_score': score["dxScore"],
-            'dx_rating': dx_rating,
-            'chuni_rating': 0,
-            'play_count': 0,
-            'clip_title_name': "", # Fill this later
-            # Store the original HTML div as raw data for potential future use
-            'raw_data': score
-        }
-        return (i, record)
-    
-    def mgbl_sort_key(item):
-        i, record = item
-        # 降序，单曲rating > 定数 > 完成度 > 原始顺序
-        return (-record['dx_rating'], -safe_parse_difficulty(record["chart_data"]["difficulty"]), -float(record['achievement']), i)
-
-    if not filter:
-        match_b15 = False
-        best_past_len = 50
-        best_new_len = 0
-        tag = ""
-    else:
-        match_b15 = filter.get("b15_versions", -1) >= 0
-        best_past_len = filter.get("best_past_len", 35 if match_b15 else 50)
-        best_new_len = filter.get("best_new_len", 15 if match_b15 else 0)
-        tag = filter.get("tag", "").lower()
-
-    # Filter with tag if applicable
-    if tag:
-        if tag not in MGBL_FILTER_FUNCTIONS:
-            raise ValueError(f"Error: MGBL数据源仅支持tag为{list(MGBL_FILTER_FUNCTIONS.keys())}的筛选，当前tag: {tag}")
-        tagged_scores = [(i, score) for i, score in enumerate(mgbl_scores) if MGBL_FILTER_FUNCTIONS[tag](score)]
-    else:
-        tagged_scores = list(enumerate(mgbl_scores))
-
-    # Match version and sort
-    new_records = [result for result in
-                    (mgbl_to_record(i, score) for i, score
-                    in tagged_scores if score["isNew"])
-                    if result is not None] if match_b15 else []
-    past_records = [result for result in 
-                    (mgbl_to_record(i, score) for i, score in tagged_scores
-                    if (not match_b15 or not score["isNew"]))
-                    if result is not None]
-    new_records = sorted(new_records, key=mgbl_sort_key)[:best_new_len]
-    past_records = sorted(past_records, key=mgbl_sort_key)[:best_past_len]
-    # Fill clip_title_name
-    record_data = []
-    best_prefix = "Best" if not tag else tag.upper()
-    for clip_number, (_, record) in enumerate(new_records):
-        record["clip_title_name"] = f"New{best_prefix}{clip_number + 1}"
-        record_data.append(record)
-    past_prefix = "Past" if best_new_len > 0 else ""
-    for clip_number, (_, record) in enumerate(past_records):
-        record["clip_title_name"] = f"{past_prefix}{best_prefix}{clip_number + 1}"
-        record_data.append(record)
-    return record_data
-
-# ---------------------------
-# MTBL data parsing methods
-# TODO: Delete these methods
-# ---------------------------
-
-@DeprecationWarning
-def read_mtbl_tsv(data_input, params):
-    """
-    MTBL exports TSV data with a header row and multiple chart data rows.
-    Read the header row first, then parse every entry into a dict with the header fields as keys.
-
-    Args:
-        data_input: raw TSV string exported from MTBL
-        params: no params will be used here
-    
-    Returns:
-        Rough processed JSON-like list of dict mtbl_data
-    """
-    lines = data_input.strip().split('\n')
-    if not lines:
-        return []
-    
-    headers = lines[0].split('\t') # Song	Genre	Version	Chart	Difficulty	Level	Achv	Rank	FC/AP	Sync	DX ✦	DX %	DX Score	Chart Constant
-    mtbl_dicts = []
-    for line in lines[1:]:
-        if not line.strip():
-            continue
-        values = line.split('\t')
-        row = {headers[i]: values[i] if i < len(values) else '' for i in range(len(headers))}
-        mtbl_dicts.append(row)
-    
-    return mtbl_dicts
-
-@DeprecationWarning
-def parse_mtbl_tsv(chart_entry: dict, game_type="maimai") -> dict:
-    """
-    Parsing a single entry of MTBL chart data to internal record format.
-
-    Args:
-        chart_entry: converted dict of MTBL chart entry
-    """
-    chart_type = chart_entry.get("Chart", "")
-    chart_type = chart_type_str2value(chart_type.lower())
-
-    level_idx = 0
-    level_label = chart_entry.get("Difficulty", "")
-    if level_label:
-        level_idx = level_label_to_index(game_type, level_label)
-
-    ds = safe_parse_difficulty(chart_entry.get("Chart Constant", "0.0"))
-    song_name = chart_entry.get("Song", "NO_TITLE")
-    song_id = song_name # TODO: 改用哈希id
-    
-    total_dx_score = chart_entry.get("DX Score", "0/0")
-    # 将dx_score以/分隔，取最后一个部分
-    dx_score = int(total_dx_score.split("/")[0])
-    max_dx_score = int(total_dx_score.split("/")[1])
-
-    achivement = chart_entry.get("Achv", "101.0000%").rstrip("%")
-
-    def normalize_flag(value):
-        s = value.lower().replace("+", "p")
-        if s == "-":
-            return "none"
-        return s
-
-    fc_ap = normalize_flag(chart_entry.get("FC/AP", "-"))
-    sync = normalize_flag(chart_entry.get("Sync", "-"))
-    rating = chart_entry.get("Rating", 0)
-    
-    chart_data = {
-        'game_type': game_type,
-        'song_id': song_id,
-        'chart_type': chart_type,
-        'level_index': level_idx,
-        'difficulty': ds,
-        'song_name': song_name,
-        'artist': None,
-        'max_dx_score': max_dx_score,
-        'video_path': None
-    }
-    record = {
-            'chart_data': chart_data,
-            'order_in_archive': 0, # Do not modify order here, will be set when inserting to DB
-            'achievement': achivement,
-            'fc_status': fc_ap,  # use string 'none' for null value, consistent with DB format
-            'fs_status': sync,
-            'dx_score': dx_score,
-            'dx_rating': rating,
-            'chuni_rating': 0,
-            'play_count': 0, # MTBL doesn't export play count
-            'clip_title_name': "", # Keep empty for further editing
-            # Store the original record as JSON string (ensure_ascii=True to escape unicode like the example)
-            'raw_data': json.dumps(chart_entry, ensure_ascii=True)
-        }
-    return record
-
-@DeprecationWarning
-def filter_mtbl_b50(mtbl_data, filter: dict = None):
-    """
-    Filter and parse B50 entries from raw MTBL exported data
-    """
-
-    def mtbl_rating(i, entry):
-        achv = float(entry["Achv"].rstrip("%"))
-        rating = compute_rating(entry["Chart Constant"], achv)
-        return ({**entry, "Rating": rating}, i)
-
-    def best_sort_key(item):
-        entry, original_index = item
-        return (-entry["Rating"], -safe_parse_difficulty(entry["Chart Constant"]), -float(entry["Achv"].rstrip("%")), original_index)
-
-    MTBL_FILTER_FUNCTIONS = {
-        "ap": lambda entry: entry.get("FC/AP", "") in ["AP", "AP+"],
-        "fc": lambda entry: entry.get("FC/AP", "") in ["FC", "FC+", "AP", "AP+"],
-    }
-
-    # Parse filter params
-    if not filter:
-        b15_versions = []
-        best_past_len = 50
-        best_new_len = 0
-        tag = ""
-    else:
-        #print("DEBUG: filter = ", filter)
-        b15_versions = DEFAULT_B15_VERSION[filter.get("b15_versions", -1)]
-        best_past_len = filter.get("best_past_len", 35 if b15_versions else 50)
-        best_new_len = filter.get("best_new_len", 15 if b15_versions else 0)
-        tag = filter.get("tag", "").lower()
-
-    # 如果有筛选需求，排除不满足tag要求的谱面
-    if tag:
-        if tag not in MTBL_FILTER_FUNCTIONS:
-            raise ValueError(f"Error: MTBL数据源仅支持tag为{list(MTBL_FILTER_FUNCTIONS.keys())}的筛选，当前tag: {tag}")
-        tagged_charts = [(i, entry) for i, entry in enumerate(mtbl_data)
-                         if MTBL_FILTER_FUNCTIONS[tag](entry)]
-    else:
-        tagged_charts = list(enumerate(mtbl_data))
-    # 筛选谱面版本，计算rating并排序
-    new_charts = [mtbl_rating(i, entry) for i, entry in tagged_charts
-                  if entry.get("Version", "") in b15_versions] if b15_versions else []
-    past_charts = [mtbl_rating(i, entry) for i, entry in tagged_charts
-                   if (not b15_versions or entry.get("Version", "") not in b15_versions)]
-    new_charts = sorted(new_charts, key=best_sort_key)[:best_new_len]
-    past_charts = sorted(past_charts, key=best_sort_key)[:best_past_len]
-    # 将筛选后的谱面转译为数据库格式，并添加clip_title_name
-    new_records = []
-    for i, (_, entry) in enumerate(new_charts):
-        record = parse_mtbl_tsv(entry)
-        record['clip_title_name'] = f"NewBest{i + 1}"
-        new_records.append(record)
-    past_records = []
-    past_prefix = "PastBest" if best_new_len > 0 else "Best"
-    for i, (_, entry) in enumerate(past_charts):
-        record = parse_mtbl_tsv(entry)
-        record['clip_title_name'] = f"{past_prefix}{i + 1}"
-        past_records.append(record)
-    return new_records + past_records
 
 # -------------------------------------------------
 # Unify data input and filtering (MGBL, MTBL)
@@ -1476,66 +1242,97 @@ def mujs_to_unified(mujs_data: list, params: dict = None) -> list:
 
     return unified
 
-@DeprecationWarning
-def mtbl_to_unified(mtbl_data: list, params: dict = None) -> list:
+def crbl_to_unified(crbl_data: list, params: dict = None) -> list:
     """
-    Unify data format from output of read_mtbl_tsv
+    Unify data format from output of CRBL profile exporting
 
     Args:
-        mtbl_data: list of dict, see read_mtbl_tsv output for example
-        params: params["filter"]["b15_versions"] is required for matching version of b15 songs
+        crbl_data: list of dict (JSON), example:
+            {
+                ...
+                "scores": [
+                    {
+                        "rank": "#1",
+                        "songName": "テレパシ",
+                        "score": "1007514",
+                        "difficulty": "Ultima",
+                        "ds": "14.3",
+                        "difficultyId": 4,
+                        "rating": "16.30",
+                        "isNew": true
+                    },
+                    ...]
+            }
+        params:
+
+    Returns:
+        unified: list of dict, will be used for querying charts and form b50
+    """
+
+    scores = crbl_data.get("scores", [])
+
+    unified = []
+    for score in scores:
+        unified.append({
+            "query": {
+                "title": score.get("songName", ""),
+                "level_index": score.get("difficultyId", "0"),
+                "chart_type": 0 # CHUNI默认为0
+            },
+            "achievement": score.get("score", "1010000"),
+            "fc_status": "none",
+            "fs_status": "none",
+            "is_new": score.get("isNew", False),
+            "ds": score.get("ds", None),
+            "chuni_rating": round(float(score.get("rating")), 2) if score.get("rating") else None,
+            "raw_data": score
+        })
+    return unified
+
+def rin_to_unified(rin_data: list, params: dict = None) -> list:
+    """
+    Unify data format from output of RIN profile exporting
+
+    Args:
+        rin_data: list of dict (JSON)
+        params: 
     
     Returns:
         unified: list of dict, will be used for querying charts and filtering b50
     """
-    def normalize_flag(value):
-        s = value.lower().replace("+", "p")
-        return "none" if s == "-" else s
 
-    filter = params.get("filter", {}) if params else {}
-    b15_versions = DEFAULT_B15_VERSION[filter.get("b15_versions", -1)] if filter else []
-
-    unified = []
-    for entry in mtbl_data:
-        total_dx = entry.get("DX Score", "0/0").split("/")
-        version = entry.get("Version", "")
-        unified.append({
-            "query": {
-                "title": entry.get("Song", ""),
-                "level_index": level_label_to_index("maimai", entry.get("Difficulty", "")),
-                "chart_type": chart_type_str2value(entry.get("Chart", "").lower())
-            },
-            "achievement": entry.get("Achv", "101.0000%").rstrip("%"),
-            "fc_status": normalize_flag(entry.get("FC/AP", "-")),
-            "fs_status": normalize_flag(entry.get("Sync", "-")),
-            "dx_score": int(total_dx[0].strip()),
-            "max_dx_score": int(total_dx[1].strip()),
-            "is_new": version in b15_versions if b15_versions else False,
-            "ds": entry.get("Chart Constant", None),
-            "raw_data": entry
-        })
-    return unified
+    pass
 
 def filter_unified_b50(unified_data: list, filter: dict, game_type="maimai") -> list:
     SONGS_METADATA = load_metadata(game_type)
 
     FILTER_FUNCTIONS = {
         "ap": lambda e: e.get("fc_status", "") in ["ap", "app"],
-        "fc": lambda e: e.get("fc_status", "") in ["fc", "fcp", "ap", "app"],
+        "fc": lambda e: e.get("fc_status", "") in ["fc", "fcp", "ap", "app", "aj", "ajc"], # 兼容CHUNI的aj/ajc标识
+        "aj": lambda e: e.get("fc_status", "") in ["aj", "ajc"],
     }
     negative_dx_rating_support_sort = False # 对于MuNET导出等有B50成绩但找不到曲目信息时，统一化数据时会在dx_rating留下负值标记其相对位置
 
+    extra_data = {}
+
     if not filter:
-        match_b15 = False
+        match_new = False
         best_past_len = 50
         best_new_len = 0
         keep_floor = False
         tag = ""
-    else:
+    elif game_type == "maimai":
         b15_versions = DEFAULT_B15_VERSION[filter.get("b15_versions", -1)]
-        match_b15 = bool(b15_versions)
-        best_past_len = filter.get("best_past_len", 35 if match_b15 else 50)
-        best_new_len = filter.get("best_new_len", 15 if match_b15 else 0)
+        match_new = bool(b15_versions)
+        best_past_len = filter.get("best_past_len", 35 if match_new else 50)
+        best_new_len = filter.get("best_new_len", 15 if match_new else 0)
+        keep_floor = filter.get("keep_floor", False)
+        tag = filter.get("tag", "").lower()
+    elif game_type == "chunithm":
+        n20_versions = DEFAULT_N20_VERSION[filter.get("n20_versions", -1)]
+        match_new = bool(n20_versions)
+        best_past_len = filter.get("best_past_len", 30 if match_new else 50)
+        best_new_len = filter.get("best_new_len", 20 if match_new else 0)
         keep_floor = filter.get("keep_floor", False)
         tag = filter.get("tag", "").lower()
 
@@ -1548,7 +1345,8 @@ def filter_unified_b50(unified_data: list, filter: dict, game_type="maimai") -> 
 
     def to_record(i, entry):
         chart_data = exact_match_chart(entry["query"], SONGS_METADATA, game_type=game_type)
-        if not chart_data:
+        if not chart_data and game_type == "maimai":
+            # 一些maimai数据源的特殊情况
             if entry.get("best_index", None):
                 print(f"Info: 检测到辅助信息 best_index={entry['best_index']}, 正在填补必要信息。")
                 nonlocal negative_dx_rating_support_sort
@@ -1580,7 +1378,8 @@ def filter_unified_b50(unified_data: list, filter: dict, game_type="maimai") -> 
             print(f"Warning: 无法匹配谱面 {entry['query']}，已跳过。")
             return None
         difficulty = entry["ds"] if entry.get("ds") else chart_data["difficulty"]
-        dx_rating = compute_rating(difficulty, float(entry["achievement"]))
+        dx_rating = entry.get("dx_rating", compute_rating(difficulty, float(entry["achievement"])) if game_type == "maimai" else 0)
+        chu_rating = entry.get("chuni_rating", compute_chunithm_rating(difficulty, entry["achievement"]) if game_type == "chunithm" else 0.0)
         record = {
             "chart_data": chart_data,
             "order_in_archive": 0,
@@ -1589,7 +1388,7 @@ def filter_unified_b50(unified_data: list, filter: dict, game_type="maimai") -> 
             "fs_status": entry.get("fs_status", "none"),
             "dx_score": entry.get("dx_score", 0),
             "dx_rating": dx_rating,
-            "chuni_rating": 0,
+            "chuni_rating": chu_rating,
             "play_count": entry.get("play_count", 0),
             "clip_title_name": "", # Fill this later
             "raw_data": json.dumps(entry["raw_data"], ensure_ascii=True)
@@ -1598,17 +1397,30 @@ def filter_unified_b50(unified_data: list, filter: dict, game_type="maimai") -> 
 
     def sort_key(item):
         i, record = item
-        return (-record["dx_rating"], -safe_parse_difficulty(record["chart_data"]["difficulty"]), -float(record["achievement"]), i)
+        if game_type == "maimai":
+            return (-record["dx_rating"], -safe_parse_difficulty(record["chart_data"]["difficulty"]), -float(record["achievement"]), i)
+        if game_type == "chunithm":
+            return (-record["chuni_rating"], -safe_parse_difficulty(record["chart_data"]["difficulty"]), -int(float(record["achievement"])), i)
 
-    new_results = [r for r in (to_record(i, e) for i, e in tagged if e["is_new"]) if r] if match_b15 else []
-    past_results = [r for r in (to_record(i, e) for i, e in tagged if not match_b15 or not e["is_new"]) if r]
+    new_results = [r for r in (to_record(i, e) for i, e in tagged if e["is_new"]) if r] if match_new else []
+    past_results = [r for r in (to_record(i, e) for i, e in tagged if not match_new or not e["is_new"]) if r]
+
+    # Look for more charts on best floors
+    def is_on_floor(rating, cutoff_rating, game_type="maimai"):
+        if game_type == "maimai":
+            return rating == cutoff_rating
+        if game_type == "chunithm":
+            rating = round(rating * 100)
+            cutoff_rating = round(cutoff_rating * 100)
+            return rating == cutoff_rating
+        
+    rating_key = "dx_rating" if game_type == "maimai" else "chuni_rating"
 
     new_results = sorted(new_results, key=sort_key)
-    # Look for more charts on best floors
     if keep_floor and len(new_results) > best_new_len > 0:
-        cutoff_rating = new_results[best_new_len - 1][1]["dx_rating"]
+        cutoff_rating = new_results[best_new_len - 1][1][rating_key]
         keep_new_len = best_new_len
-        while keep_new_len < len(new_results) and new_results[keep_new_len][1]["dx_rating"] == cutoff_rating:
+        while keep_new_len < len(new_results) and is_on_floor(new_results[keep_new_len][1][rating_key], cutoff_rating, game_type):
             keep_new_len += 1
         new_results = new_results[:keep_new_len]
     else:
@@ -1616,9 +1428,9 @@ def filter_unified_b50(unified_data: list, filter: dict, game_type="maimai") -> 
 
     past_results = sorted(past_results, key=sort_key)
     if keep_floor and len(past_results) > best_past_len > 0:
-        cutoff_rating = past_results[best_past_len - 1][1]["dx_rating"]
+        cutoff_rating = past_results[best_past_len - 1][1][rating_key]
         keep_past_len = best_past_len
-        while keep_past_len < len(past_results) and past_results[keep_past_len][1]["dx_rating"] == cutoff_rating:
+        while keep_past_len < len(past_results) and is_on_floor(past_results[keep_past_len][1][rating_key], cutoff_rating, game_type):
             keep_past_len += 1
         past_results = past_results[:keep_past_len]
 
@@ -1645,6 +1457,18 @@ def filter_unified_b50(unified_data: list, filter: dict, game_type="maimai") -> 
         new_results = dx_rating_support_ordering(new_results)
         past_results = dx_rating_support_ordering(past_results)
 
+    # Compute rating for necessary usage
+    if game_type == "maimai":
+        best_new_rating = sum(r[1]["dx_rating"] for r in new_results[:best_new_len]) if new_results else 0
+        best_past_rating = sum(r[1]["dx_rating"] for r in past_results[:best_past_len]) if past_results else 0
+        extra_data["rating"] = best_new_rating + best_past_rating
+    elif game_type == "chunithm":
+        avg_new_rating = sum(r[1]["chuni_rating"] for r in new_results[:best_new_len]) / best_new_len if new_results else 0
+        avg_past_rating = sum(r[1]["chuni_rating"] for r in past_results[:best_past_len]) / best_past_len if past_results else 0
+        from math import floor
+        avg_rating = (best_new_len * round(avg_new_rating, 4) + best_past_len * round(avg_past_rating, 4)) / 50
+        extra_data["rating"] = floor(round(avg_rating, 4) * 100) / 100.0
+
     record_data = []
     best_prefix = "Best" if not tag else tag.upper()
     new_prefix = "New"
@@ -1656,7 +1480,7 @@ def filter_unified_b50(unified_data: list, filter: dict, game_type="maimai") -> 
         record["clip_title_name"] = f"{past_prefix}{best_prefix}{clip_number + 1}"
         record_data.append(record)
 
-    return record_data
+    return record_data, extra_data
 
 
 # --------------------------------------
