@@ -1,8 +1,5 @@
----
-name: mai-gen-develop
-description: 需要对mai-gen-videob50项目进行深入开发时，阅读本文档以了解项目架构、数据流、关键模块与函数，从而节约遍历整个项目的token。
-
----
+mai-gen-develop
+需要对mai-gen-videob50项目进行深入开发时，要求Agent阅读本文档以了解项目架构、数据流、关键模块与函数，从而节约遍历整个项目的token。
 
 # 项目概述
 

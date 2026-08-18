@@ -1433,6 +1433,8 @@ def filter_unified_b50(unified_data: list, filter: dict, game_type="maimai") -> 
         while keep_past_len < len(past_results) and is_on_floor(past_results[keep_past_len][1][rating_key], cutoff_rating, game_type):
             keep_past_len += 1
         past_results = past_results[:keep_past_len]
+    else:
+        new_results = new_results[:best_new_len]
 
     def dx_rating_support_ordering(results):
         """当在 dx_rating 标记了负值作为辅助排序序号使用, 保证成绩的相对位置不变"""

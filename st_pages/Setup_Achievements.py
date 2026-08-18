@@ -104,6 +104,10 @@ def view_b50_data(username: str, archive_name: str):
                 record['level_label'] = level_label_list[level_index]
             else:
                 record['level_label'] = "UNKNOWN"
+
+        if game_type == "maimai":
+            if 'ra' not in record and 'dx_rating' in record:
+                record['ra'] = record['dx_rating']
         
         # 对于chunithm，确保字段名正确
         if game_type == "chunithm":
