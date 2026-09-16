@@ -380,7 +380,7 @@ class MaiImageGenerater:
                 else:
                     PlayCount = 0
                 if PlayCount >= 1:
-                    with Image.open(f"{self.image_root_path}/Playcount/PlayCountBase.png") as PlayCountBase:
+                    with Image.open(f"{self.image_root_path}/PlayCount/PlayCountBase.png") as PlayCountBase:
                         TempImage.paste(PlayCountBase, (1170, 420), PlayCountBase)
                     TextCentralPosition = (1435, 458)
                     PlayCountText = str(PlayCount)
@@ -750,7 +750,7 @@ class ChuniImageGenerater:
                 else:
                     play_count = 0
                 if play_count >= 1:
-                    with Image.open(f"{self.image_root_path}/Playcount/PlayCountBase.png") as PlayCountBase:
+                    with Image.open(f"{self.image_root_path}/PlayCount/PlayCountBase.png") as PlayCountBase:
                         _temp_img.paste(PlayCountBase, (1177, 846), PlayCountBase)
                     text_center_pos = (1359, 865)
                     _temp_img = self.TextDraw(_temp_img, str(play_count), text_center_pos,

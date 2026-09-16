@@ -822,7 +822,7 @@ def render_all_video_clips(game_type: str, style_config: dict, main_configs: lis
                            video_fps: int = 60,
                            intro_configs: list = None, ending_configs: list = None,
                            auto_add_transition=True, trans_time=1, force_render=False,
-                           use_gpu_accel: bool = None, progress_callback=None):
+                           use_gpu_accel: bool = None, progress_callback=None, taichi_backend=None):
     """ 渲染所有视频片段，并按照clip_title_name输出到指定路径文件。
         当 use_gpu_accel=True 时使用 Taichi GPU + FFmpeg 硬件编码加速。
         当 use_gpu_accel=None 时从 global_config 读取配置。
@@ -835,7 +835,10 @@ def render_all_video_clips(game_type: str, style_config: dict, main_configs: lis
     if use_gpu_accel:
         try:
             from utils.TaichiAccel import init_taichi, is_available
-            init_taichi()
+            if taichi_backend is None:
+                from utils.PageUtils import read_global_config
+                taichi_backend = read_global_config().get('TAICHI_BACKEND', 'auto')
+            init_taichi(taichi_backend)
             if is_available():
                 from utils.AccelRenderer import render_all_clips_accel
                 print("=" * 60)
@@ -949,7 +952,7 @@ def render_complete_full_video(
         video_fps: int = 60,
         video_trans_enable: bool = True, video_trans_time: float = 1.0, full_last_clip: bool = False,
         use_gpu_accel: bool = None, use_baked_fade: bool = None, progress_callback=None,
-        force_render: bool = False):
+        force_render: bool = False, taichi_backend=None):
     """ 根据完整配置合成完整视频，并保存到指定路径的文件。
         当 use_gpu_accel=True 时，先用 GPU 加速渲染所有片段，再用 FFmpeg 拼接。
         use_baked_fade: 已废弃，仅为兼容旧调用保留。GPU 路线默认使用低内存 transition island + concat。
@@ -963,7 +966,10 @@ def render_complete_full_video(
     if use_gpu_accel:
         try:
             from utils.TaichiAccel import init_taichi, is_available
-            init_taichi()
+            if taichi_backend is None:
+                from utils.PageUtils import read_global_config
+                taichi_backend = read_global_config().get('TAICHI_BACKEND', 'auto')
+            init_taichi(taichi_backend)
             if is_available():
                 from utils.AccelRenderer import render_all_clips_accel, detect_hw_encoder
                 print("=" * 60)

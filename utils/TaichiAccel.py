@@ -2,13 +2,18 @@
 TaichiAccel.py - Taichi GPU 加速模块
 
 使用 Taichi 实现 GPU 加速的图像合成操作，替代 MoviePy 逐帧 CPU 处理。
-支持自动选择最佳 GPU 后端（CUDA > Vulkan > Metal > OpenGL > CPU）。
+按操作系统选择可用后端；Linux 先在独立进程验证实际合成能力。
 """
 
 import numpy as np
 import traceback
 import threading
 import queue as _queue_module
+import atexit
+import platform
+from pathlib import Path
+import subprocess
+import sys
 
 try:
     import taichi as ti
@@ -17,6 +22,8 @@ except ImportError:
     TAICHI_AVAILABLE = False
 
 _ti_initialized = False
+_init_lock = (ti.__dict__.setdefault('_mgv_init_lock', threading.RLock())
+              if TAICHI_AVAILABLE else threading.RLock())
 
 
 # ============================================================================
@@ -31,10 +38,8 @@ class _TaichiWorkerThread(threading.Thread):
     所有 Taichi 内核调用通过它分发，确保线程亲和性。
     线程引用存储在 ti 模块上，跨 Streamlit reimport 存活。
     """
-    daemon = True
-
     def __init__(self):
-        super().__init__(name="TaichiGPUWorker")
+        super().__init__(name="TaichiGPUWorker", daemon=True)
         self._task_queue = _queue_module.Queue()
 
     def run(self):
@@ -86,95 +91,159 @@ def _submit_to_worker(func, *args, **kwargs):
     return func(*args, **kwargs)
 
 
-def init_taichi(arch=None):
-    """
-    初始化 Taichi 运行时，自动选择最佳 GPU 后端。
-    如果 GPU 不可用则回退到 CPU。
+def get_backend_name():
+    """The actual initialized backend, not a requested fallback alias."""
+    return getattr(ti, '_mgv_backend', None) if TAICHI_AVAILABLE else None
 
-    所有 ti.init() 调用通过专用工作线程执行，确保 CUDA 上下文始终
-    绑定到同一线程，避免 Streamlit rerun 时因线程变更导致的
-    CUDA_ERROR_INVALID_CONTEXT。
+
+def _backend_name(arch):
+    if arch is None:
+        return 'auto'
+    name = str(arch).lower().removeprefix('arch.')
+    name = 'cpu' if name == 'x64' else name
+    if name not in ('auto', 'cuda', 'vulkan', 'metal', 'opengl', 'cpu'):
+        raise ValueError(f"不支持的 Taichi 后端: {arch}")
+    return name
+
+
+def _probe_backend(name, timeout=45):
+    print(f"[TaichiAccel] 正在测试 {name.upper()} 实际合成能力（最多 {timeout} 秒）", flush=True)
+    command = [sys.executable, str(Path(__file__).with_name('taichi_probe.py')), name]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True,
+                                encoding='utf-8', errors='replace', timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return False, f"{name} 实际合成测试超时（{timeout} 秒）"
+    except OSError as exc:
+        return False, str(exc)
+    if result.returncode == 0 and f'TAICHI_PROBE_OK={name}' in result.stdout.splitlines():
+        return True, ''
+    return False, (result.stderr or result.stdout)[-1500:]
+
+
+def init_taichi(arch=None):
+    # Streamlit sessions can enter concurrently while a Linux probe is running.
+    # Recheck the active backend under the same lock before ever calling ti.init.
+    with _init_lock:
+        return _init_taichi_locked(arch)
+
+
+def _init_taichi_locked(arch=None):
+    """Keep CUDA thread affinity; probe Linux GPU kernels before selecting one.
+
+    Accepts legacy ti.Arch values and persisted auto/cuda/vulkan names. Changing
+    an already initialized backend requires restarting the application.
     """
     global _ti_initialized
-
-    # 快速路径：本轮已初始化
-    if _ti_initialized:
-        return True
-
+    requested = _backend_name(arch)
     if not TAICHI_AVAILABLE:
-        print("[TaichiAccel] Warning: taichi 未安装，GPU 加速不可用")
         return False
-
-    # 跨 reimport 持久化标记（Streamlit 页面刷新时模块被重新加载，
-    # 但 ti 模块常驻 sys.modules，其属性不受影响）
+    current = get_backend_name()
     if getattr(ti, '_mgv_ti_initialized', False):
+        if requested != 'auto' and requested != current:
+            raise RuntimeError(f"当前已使用 {current}，切换为 {requested} 请先重新启动应用。")
         _ti_initialized = True
-        print("[TaichiAccel] ✓ 复用已有的 Taichi 运行时")
         return True
-
-    # 在工作线程上执行初始化，确保 CUDA 上下文绑定到该线程
-    try:
-        result = _submit_to_worker(_do_init_taichi, arch)
-    except Exception as e:
-        print(f"[TaichiAccel] Warning: 初始化异常: {e}")
-        result = False
-    _ti_initialized = result
-    return result
-
-
-def _do_init_taichi(arch=None):
-    """实际的 Taichi 初始化逻辑 ——  在工作线程上执行。"""
-    if arch is not None:
-        try:
-            ti.init(arch=arch)
-            ti._mgv_ti_initialized = True
-            print(f"[TaichiAccel] 已使用指定后端初始化: {arch}")
-            return True
-        except Exception:
-            pass
-
-    import platform
-    if platform.system() == "Darwin":
-        backends = [
-            (ti.metal, "Metal"),
-            (ti.vulkan, "Vulkan"),
-            (ti.cpu, "CPU"),
-        ]
+    system = platform.system()
+    if requested != 'auto':
+        candidates = [requested]
+    elif system == 'Darwin':
+        candidates = ['metal', 'vulkan', 'cpu']
+    elif system == 'Linux':
+        candidates = ['cuda', 'vulkan']
     else:
-        backends = [
-            (ti.cuda, "CUDA"),
-            (ti.vulkan, "Vulkan"),
-            (ti.opengl, "OpenGL"),
-            (ti.cpu, "CPU"),
-        ]
-    for backend_arch, name in backends:
-        try:
-            ti.init(arch=backend_arch)
-            try:
-                actual_arch = ti.lang.impl.current_cfg().arch
-            except AttributeError:
-                actual_arch = backend_arch
-            if actual_arch != backend_arch and backend_arch != ti.cpu:
-                ti.reset()
-                continue
-            actual_name = str(actual_arch).replace("Arch.", "").upper()
-            ti._mgv_ti_initialized = True
-            print(f"[TaichiAccel] ✓ 使用 {actual_name} 后端初始化成功")
-            return True
-        except Exception:
-            try:
-                ti.reset()
-            except Exception:
-                pass
-            continue
+        # Preserve the Windows automatic backend order.
+        candidates = ['cuda', 'vulkan', 'opengl', 'cpu']
+    if system == 'Linux':
+        if not hasattr(ti, '_mgv_probe_results'):
+            ti._mgv_probe_results = {}
+        for name in candidates:
+            if name not in ti._mgv_probe_results:
+                ti._mgv_probe_results[name] = _probe_backend(name)
+            ok, reason = ti._mgv_probe_results[name]
+            if ok:
+                _ti_initialized = _submit_to_worker(_do_init_taichi, [name])
+                if _ti_initialized:
+                    return True
+            else:
+                print(f"[TaichiAccel] {name} 不可用: {reason}")
+        candidates = []
+    if not candidates:
+        if requested != 'auto':
+            raise RuntimeError(f"所选 {requested} 后端未通过实际合成测试，请选择其他后端。")
+        print('[TaichiAccel] 没有通过实际合成测试的 GPU 后端，将使用 CPU 渲染')
+        return False
+    _ti_initialized = _submit_to_worker(_do_init_taichi, candidates)
+    if not _ti_initialized and requested != 'auto':
+        raise RuntimeError(f"无法初始化所选 {requested} 后端，请选择其他后端。")
+    return _ti_initialized
 
-    print("[TaichiAccel] Warning: 所有后端均初始化失败")
+
+def _do_init_taichi(candidates):
+    """Only called on the persistent GPU worker thread."""
+    for name in candidates:
+        try:
+            arch = getattr(ti, name)
+            ti.init(arch=arch, enable_fallback=False)
+            if ti.lang.impl.current_cfg().arch != arch:
+                raise RuntimeError('Taichi selected a different backend')
+            ti._mgv_ti_initialized = True
+            ti._mgv_backend = name
+            if not getattr(ti, '_mgv_shutdown_registered', False):
+                atexit.register(shutdown_taichi)
+                ti._mgv_shutdown_registered = True
+            print(f"[TaichiAccel] 使用 {name.upper()} 后端初始化成功")
+            return True
+        except Exception as exc:
+            print(f"[TaichiAccel] {name} 初始化失败: {exc}")
+            ti.reset()
     return False
 
 
+def shutdown_taichi():
+    """Destroy CUDA on its owner thread, including at normal interpreter exit."""
+    global _ti_initialized
+    if not TAICHI_AVAILABLE:
+        return
+    worker = getattr(ti, '_mgv_worker', None)
+    if worker is not None and worker.is_alive():
+        done = threading.Event()
+        holder = {}
+        worker._task_queue.put((ti.reset, (), {}, holder, done))
+        if not done.wait(5):
+            return  # Never attempt to reset a hung driver from a different thread.
+        worker._task_queue.put(None)
+        worker.join(timeout=5)
+    ti._mgv_worker = None
+    ti._mgv_ti_initialized = False
+    ti._mgv_backend = None
+    _ti_initialized = False
+
+
 def is_available():
-    """检查 Taichi 加速是否可用"""
     return TAICHI_AVAILABLE and _ti_initialized
+
+
+def _probe_main(name):
+    """Run exactly our uint8 video + alpha layers kernel, not just ti.init."""
+    global _ti_initialized
+    try:
+        if not TAICHI_AVAILABLE or name not in ('cuda', 'vulkan', 'metal', 'opengl', 'cpu'):
+            raise RuntimeError('Unsupported or unavailable Taichi backend')
+        _ti_initialized = _submit_to_worker(_do_init_taichi, [name])
+        if not _ti_initialized or get_backend_name() != name:
+            raise RuntimeError('Requested backend was not initialized')
+        bg = np.full((16, 16, 3), 100, dtype=np.uint8)
+        layer = np.zeros((4, 4, 4), dtype=np.uint8)
+        video = np.full((8, 8, 3), 200, dtype=np.uint8)
+        compositor = FrameCompositor(bg, layer, layer, (0, 0), (0, 0), output_size=(16, 16))
+        for _ in range(3):
+            frame = compositor.composite(video)
+            if not np.all(frame[0, 0] == 200) or not np.all(frame[-1, -1] == 80):
+                raise RuntimeError('Incorrect pixels from compositor kernel')
+    finally:
+        shutdown_taichi()
+    print(f'TAICHI_PROBE_OK={name}', flush=True)
 
 
 # ============================================================================

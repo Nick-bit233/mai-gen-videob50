@@ -8,6 +8,14 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 ## 更新速览
 
+`v1.2.6` 更新
+
+- 修复 Linux 下 AV1 谱面视频无法解码、生成黑屏却提示成功的问题；依赖固定为 OpenCV 4.14.0.94、NumPy 2.2.6、MoviePy 2.2.1。
+- 保留 Taichi GPU 片段合成，增加 GPU 后端选择。Linux 在独立进程中测试实际合成能力，CUDA 不可用时继续尝试 Vulkan；切换已启用的后端需重启应用。
+- 缓存重复读取的视频帧，减少 30fps 素材输出 60fps 时的重复定位开销。解码或编码失败时终止片段并清理临时文件，保留此前生成的成品。
+- 修复舞萌和中二成绩图片中游玩次数素材的大小写路径错误（#124）。
+- 新版 Windows x64 runtime 包已包含 Taichi 1.7.4 和 FFmpeg/FFprobe，无需另行安装 GPU 组件。拼接仍优先尝试硬件编码，失败时回退软件编码。
+
 `v1.2.5` 开发版本更新
 
 - ✨ **maimai 默认视频源启用数据库 Metadata**：现在maimai模式下，不再要求登录或配置 Bilibili 搜索，对于所有Master/Re:Master谱面和所有11+以上的Expert谱面可自动查找匹配视频链接，此功能可避免因登录失败或搜索错误而产生的视频寻找困难问题。YouTube 搜索和中二模式暂未支持数据库 Metadata，仍然保持旧版方案。
@@ -52,7 +60,7 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 - 🛠️ 修复了Windows路径中包含中文时，`cv2.imread()` 无法正确读取文件的问题
 - 🎚️ 现在允许设置输出视频的帧率，默认输出视频帧率提高到60fps
 
-注意：v1.2及以上版本均依赖新运行库，请将新版本runtime目录的所有文件复制并覆盖原有文件。GPU 加速需要安装 `taichi` 库（`pip install taichi`），此项不会自动安装，请按照主页引导进行安装，未安装时将自动使用 CPU 渲染。
+注意：升级到 v1.2.6 时请使用配套运行环境。先将原 `runtime` 文件夹改名留存，再解压新版运行环境包的全部内容到应用根目录，避免新旧 DLL 和依赖混用。v1.2.6 runtime 已包含 Taichi；源码安装可使用 `python -m pip install -r requirements-gpu.txt`，不安装 GPU 可选组件时仍可使用 CPU 渲染。
 
 如果使用源代码安装，请注意v1.2版本推荐使用ffmpeg版本==7.1，ffmpeg版本可能影响GPU加速时的硬件编码器兼容性。
 
@@ -162,7 +170,7 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
     ```bash
     pip install -r requirements.txt
     ```
-    > 注意，如果你使用linux系统，在登陆b站过程中需要弹出tkinter窗口。而在linux的python没有预装`tk`库，请自行使用`sudo apt-get install python3-tk`安装。
+    > GPU 加速推荐 Python 3.10–3.12，使用 `python -m pip install -r requirements-gpu.txt` 安装已验证的组合。Linux 的 AV1 解码需要 OpenCV 4.14.0.94；不要将其自动升级到 5.0.0.93。
 
 3. 安装ffmpeg（如果从Release包中下载，则无需此步骤）：
 

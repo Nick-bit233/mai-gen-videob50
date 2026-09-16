@@ -1,6 +1,7 @@
 import streamlit as st
 import traceback
 import os
+import platform
 
 from datetime import datetime
 from utils.PageUtils import load_style_config, open_file_explorer, read_global_config, write_global_config, get_game_type_text
@@ -125,9 +126,25 @@ with st.container(border=True):
         value=_gpu_accel and st.session_state.taichi_accel_installed,
         disabled=not st.session_state.taichi_accel_installed,
         help="使用 Taichi GPU 合成 + FFmpeg 硬件编码加速视频渲染。如果无法勾选，请在主页检查是否安装Taichi加速组件。"
-             "启用后将自动检测最佳 GPU 后端（CUDA/Vulkan/Metal）和硬件编码器（NVENC/VideoToolbox 等）。"
+             "启用后将自动选择可用 GPU 后端（CUDA/Vulkan/Metal）和硬件编码器（NVENC/VideoToolbox 等）。"
     )
     gpu_accel = gpu_accel and st.session_state.taichi_accel_installed
+    backend_options = ['auto', 'metal', 'vulkan'] if platform.system() == 'Darwin' else ['auto', 'cuda', 'vulkan']
+    saved_backend = G_config.get('TAICHI_BACKEND', 'auto')
+    taichi_backend = st.selectbox(
+        'GPU 后端', backend_options,
+        index=backend_options.index(saved_backend) if saved_backend in backend_options else 0,
+        format_func=lambda name: '自动选择（推荐）' if name == 'auto' else name.upper(),
+        disabled=not gpu_accel,
+        help='Linux 会先测试实际合成能力。CUDA 不稳定时可以选择 Vulkan；切换已启用的后端需要重新启动应用。',
+    )
+    if gpu_accel:
+        from utils.TaichiAccel import get_backend_name
+        active_backend = get_backend_name()
+        if active_backend:
+            st.caption(f'当前已启用：{active_backend.upper()}')
+            if taichi_backend not in ('auto', active_backend):
+                st.warning('更换 GPU 后端后，请重新启动应用再生成视频。')
 
 v_mode_index = options.index(mode_str)
 v_bitrate_kbps = f"{v_bitrate}k"
@@ -164,6 +181,7 @@ def save_video_render_config():
     G_config['VIDEO_TRANS_ENABLE'] = trans_enable
     G_config['VIDEO_TRANS_TIME'] = trans_time
     G_config['USE_GPU_ACCEL'] = gpu_accel
+    G_config['TAICHI_BACKEND'] = taichi_backend
     write_global_config(G_config)
     st.toast("配置已保存！")
 
@@ -212,6 +230,7 @@ if st.button("开始生成视频", use_container_width=True, type="primary"):
                         trans_time=trans_time,
                         force_render=force_render_clip,
                         use_gpu_accel=gpu_accel,
+                        taichi_backend=taichi_backend,
                         progress_callback=progress_cb
                     )
                     if not gpu_accel:
@@ -241,10 +260,13 @@ if st.button("开始生成视频", use_container_width=True, type="primary"):
                         video_trans_time=trans_time,
                         full_last_clip=False,
                         use_gpu_accel=gpu_accel,
+                        taichi_backend=taichi_backend,
                         progress_callback=progress_cb,
                         force_render=force_render_clip
                     )
-                    st.write(f"【{output_info['info']}")
+                    if output_info['status'] != 'success':
+                        raise RuntimeError(output_info['info'])
+                    st.write(output_info['info'])
             st.success("完整视频生成结束！点击下方按钮打开视频所在文件夹")
         except Exception as e:
             st.error(f"完整视频生成失败，错误: {e}，转到控制台查看详情")
@@ -291,10 +313,13 @@ with st.expander("展开其他视频生成方案"):
                             video_trans_time=trans_time,
                             full_last_clip=False,
                             use_gpu_accel=True,
+                            taichi_backend=taichi_backend,
                             progress_callback=progress_cb,
                             force_render=force_render_clip
                         )
-                        st.write(f"【{output_info['info']}")
+                        if output_info['status'] != 'success':
+                            raise RuntimeError(output_info['info'])
+                        st.write(output_info['info'])
                     st.success("GPU低内存模式生成完成！点击上方按钮打开文件夹查看视频")
                 except Exception as e:
                     st.error(f"GPU低内存模式生成失败，错误: {e}，转到控制台查看详情")

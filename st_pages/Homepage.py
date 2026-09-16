@@ -146,7 +146,7 @@ with col_header2:
                 st.session_state.theme = "Verse"
                 change_theme(THEME_COLORS["chunithm"]["Verse"])
     G_type = st.session_state.get('game_type', 'maimai')
-    st.caption(f"当前版本 v1.2.5 |\
+    st.caption(f"当前版本 v1.2.6 |\
                Created by: [Nickbit](https://github.com/Nick-bit233), \
                Thanks to: [MetallicAllex](https://github.com/MetallicAllex), \
                [YelonNotXTD](https://github.com/YelonNotXTD), \
@@ -245,11 +245,11 @@ with st.container(border=False):
                             python_executable = sys.executable
                     else:
                         python_executable = sys.executable
-                    subprocess.check_call([python_executable, "-m", "pip", "install", "taichi[all]"])
+                    subprocess.check_call([python_executable, "-m", "pip", "install", "taichi==1.7.4"])
                     st.success("✅ Taichi加速库安装成功！请重新启动应用以生效。")
                 except Exception as e:
                     st.error(f"❌ 安装失败: {e}")
-        st.markdown(f"> 如果您是从源代码手动部署，运行下列命令安装依赖，然后重启应用：\n\n```bash\n{sys.executable} -m pip install taichi[all]\n```")
+        st.markdown(f"> 如果您是从源代码手动部署，运行下列命令安装依赖，然后重启应用：\n\n```bash\n{sys.executable} -m pip install -r requirements-gpu.txt\n```")
     else:
         st.success("✅ GPU加速组件已安装，您已可以在合成视频前启用GPU加速！", icon="⚡")
 

@@ -10,12 +10,14 @@ import shutil
 import subprocess
 import traceback
 import time
+import tempfile
 import numpy as np
 import cv2
 from PIL import Image
 from typing import Optional, Tuple, List
 
 from utils.PageUtils import remove_invalid_chars
+from utils.video_frames import VideoFrameReader
 
 
 # ============================================================================
@@ -182,57 +184,6 @@ def _measure_audio_rms(audio_path: str, start: float = 0, duration: float = None
 # 视频帧读取工具
 # ============================================================================
 
-class VideoFrameReader:
-    """使用 OpenCV 读取视频帧，支持顺序读取模式避免随机 seek 开销"""
-
-    def __init__(self, video_path: str):
-        self.path = video_path
-        self.cap = cv2.VideoCapture(video_path)
-        if not self.cap.isOpened():
-            raise IOError(f"无法打开视频: {video_path}")
-        self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 30.0
-        self.frame_count = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        self.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        self.duration = self.frame_count / self.fps if self.fps > 0 else 0
-        self._current_pos = 0
-
-    def seek_to(self, time_sec: float):
-        """定位到指定时间点，用于开始顺序读取前的初始定位"""
-        frame_idx = int(time_sec * self.fps)
-        frame_idx = max(0, min(frame_idx, self.frame_count - 1))
-        self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-        self._current_pos = frame_idx
-
-    def read_next(self) -> Optional[np.ndarray]:
-        """顺序读取下一帧 (RGB uint8)，避免随机 seek 开销"""
-        ret, frame = self.cap.read()
-        if ret:
-            self._current_pos += 1
-            return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        return None
-
-    def get_frame(self, time_sec: float) -> Optional[np.ndarray]:
-        """获取指定时间点的帧 (RGB uint8)，需要随机访问时使用"""
-        frame_idx = int(time_sec * self.fps)
-        frame_idx = max(0, min(frame_idx, self.frame_count - 1))
-        if frame_idx != self._current_pos:
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-            self._current_pos = frame_idx
-        ret, frame = self.cap.read()
-        if ret:
-            self._current_pos += 1
-            return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        return None
-
-    def close(self):
-        if self.cap:
-            self.cap.release()
-
-    def __del__(self):
-        self.close()
-
-
 # ============================================================================
 # FFmpeg 写入管线
 # ============================================================================
@@ -248,6 +199,8 @@ class FFmpegWriter:
         self.output_path = output_path
         self.width = width
         self.height = height
+        self.process = None
+        self._stderr = tempfile.TemporaryFile()
 
         if codec is None:
             codec, _ = detect_hw_encoder()
@@ -302,36 +255,71 @@ class FFmpegWriter:
 
         cmd += [output_path]
         
-        self.process = subprocess.Popen(
-            cmd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
-        )
+        try:
+            self.process = subprocess.Popen(
+                cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                stderr=self._stderr,
+            )
+        except Exception:
+            self._stderr.close()
+            raise
 
     def write_frame(self, frame: np.ndarray):
         """写入一帧 RGB uint8 数据"""
+        if self.process is None or self.process.stdin.closed:
+            raise RuntimeError("视频编码器已关闭")
         if self.process.stdin:
             # 确保帧尺寸正确
             if frame.shape[0] != self.height or frame.shape[1] != self.width:
                 frame = cv2.resize(frame, (self.width, self.height))
             if frame.shape[2] == 4:
                 frame = frame[:, :, :3]
-            self.process.stdin.write(frame.astype(np.uint8).tobytes())
+            try:
+                self.process.stdin.write(frame.astype(np.uint8).tobytes())
+            except OSError as exc:
+                # Surface FFmpeg's actual diagnostic instead of just BrokenPipe/EINVAL.
+                self.close()
+                raise RuntimeError(f"视频编码管道写入失败: {exc}") from exc
 
     def close(self):
-        if self.process.stdin:
-            self.process.stdin.close()
-        self.process.wait()
-        if self.process.returncode != 0:
-            stderr = self.process.stderr.read().decode() if self.process.stderr else ""
-            print(f"[FFmpegWriter] Warning: FFmpeg 返回码 {self.process.returncode}")
-            if stderr:
-                print(f"[FFmpegWriter] stderr: {stderr[:500]}")
+        if self.process is None:
+            return
+        try:
+            pipe_error = None
+            try:
+                self.process.stdin.close()
+            except OSError as exc:
+                pipe_error = exc
+            code = self.process.wait(timeout=60)
+            if code or pipe_error:
+                self._stderr.seek(0, os.SEEK_END)
+                self._stderr.seek(max(0, self._stderr.tell() - 4000))
+                error = self._stderr.read().decode('utf-8', errors='replace')
+                raise RuntimeError(f"视频编码失败（{code}）: {error or pipe_error}")
+        finally:
+            self.abort()
+
+    def abort(self):
+        """Release a failed or completed encoder without committing its output."""
+        if self.process is not None:
+            if self.process.poll() is None:
+                self.process.terminate()
+                try:
+                    self.process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self.process.kill()
+                    self.process.wait(timeout=5)
+            try:
+                self.process.stdin.close()
+            except (OSError, ValueError):
+                pass
+            self.process = None
+        if hasattr(self, '_stderr'):
+            self._stderr.close()
 
     def __del__(self):
         try:
-            self.close()
+            self.abort()
         except Exception:
             pass
 
@@ -339,6 +327,24 @@ class FFmpegWriter:
 # ============================================================================
 # 加速渲染 API
 # ============================================================================
+
+def _temporary_output(output_path):
+    fd, path = tempfile.mkstemp(prefix='.render-', suffix='.mp4',
+                                dir=os.path.dirname(os.path.abspath(output_path)))
+    os.close(fd)
+    return path
+
+
+def _cleanup_render(writer, readers, temporary_output):
+    try:
+        if writer is not None:
+            writer.abort()
+    finally:
+        for reader in readers:
+            if reader is not None:
+                reader.close()
+        if temporary_output is not None and os.path.exists(temporary_output):
+            os.remove(temporary_output)
 
 def _prepare_bg_frame(bg_path: str, resolution: tuple, is_video: bool = False,
                       reader: 'VideoFrameReader' = None, time_sec: float = 0) -> np.ndarray:
@@ -500,6 +506,8 @@ def render_segment_accel(
     if not ti_available():
         return {"status": "error", "info": "Taichi GPU 加速不可用"}
 
+    writer = video_reader = bg_video_reader = None
+    temporary_output = None
     try:
         duration = clip_config.get('duration', 10)
         total_frames = int(duration * fps)
@@ -621,8 +629,9 @@ def render_segment_accel(
                 print(f"[AccelRenderer] 音频均衡: {clip_name} RMS={measured_rms:.1f}dB, 调整={volume_adjust_db:+.1f}dB")
 
         # === FFmpeg 写入器 ===
+        temporary_output = _temporary_output(output_path)
         writer = FFmpegWriter(
-            output_path, resolution[0], resolution[1],
+            temporary_output, resolution[0], resolution[1],
             fps=fps, codec=codec, bitrate=bitrate,
             audio_path=audio_path, audio_start=audio_start, audio_duration=duration,
             audio_fade_in=fade_in, audio_fade_out=fade_out,
@@ -693,12 +702,16 @@ def render_segment_accel(
         if bg_video_reader:
             bg_video_reader.close()
 
+        os.replace(temporary_output, output_path)
+        temporary_output = None
         print(f"[AccelRenderer] ✓ 渲染完成: {clip_name}")
         return {"status": "success", "info": f"GPU加速渲染 {clip_name} 完成"}
 
     except Exception as e:
         print(f"[AccelRenderer] Error: {traceback.format_exc()}")
         return {"status": "error", "info": f"GPU渲染失败: {str(e)}"}
+    finally:
+        _cleanup_render(writer, (video_reader, bg_video_reader), temporary_output)
 
 
 def render_info_segment_accel(
@@ -721,6 +734,8 @@ def render_info_segment_accel(
     clip_name = clip_config.get('clip_title_name', '片段')
     print(f"[AccelRenderer] 正在渲染信息片段: {clip_name}")
 
+    writer = bg_reader = None
+    temporary_output = None
     try:
         duration = clip_config.get('duration', 5)
         total_frames = int(duration * fps)
@@ -774,8 +789,9 @@ def render_info_segment_accel(
             if abs(volume_adjust_db) > 0.5:
                 print(f"[AccelRenderer] 音频均衡: {clip_name} RMS={measured_rms:.1f}dB, 调整={volume_adjust_db:+.1f}dB")
 
+        temporary_output = _temporary_output(output_path)
         writer = FFmpegWriter(
-            output_path, resolution[0], resolution[1],
+            temporary_output, resolution[0], resolution[1],
             fps=fps, codec=codec, bitrate=bitrate,
             audio_path=intro_bgm_path, audio_start=0, audio_duration=duration,
             audio_fade_in=fade_in, audio_fade_out=fade_out,
@@ -786,23 +802,11 @@ def render_info_segment_accel(
         fade_in_frames = int(fade_in * fps) if fade_in > 0 else 0
         fade_out_frames = int(fade_out * fps) if fade_out > 0 else 0
 
-        # 使用顺序读取模式
-        bg_reader.seek_to(0)
-
         for frame_idx in range(total_frames):
             t = frame_idx / fps
-            bg_t = t % bg_reader.duration if bg_reader.duration > 0 else 0
-            # 循环播放背景视频时需要 seek 回起始点
-            if frame_idx > 0 and bg_t < (frame_idx - 1) / fps % bg_reader.duration:
-                bg_reader.seek_to(bg_t)
-            bg_frame = bg_reader.read_next()
-            if bg_frame is None:
-                bg_reader.seek_to(bg_t)
-                bg_frame = bg_reader.read_next()
-            if bg_frame is None:
-                bg_frame = np.zeros((resolution[1], resolution[0], 3), dtype=np.uint8)
-            else:
-                bg_frame = cv2.resize(bg_frame, resolution)
+            bg_t = t % bg_reader.duration
+            # Match source timestamps when input/output frame rates differ.
+            bg_frame = cv2.resize(bg_reader.get_frame(bg_t), resolution)
 
             if ti_available():
                 bg_frame = multiply_brightness(bg_frame, 0.75)
@@ -846,12 +850,16 @@ def render_info_segment_accel(
                 progress_callback(frame_idx + 1, total_frames, clip_name)
         writer.close()
         bg_reader.close()
+        os.replace(temporary_output, output_path)
+        temporary_output = None
         print(f"[AccelRenderer] ✓ 信息片段渲染完成: {clip_name}")
         return {"status": "success", "info": f"渲染 {clip_name} 完成"}
 
     except Exception as e:
         print(f"[AccelRenderer] Error: {traceback.format_exc()}")
         return {"status": "error", "info": f"渲染失败: {str(e)}"}
+    finally:
+        _cleanup_render(writer, (bg_reader,), temporary_output)
 
 
 def render_all_clips_accel(

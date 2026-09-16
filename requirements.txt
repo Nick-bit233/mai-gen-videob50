@@ -1,8 +1,8 @@
 httplib2>=0.22.0
 requests>=2.31.0
 pysocks>=1.7.1
-moviepy>=2.1.1
-numpy>=1.18.1
+moviepy==2.2.1
+numpy==2.2.6
 imageio>=2.36.0
 decorator>=4.3.0
 tqdm>=4.0.0
@@ -15,7 +15,8 @@ lxml>=5.3.0
 streamlit_sortables>=0.3.1
 streamlit_searchbox>=0.1.22
 httpx
-opencv-python>=4.8.0
+# 5.0.0.93 Linux wheels cannot decode AV1; 4.14 includes the dav1d fix.
+opencv-python==4.14.0.94
 jieba>=0.42.1
 pilmoji>=2.0.5
 pyperclip>=1.11.0

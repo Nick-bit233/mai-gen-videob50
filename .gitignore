@@ -191,8 +191,10 @@ cython_debug/
 !video_metadata/
 !video_metadata/asset-manifest.json
 
-# Keep existing ad-hoc test data ignored while tracking the focused v1.2.5 tests.
+# Keep ad-hoc data ignored while tracking the focused runtime regressions.
+!tests/
 tests/*
+!tests/test_runtime_regressions.py
 
 # debug and test resources
 test_html.txt
