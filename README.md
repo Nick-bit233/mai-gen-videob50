@@ -9,12 +9,11 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 ## 更新速览
 
 `v1.2.6` 更新
-
-- 修复 Linux 下 AV1 谱面视频无法解码、生成黑屏却提示成功的问题；依赖固定为 OpenCV 4.14.0.94、NumPy 2.2.6、MoviePy 2.2.1。
-- 保留 Taichi GPU 片段合成，增加 GPU 后端选择。Linux 在独立进程中测试实际合成能力，CUDA 不可用时继续尝试 Vulkan；切换已启用的后端需重启应用。
-- 缓存重复读取的视频帧，减少 30fps 素材输出 60fps 时的重复定位开销。解码或编码失败时终止片段并清理临时文件，保留此前生成的成品。
-- 修复舞萌和中二成绩图片中游玩次数素材的大小写路径错误（#124）。
-- 新版 Windows x64 runtime 包已包含 Taichi 1.7.4 和 FFmpeg/FFprobe，无需另行安装 GPU 组件。拼接仍优先尝试硬件编码，失败时回退软件编码。
+- 更新了部分图片素材，现在生成中二节奏模板将展示`中二节奏2027`和`CHUNITHM Mate`定数变动
+- 缓存重复读取的视频帧，减少 30fps 素材输出 60fps 时的重复定位开销。
+- 为Taichi GPU 片段合成增加 GPU 后端选择。
+- 修复 Linux 下 AV1 谱面视频无法解码、生成黑屏却提示成功的问题；固定OpenCV和NumPy依赖以临时解决该问题（#123）。
+- 修复Linux环境下，舞萌和中二成绩图片中游玩次数素材的大小写路径错误（#124）。
 
 `v1.2.5` 开发版本更新
 
@@ -31,48 +30,6 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 - 🛠️ 修复了在特定导入模式下，B50筛选条件不生效的bug；
 - 🛠️ 移除了maimai booklet导入方式的支持。
 
-`v1.2.3` 开发版本更新
-
-以下功能翻新来自@[奕凌Yelon](https://github.com/YelonNotXTD)
-
-- ✨ **新增数据源**: 现在我们有自己的书签页工具Mai-gen Booklet！这可以更方便的读取日服/国际服官网的全部成绩并灵活的筛选B50，具体导入教学见创建存档页面。
-- 🛠️ **修复数据源**：现在又可以通过dxrating.net导出的JSON源代码来创建三服B50存档了！
-- 🎚️ 新数据源？: 有神秘版本的日服？联系我们，或许可以从他们的网站上帮你筛选B50...
-- 🎚️ 功能移除预告: 考虑到maimai booklet操作繁琐、作为外部工具不稳定、且有**其他问题**，我们会在未来的版本中移除对其数据的支持, 但这不会影响旧版本已导入的存档。
-
-`v1.2.2` 开发版本更新
-
-以下功能修复来自@[奕凌Yelon](https://github.com/YelonNotXTD)
-
-- ✨ **新增数据源**：现在支持通过maimai booklet工具从官网导出所有成绩来新建存档了！在该导入方式下，可以自定义B15的版本与成绩的筛选方式，从而支持国际服/日服数据源的AP50等特殊生成。具体方法请参考页面内说明。
-- 🛠️ **修复数据源**：现在又可以通过官网でらっくすrating界面的HTML源代码来创建国际服/日服B50存档了！
-- 🎚️ **小巧思**：在生成完整视频时，现在可以勾选新的选项来只生成开场和结尾片段。适用于在填写心得时已经生成了所有谱面的单独片段的用户。
-
-`v1.2.1` Bug修复：
-- 🛠️ 修复了在某些系统环境下，生成视频时出现`MoviePy error: failed to read the first frame of video file black_bg.mp4 `的错误
-- 🛠️ 修复了在macOS下，数据库路径解析和命令行工具调用不稳定的问题 @[RararXD](https://github.com/RararXD)
-- 🛠️ 修复了在勾选“启用gpu加速合成”后生成视频，得到的完整视频中音画不同步的问题
-- 其他若干有关UI表现bug修复，详见release日志
-
-以下贡献来自@[Blueteemo](https://github.com/Blueteemo):
-
-- 🛠️ 修复了在勾选“启用gpu加速合成”后，无法正确检测部分NVENC编码器的问题
-- 🛠️ 修复了Windows路径中包含中文时，`cv2.imread()` 无法正确读取文件的问题
-- 🎚️ 现在允许设置输出视频的帧率，默认输出视频帧率提高到60fps
-
-注意：升级到 v1.2.6 时请使用配套运行环境。先将原 `runtime` 文件夹改名留存，再解压新版运行环境包的全部内容到应用根目录，避免新旧 DLL 和依赖混用。v1.2.6 runtime 已包含 Taichi；源码安装可使用 `python -m pip install -r requirements-gpu.txt`，不安装 GPU 可选组件时仍可使用 CPU 渲染。
-
-如果使用源代码安装，请注意v1.2版本推荐使用ffmpeg版本==7.1，ffmpeg版本可能影响GPU加速时的硬件编码器兼容性。
-
----
-
-`v1.1` 开发版本更新：
-- ✨ **文字渲染优化**：现在支持多语言智能换行、描边和（基于Unicode的）Emoji 渲染
-- ✨ **手动填写模式**：在「编辑自定义分表」页面新增手动填写模式，允许用户完全自定义乐曲元数据和成绩信息
-    - 支持上传自定义曲绘（仅 maimai）
-    - 卡片式预览列表，直观展示曲绘和记录信息
-- 🛠️ **曲绘管理优化**：现在将自动在后台抓取存档曲绘，生成成绩图片时，自定义曲绘优先级会大于默认远端获取。同时，修复了若干UI体验的Bug
-
 ---
 
 ## 快速开始
@@ -84,7 +41,7 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
     - 双击`start.bat`文件启动应用。
     - 请不要使用旧版本的runtime运行环境，其缺少新版本的依赖
 - 请注意：**打包版本仅支持Windows10及以上操作系统**
-- `macOS` 用户请使用源代码方式启动，当前仓库代码可运行在 macOS 上，但 Release 打包运行环境仍仅提供 Windows 版本。
+- `macOS`/`Linux` 用户请使用源代码方式启动, Release 打包运行环境仅提供 Windows 版本。
 - 首次启动时，如果没有立刻弹出浏览器窗口，请检查控制台，如果要求输入Email，请直接回车跳过即可。
 - 遇到问题请参考[常见问题](#常见问题)一节。
 
@@ -134,12 +91,6 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 - [x] MuNET导出的成绩数据JSON（有没有好心观众提供一个网站？）
 
-### 流媒体源支持情况
-
-- [x] [youtube](https://www.youtube.com/)：支持 YouTube Data API v3 和 pytubefix 两种搜索方式
-
-- [x] [bilibili](https://www.bilibili.com/)
-
 ### 已实现特性
 
 - [x] 可交互的全流程界面（streamlit）
@@ -170,7 +121,7 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
     ```bash
     pip install -r requirements.txt
     ```
-    > GPU 加速推荐 Python 3.10–3.12，使用 `python -m pip install -r requirements-gpu.txt` 安装已验证的组合。Linux 的 AV1 解码需要 OpenCV 4.14.0.94；不要将其自动升级到 5.0.0.93。
+    > GPU 加速推荐 Python 3.10–3.12，使用 `python -m pip install -r requirements-gpu.txt` 安装已验证的组合。Linux 的 AV1 解码需要 OpenCV 4.14.0.94；请不要将其自动升级到 5.0.0 以上。
 
 3. 安装ffmpeg（如果从Release包中下载，则无需此步骤）：
 
@@ -195,7 +146,7 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
     ```
     在网页运行程序时，请保持终端窗口打开，依照页面指引使用即可
 
-    > macOS 建议直接使用当前虚拟环境对应的解释器执行依赖安装，例如：`python -m pip install -r requirements.txt`
+    > macOS/Linux 建议直接使用当前虚拟环境对应的解释器执行依赖安装，例如：`python -m pip install -r requirements.txt`
 
 ---
 
