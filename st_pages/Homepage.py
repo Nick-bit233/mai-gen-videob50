@@ -320,6 +320,7 @@ with st.container(border=True):
     theme = st.selectbox(
         "选择页面主题",
         options=options,
+        format_func=lambda name: "MAGiCAL" if name == "Magical" else name,
         index=options.index(st.session_state.theme) if st.session_state.theme in options else 0,
         help="选择您喜欢的主题配色方案"
     )

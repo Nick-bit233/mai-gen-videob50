@@ -46,7 +46,13 @@ def main():
         for key, value in dict(game_type='maimai', username='runtime-ui-test',
                                archive_name=name, archive_id=archive_id).items():
             page.session_state[key] = value
-        configs = ([{'clip_title_name': 'fixture'}], [{'duration': 1}], [{'duration': 1}])
+        from PIL import Image
+        from utils.style_config import read_style
+        from utils.theme_artifacts import record_image_recipe
+        image_path = root / 'runtime-ui-score.png'
+        Image.new('RGBA', (1920, 1080)).save(image_path)
+        record_image_recipe(image_path, 'maimai', read_style('maimai'))
+        configs = ([{'clip_title_name': 'fixture', 'main_image': str(image_path)}], [{'duration': 1}], [{'duration': 1}])
         with patch.object(DatabaseDataHandler, 'load_full_config_for_composite_video', return_value=configs), \
              patch.object(videos, 'render_complete_full_video',
                           return_value={'status': 'error', 'info': 'injected decode error'}) as renderer:

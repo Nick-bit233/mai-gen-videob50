@@ -18,6 +18,8 @@ from typing import Optional, Tuple, List
 
 from utils.PageUtils import remove_invalid_chars
 from utils.video_frames import VideoFrameReader
+from utils.style_config import resolve_bgm
+from utils.theme_artifacts import clip_recipe, clip_is_current, record_clip_recipe, validate_image_style, record_clip_order, ordered_clip_files
 
 
 # ============================================================================
@@ -195,7 +197,7 @@ class FFmpegWriter:
                  fps: int = 30, codec: str = None, bitrate: str = "5000k",
                  audio_path: str = None, audio_start: float = 0, audio_duration: float = None,
                  audio_fade_in: float = 0, audio_fade_out: float = 0,
-                 volume_adjust_db: float = 0):
+                 volume_adjust_db: float = 0, audio_loop: bool = False):
         self.output_path = output_path
         self.width = width
         self.height = height
@@ -218,6 +220,8 @@ class FFmpegWriter:
         # 音频输入
         has_audio = audio_path and os.path.exists(audio_path)
         if has_audio:
+            if audio_loop:
+                cmd += ['-stream_loop', '-1']
             cmd += ['-ss', str(audio_start)]
             if audio_duration:
                 cmd += ['-t', str(audio_duration)]
@@ -509,6 +513,7 @@ def render_segment_accel(
     writer = video_reader = bg_video_reader = None
     temporary_output = None
     try:
+        validate_image_style(clip_config.get('main_image'), game_type, style_config)
         duration = clip_config.get('duration', 10)
         total_frames = int(duration * fps)
 
@@ -724,7 +729,8 @@ def render_info_segment_accel(
     codec: str = None,
     progress_callback=None,
     fade_in: float = 0,
-    fade_out: float = 0
+    fade_out: float = 0,
+    section: str = "intro"
 ) -> dict:
     """
     使用 FFmpeg 硬件编码渲染开场/结尾信息片段。
@@ -743,7 +749,7 @@ def render_info_segment_accel(
         # 加载资源
         intro_text_bg_path = style_config['asset_paths']['intro_text_bg']
         intro_video_bg_path = style_config['asset_paths']['intro_video_bg']
-        intro_bgm_path = style_config['asset_paths']['intro_bgm']
+        intro_bgm_path = resolve_bgm(style_config, section)
 
         text_bg = _load_image_rgba(intro_text_bg_path)
         text_bg_resized = cv2.resize(text_bg, resolution, interpolation=cv2.INTER_AREA)
@@ -795,7 +801,7 @@ def render_info_segment_accel(
             fps=fps, codec=codec, bitrate=bitrate,
             audio_path=intro_bgm_path, audio_start=0, audio_duration=duration,
             audio_fade_in=fade_in, audio_fade_out=fade_out,
-            volume_adjust_db=volume_adjust_db
+            volume_adjust_db=volume_adjust_db, audio_loop=True
         )
 
         # 预计算淡入淡出帧数
@@ -889,6 +895,7 @@ def render_all_clips_accel(
     total_clips = len(main_configs) + len(intro_configs or []) + len(ending_configs or [])
     clip_index = [0]  # 使用列表以便在闭包中修改
     vfile_prefix = 0
+    rendered_names = []
 
     def _make_frame_callback():
         """为当前片段创建帧级回调"""
@@ -904,9 +911,12 @@ def render_all_clips_accel(
         name = override_name or config.get('clip_title_name', 'clip')
         name = remove_invalid_chars(name)
         output_file = os.path.join(video_output_path, f"{prefix}_{name}.mp4")
+        rendered_names.append(os.path.basename(output_file))
 
-        if os.path.exists(output_file) and not force_render:
-            print(f"[AccelRenderer] 跳过已存在: {prefix}_{name}.mp4")
+        recipe = clip_recipe(game_type, style_config, config, clip_type, video_res,
+                             fps, video_bitrate, [auto_add_transition, trans_time], f"gpu:{codec}")
+        if not force_render and clip_is_current(output_file, recipe):
+            print(f"[AccelRenderer] 配置未变化，跳过: {prefix}_{name}.mp4")
             clip_index[0] += 1
             return
 
@@ -928,20 +938,21 @@ def render_all_clips_accel(
                 config, style_config, video_res,
                 output_file, fps=fps, bitrate=video_bitrate, codec=codec,
                 progress_callback=frame_cb,
-                fade_in=fade_in_time, fade_out=fade_out_time
+                fade_in=fade_in_time, fade_out=fade_out_time, section=clip_type
             )
         t_clip_elapsed = time.perf_counter() - t_clip_start
         print(f"[Timer] 片段 {prefix}_{name} 渲染耗时: {t_clip_elapsed:.2f}s")
 
         if result['status'] == 'error':
             raise RuntimeError(f"[AccelRenderer] 片段 {prefix}_{name} 渲染失败: {result['info']}")
+        record_clip_recipe(output_file, recipe)
         clip_index[0] += 1
 
     # 开场片段
     t_phase = time.perf_counter()
     if intro_configs:
         for config in intro_configs:
-            render_clip(config, vfile_prefix, "info", "INTRO")
+            render_clip(config, vfile_prefix, "intro", "INTRO")
             vfile_prefix += 1
     if intro_configs:
         print(f"[Timer] === 开场片段阶段耗时: {time.perf_counter() - t_phase:.2f}s ===")
@@ -957,10 +968,12 @@ def render_all_clips_accel(
     t_phase = time.perf_counter()
     if ending_configs:
         for config in ending_configs:
-            render_clip(config, vfile_prefix, "info", "ENDING")
+            render_clip(config, vfile_prefix, "ending", "ENDING")
             vfile_prefix += 1
     if ending_configs:
         print(f"[Timer] === 结尾片段阶段耗时: {time.perf_counter() - t_phase:.2f}s ===")
+
+    record_clip_order(video_output_path, rendered_names)
 
     t_all_elapsed = time.perf_counter() - t_all_start
     print(f"[Timer] ====== 全部片段渲染总耗时: {t_all_elapsed:.2f}s (共 {vfile_prefix} 个) ======")

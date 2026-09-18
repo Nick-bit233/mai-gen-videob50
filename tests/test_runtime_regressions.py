@@ -238,10 +238,11 @@ class FailedRenderTests(unittest.TestCase):
             Image.new('RGBA', (8, 8)).save(image)
             output = root / 'previous.mp4'
             output.write_bytes(b'existing finished output')
-            style = {'asset_paths': {'intro_text_bg': str(image), 'intro_video_bg': 'broken.mp4', 'intro_bgm': ''}}
+            style = {'asset_paths': {'intro_text_bg': str(image), 'intro_video_bg': 'broken.mp4', 'intro_bgm': 'static/assets/audios/intro_maimai_prism.mp3'}}
             with patch('utils.AccelRenderer.VideoFrameReader', side_effect=IOError('decode failed')):
                 result = render_info_segment_accel({'duration': 1}, style, (8, 8), str(output))
             self.assertEqual(result['status'], 'error')
+            self.assertIn('decode failed', result['info'])
             self.assertEqual(output.read_bytes(), b'existing finished output')
             self.assertEqual(list(root.glob('.render-*')), [])
 

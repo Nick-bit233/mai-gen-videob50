@@ -215,3 +215,6 @@ static/assets/custom_jackets
 # dsstore
 *.DS_Store
 .DS_Store
+
+# Theme-system behavioral regressions.
+!tests/test_theme_system.py

@@ -12,6 +12,9 @@ from utils.PageUtils import remove_invalid_chars
 from utils.TextRenderer import TextRenderer, TextStyle, LayoutConfig
 from utils.AccelRenderer import get_ffmpeg_binary
 from typing import Union, Tuple
+from utils.style_config import resolve_bgm
+from utils.theme_artifacts import clip_recipe, clip_is_current, record_clip_recipe, validate_image_style, record_clip_order, ordered_clip_files
+from uuid import uuid4
 
 
 def get_splited_text(text, text_max_bytes=60):
@@ -179,7 +182,7 @@ def normalize_audio_volume(clip, target_dbfs=-20):
         return clip
 
 
-def create_info_segment(clip_config, style_config, resolution):
+def create_info_segment(clip_config, style_config, resolution, section="intro"):
     """ 合成一个信息介绍的Moviepy Clip，用于开场或结尾 """
 
     clip_name = clip_config.get('clip_title_name', '开场/结尾片段')
@@ -195,7 +198,7 @@ def create_info_segment(clip_config, style_config, resolution):
     font_path = style_config['asset_paths']['comment_font']
     intro_video_bg_path = style_config['asset_paths']['intro_video_bg']
     intro_text_bg_path = style_config['asset_paths']['intro_text_bg']
-    intro_bgm_path = style_config['asset_paths']['intro_bgm']
+    intro_bgm_path = resolve_bgm(style_config, section)
 
     bg_image = ImageClip(intro_text_bg_path).with_duration(clip_config['duration'])
     bg_image = bg_image.with_effects([vfx.Resize(width=resolution[0])])
@@ -509,6 +512,7 @@ def create_video_segment(
     print(f"正在合成视频片段: {clip_config['clip_title_name']}")
     
     # 配置底部背景选项
+    validate_image_style(clip_config.get('main_image'), game_type, style_config)
     default_bg_path = style_config['asset_paths']['content_bg']
     override_content_bg = style_config['options'].get('override_content_default_bg', False)
     using_video_content_bg = style_config['options'].get('content_use_video_bg', False)
@@ -578,8 +582,8 @@ def create_video_segment(
 
 def get_video_preview_frame(game_type, clip_config, style_config, resolution, part="intro") -> Image.Image:
     """ 获取视频片段的预览帧，返回PIL.Image对象 """
-    if part == "intro":
-        preview_clip = create_info_segment(clip_config, style_config, resolution)
+    if part in ("intro", "ending"):
+        preview_clip = create_info_segment(clip_config, style_config, resolution, section=part)
     elif part == "content":
         preview_clip = create_video_segment(game_type, clip_config, style_config, resolution)
     else:
@@ -678,7 +682,7 @@ def create_full_video(game_type: str, style_config: dict, resolution: tuple,
     # 处理结尾片段
     if ending_configs:
         for clip_config in ending_configs:
-            clip = create_info_segment(clip_config, style_config, resolution)
+            clip = create_info_segment(clip_config, style_config, resolution, section="ending")
             clip = normalize_audio_volume(clip)
             if full_last_clip:
                 ending_clips.append(clip)
@@ -866,43 +870,45 @@ def render_all_video_clips(game_type: str, style_config: dict, main_configs: lis
             print("[VideoUtils] Taichi 未安装，回退到 CPU 渲染")
 
     vfile_prefix = 0
+    rendered_names = []
 
-    def modify_and_rend_clip(clip, config, prefix, auto_add_transition, trans_time, override_clip_name=None):
+    def modify_and_rend_clip(clip, config, prefix, auto_add_transition, trans_time, override_clip_name=None, section="content"):
         if override_clip_name:
             clip_title_name = override_clip_name
         else:
             clip_title_name = config.get('clip_title_name', "clip")
         clip_title_name = remove_invalid_chars(clip_title_name)  # clip_title_name作为输出文件名的一部分，需要进行清洗，去除不合法字符
         output_file = os.path.join(video_output_path, f"{prefix}_{clip_title_name}.mp4")
+        rendered_names.append(os.path.basename(output_file))
 
-        # 检查文件是否已经存在
-        if os.path.exists(output_file) and not force_render:
-            print(f"视频文件{output_file}已存在，跳过渲染。如果需要强制覆盖已存在的文件，请设置勾选force_render")
+        recipe = clip_recipe(game_type, style_config, config, section, video_res,
+                             video_fps, video_bitrate, [auto_add_transition, trans_time], "cpu")
+        if not force_render and clip_is_current(output_file, recipe):
+            print(f"视频片段配置未变化，跳过：{output_file}")
             clip.close()
-            del clip
             return
-        
-        clip = normalize_audio_volume(clip)
-        # 如果启用了自动添加转场效果，则在头尾加入淡入淡出
-        if auto_add_transition:
-            clip = clip.with_effects([
-                vfx.FadeIn(duration=trans_time),
-                vfx.FadeOut(duration=trans_time),
-                afx.AudioFadeIn(duration=trans_time),
-                afx.AudioFadeOut(duration=trans_time)
-            ])
-        # 直接渲染clip为视频文件
-        print(f"正在合成视频片段: {prefix}_{clip_title_name}.mp4")
-        clip.write_videofile(output_file, fps=video_fps, threads=4, preset='ultrafast', bitrate=video_bitrate)
-        clip.close()
-        # 强制垃圾回收
-        del clip
+        temporary = os.path.join(video_output_path, f".render-{uuid4().hex}.mp4")
+        try:
+            clip = normalize_audio_volume(clip)
+            if auto_add_transition:
+                clip = clip.with_effects([
+                    vfx.FadeIn(duration=trans_time), vfx.FadeOut(duration=trans_time),
+                    afx.AudioFadeIn(duration=trans_time), afx.AudioFadeOut(duration=trans_time)])
+            clip.write_videofile(temporary, fps=video_fps, threads=4, preset='ultrafast',
+                                 bitrate=video_bitrate, audio_codec='aac')
+            clip.close()
+            os.replace(temporary, output_file)
+            record_clip_recipe(output_file, recipe)
+        finally:
+            clip.close()
+            if os.path.exists(temporary):
+                os.unlink(temporary)
 
 
     if intro_configs:
         for clip_config in intro_configs:
             clip = create_info_segment(clip_config, style_config, video_res)
-            modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time, override_clip_name="INTRO")
+            modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time, override_clip_name="INTRO", section="intro")
             vfile_prefix += 1
 
     for clip_config in main_configs:
@@ -913,9 +919,11 @@ def render_all_video_clips(game_type: str, style_config: dict, main_configs: lis
 
     if ending_configs:
         for clip_config in ending_configs:
-            clip = create_info_segment(clip_config, style_config, video_res)
-            modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time, override_clip_name="ENDING")
+            clip = create_info_segment(clip_config, style_config, video_res, section="ending")
+            modify_and_rend_clip(clip, clip_config, vfile_prefix, auto_add_transition, trans_time, override_clip_name="ENDING", section="ending")
             vfile_prefix += 1
+
+    record_clip_order(video_output_path, rendered_names)
 
 
 def render_one_video_clip(
@@ -1093,9 +1101,7 @@ def combine_full_video_direct(video_clip_path, auto_add_transition=False, trans_
     t_concat_start = time.perf_counter()
     # 仅匹配编号前缀的片段文件，排除 final_output.mp4 / *_FULL_VIDEO.mp4 等
     import re
-    video_files = [f for f in os.listdir(video_clip_path)
-                   if f.endswith(".mp4") and re.match(r'^\d+_', f)]
-    sorted_files = sort_video_files(video_files)
+    sorted_files = ordered_clip_files(video_clip_path)
     
     if not sorted_files:
         raise ValueError("Error: 没有有效的视频片段文件！")
@@ -1359,9 +1365,7 @@ def combine_full_video_xfade_islands(video_clip_path: str, trans_time: float = 1
     t_concat_start = time.perf_counter()
     import re
 
-    video_files = [f for f in os.listdir(video_clip_path)
-                   if f.endswith(".mp4") and re.match(r'^\d+_', f)]
-    sorted_files = sort_video_files(video_files)
+    sorted_files = ordered_clip_files(video_clip_path)
     if not sorted_files:
         raise ValueError("Error: 没有有效的视频片段文件！")
     if len(sorted_files) == 1 or trans_time <= 0:
@@ -1566,8 +1570,7 @@ def combine_full_video_ffmpeg_concat_gl(video_clip_path, trans_name="fade", tran
         片段需要具有正确的命名格式(0_xxx, 1_xxx, ...)以确保正确排序
     """
     video_clip_path = os.path.abspath(video_clip_path)
-    video_files = [f for f in os.listdir(video_clip_path) if f.endswith(".mp4")]
-    sorted_files = sort_video_files(video_files)
+    sorted_files = ordered_clip_files(video_clip_path)
     
     if not sorted_files:
         raise ValueError("Error: 没有有效的视频片段文件！")

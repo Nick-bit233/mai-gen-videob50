@@ -1,3 +1,5 @@
+from utils.theme_artifacts import record_image_recipe
+from utils.chunithm_display import display_constants, valid_constant
 import json
 import os.path
 import traceback
@@ -398,7 +400,8 @@ class MaiImageGenerater:
 
 class ChuniImageGenerater:
     def __init__(self, style_config=None):
-        self.asset_paths = style_config.get("asset_paths", {})
+        self.style_config = style_config or {}
+        self.asset_paths = self.style_config.get("asset_paths", {})
         self.image_root_path = self.asset_paths.get("score_image_assets_path", "./static/assets/images/Chunithm")
         self.ui_font_path = self.asset_paths.get("ui_font", "./static/assets/fonts/SOURCEHANSANSSC-BOLD.OTF")
         self.title_font_path = "./static/assets/fonts/SweiBellLegCJKsc-Black.ttf"
@@ -424,8 +427,8 @@ class ChuniImageGenerater:
             ds_next = 0.0
         
         # 尝试解析为数字
-        ds_cur_val = try_parse_difficulty(ds_cur)
-        ds_next_val = try_parse_difficulty(ds_next)
+        ds_cur_val = valid_constant(ds_cur)
+        ds_next_val = valid_constant(ds_next)
         
         # 如果当前版本定数无法解析，尝试使用下一版本
         ds = ds_cur_val if ds_cur_val is not None and ds_cur_val > 1 else ds_next_val
@@ -459,7 +462,7 @@ class ChuniImageGenerater:
             
             # 限制显示长度，过长的字符串缩小字体
             level_number_img = Image.new('RGBA', (108, 88), (0, 0, 0, 0))
-            font_size = 60 - (max(10, len(ds_str) - 2) * 10)  # 字符数超过2时，每多一个字符字体缩小10
+            font_size = max(18, 60 - max(0, len(ds_str) - 2) * 10)  # 字符数超过2时，每多一个字符字体缩小10
             level_number_img = self.TextDraw(level_number_img, ds_str, (54, 46), 
                                              font_path=self.level_font_path,
                                              font_size=font_size, font_color=(255, 255, 255), h_align="center")
@@ -651,23 +654,13 @@ class ChuniImageGenerater:
         Returns:
             Background (Image.Image): 处理后的成绩记录图片
         """
-        def modified_ds_next(ds_cur: float, ds_next: float) -> str:
-            if not ds_cur or ds_cur <= 0.0: 
-                return str(ds_next)
-            elif ds_next > ds_cur:
-                return str(ds_next) + "↑" 
-            elif ds_next < ds_cur:
-                return str(ds_next) + "↓"
-            else:
-                return str(ds_next) + "→"
-
         # Initialize Background as None outside the try block
         background = None
         
         try:
             assert record_detail['level_index'] in range(0, 5)
-            image_base_path = os.path.join(os.getcwd(),
-                                            f"{self.image_root_path}/content_base_chunithm_verse.png")
+            image_base_path = self.asset_paths.get("score_image_base", f"{self.image_root_path}/ConstantDisplay/content_base.png")
+            constants = display_constants(record_detail, self.style_config)
             with Image.open(image_base_path) as background:
 
                 # background size: 1920x1080
@@ -683,31 +676,30 @@ class ChuniImageGenerater:
 
                 # 加载等级
                 level_pos = (102, 884)
-                level = self.LevelLoader(record_detail["ds_cur"], record_detail["ds_next"])
+                if constants["mode"] == "compare":
+                    level = self.LevelLoader(record_detail.get("ds_cur"), record_detail.get("ds_next"))
+                else:
+                    level = self.LevelLoader(constants["level"] if constants["level"] is not None else "--")
                 _temp_img.paste(level, level_pos, level)
 
-                # 加载定数（当前版本和下一版本）
-                ds_cur_pos = (1562, 1018)
-                ds_next_pos = (1756, 1018)
-                ds_cur = record_detail["ds_cur"]
-                ds_next = record_detail["ds_next"]
-                # 使用 try_parse_difficulty 安全解析定数（可能为字符串如"--"）
-                ds_cur_numeric = try_parse_difficulty(ds_cur)
-                ds_next_numeric = try_parse_difficulty(ds_next)
-                if ds_cur_numeric is not None and ds_cur_numeric > 0.0:
-                    ds_cur_text = str(ds_cur)
-                else:
-                    ds_cur_text = "--"
-                if ds_next_numeric is not None and ds_next_numeric > 0.0:
-                    ds_next_text = modified_ds_next(ds_cur_numeric, ds_next_numeric)
-                else:
-                    ds_next_text = "--"
-                _temp_img = self.TextDraw(_temp_img, ds_cur_text , ds_cur_pos,
-                                          font_path=self.title_font_path, 
-                                          font_size=45, font_color=(77, 77, 77), h_align="center")
-                _temp_img = self.TextDraw(_temp_img, ds_next_text , ds_next_pos,
-                                          font_path=self.title_font_path, 
-                                          font_size=45, font_color=(77, 77, 77), h_align="center")
+                # Version logos and numbers share the same display decision.
+                asset_root = f"{self.image_root_path}/ConstantDisplay"
+                header_kind = "compare" if constants["mode"] == "compare" else "single"
+                header_path = self.asset_paths.get(f"constant_header_{header_kind}", f"{asset_root}/header_{header_kind}.png")
+                with Image.open(header_path) as header:
+                    header = header.convert("RGBA")
+                    _temp_img.paste(header, (1448, 830), header)
+                for version, text, text_pos in constants["columns"]:
+                    fallback = "logo_cn_2027.png" if version == "cn" else "logo_latest_mate.png"
+                    logo_path = self.asset_paths.get(f"constant_logo_{version}", f"{asset_root}/{fallback}")
+                    with Image.open(logo_path) as logo:
+                        logo = logo.convert("RGBA")
+                        logo.thumbnail((202, 106), Image.Resampling.LANCZOS)
+                        x = text_pos[0] - logo.width // 2
+                        _temp_img.paste(logo, (x, 890 + (106 - logo.height) // 2), logo)
+                    _temp_img = self.TextDraw(_temp_img, text, text_pos,
+                        font_path=self.title_font_path, font_size=45,
+                        font_color=(77, 77, 77), h_align="center")
 
                 # 加载分数
                 score_pos = (706, 958)
@@ -761,7 +753,7 @@ class ChuniImageGenerater:
         except Exception as e:
             print(f"Error generating achievement: {e}")
             print(traceback.format_exc())
-            background = Image.new('RGBA', (1520, 500), (0, 0, 0, 255))
+            raise
         return background
     
 
@@ -807,6 +799,7 @@ def generate_single_image(game_type, style_config, record_detail, output_path, t
             background.save(output_path)
 
         # 返回已保存的图片对象
+        record_image_recipe(output_path, game_type, selected_style_config)
         with Image.open(output_path) as final_img:
             return final_img.copy()
         
@@ -821,6 +814,7 @@ def generate_single_image(game_type, style_config, record_detail, output_path, t
         
         # 保存图片
         single_image.save(output_path)
+        record_image_recipe(output_path, game_type, selected_style_config)
         return single_image
     else:
         raise ValueError(f"Unsupported game type: {game_type}")

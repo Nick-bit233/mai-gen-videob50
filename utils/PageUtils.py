@@ -118,12 +118,9 @@ def write_global_config(config):
 
 # r/w video_style_config.json
 def load_style_config(game_type, config_file=DEFAULT_STYLE_CONFIG_FILE_PATH):
-    if os.path.exists(config_file):
-        with open(config_file, 'r', encoding='utf-8') as f:
-            style_config = json.load(f)
-            return style_config.get(game_type, {})
-    else:
-        return None
+    from utils.style_config import read_style
+    return read_style(game_type, config_file)
+
 
 
 def update_music_metadata():

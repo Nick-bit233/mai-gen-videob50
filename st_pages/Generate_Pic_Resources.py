@@ -1,3 +1,6 @@
+from pathlib import Path
+from uuid import uuid4
+from utils.style_config import write_style, CONSTANT_MODES, constant_mode
 import streamlit as st
 import os
 import traceback
@@ -24,6 +27,11 @@ def st_generate_b50_images(placeholder, user_id, archive_id, save_paths):
 
     # read style_config - 使用从数据库加载的game_type，而不是session_state的G_type
     style_config = load_style_config(game_type=game_type)
+    if not records:
+        raise ValueError("当前存档没有可生成的成绩。")
+    batch_dir = Path(save_paths['image_dir']) / f"batch-{uuid4().hex}"
+    batch_dir.mkdir(parents=True)
+    pending_updates = []
     
     with placeholder.container(border=True):
         pb = st.progress(0, text=f"正在生成成绩背景图片...")
@@ -40,7 +48,7 @@ def st_generate_b50_images(placeholder, user_id, archive_id, save_paths):
             else:
                 title_text = record_for_gene_image['clip_name']
             # 按照顺序命名生成图片为 gametype_0_标题.png, gametype_1_标题.png ...
-            image_save_path = os.path.join(save_paths['image_dir'], f"{game_type}_{index}_{title_text}.png")
+            image_save_path = str(batch_dir / f"{game_type}_{chart_id}_{index}.png")
             generate_single_image(
                 game_type,
                 style_config,
@@ -51,27 +59,18 @@ def st_generate_b50_images(placeholder, user_id, archive_id, save_paths):
             if game_type == "maimai":
                 # 生成曲绘图片的模糊背景
                 jacket_img_data = record_for_gene_image['jacket']  # type - PIL.Image
-                bg_save_path = os.path.join(save_paths['image_dir'], f"{game_type}_{chart_id}_bg.png")
+                bg_save_path = str(batch_dir / f"{game_type}_{chart_id}_bg.png")
                 # 如果已经存在背景图片（同一首曲目），则跳过生成
                 if not os.path.exists(bg_save_path):
                     save_jacket_background_image(jacket_img_data, bg_save_path)
-                # 保存背景图片路径到background_image_path字段，便于视频生成调用
-                db_handler.update_image_config_for_record(
-                    archive_id,
-                    chart_id=chart_id,
-                    image_path_data={
-                        'achievement_image_path': image_save_path,
-                        'background_image_path': bg_save_path
-                    }
-                )
+                pending_updates.append((chart_id, {
+                    'achievement_image_path': image_save_path,
+                    'background_image_path': bg_save_path,
+                }))
             else:
-                db_handler.update_image_config_for_record(
-                    archive_id,
-                    chart_id=chart_id,
-                    image_path_data={
-                        'achievement_image_path': image_save_path
-                    }
-                )
+                pending_updates.append((chart_id, {'achievement_image_path': image_save_path}))
+        db_handler.update_image_configs_batch(archive_id, pending_updates)
+
 
 
 # =============================================================================
@@ -167,6 +166,22 @@ if archive_id:
     image_path = current_paths['image_dir']
     
     st.markdown("### 🎨 生成成绩背景图片")
+    if G_type == "chunithm":
+        image_style = load_style_config(G_type)
+        mode_key = f"image_constant_mode_{archive_id}"
+        if st.session_state.get(mode_key + "_saved") != constant_mode(image_style):
+            st.session_state[mode_key] = constant_mode(image_style)
+            st.session_state[mode_key + "_saved"] = constant_mode(image_style)
+        selected_mode = st.radio("定数展示选项", list(CONSTANT_MODES),
+            index=list(CONSTANT_MODES).index(constant_mode(image_style)),
+            format_func=CONSTANT_MODES.get, horizontal=True,
+            key=mode_key)
+        st.caption("国服／最新只显示该版本定数；缺失显示 --。等级标识同步变化，Rating 和排序不变。切换后请重新生成图片。")
+        if selected_mode != constant_mode(image_style):
+            image_style['options']['chunithm_constant_display'] = selected_mode
+            write_style(G_type, image_style)
+            st.session_state[mode_key + "_saved"] = selected_mode
+            st.rerun()
     with st.container(border=True):
         st.markdown("""
         **说明**:

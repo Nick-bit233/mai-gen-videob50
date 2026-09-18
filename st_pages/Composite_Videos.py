@@ -1,3 +1,4 @@
+from utils.theme_artifacts import validate_image_style
 import streamlit as st
 import traceback
 import os
@@ -94,7 +95,7 @@ with st.container(border=True):
             index=_mode_index)
     
     no_main_clip = st.checkbox("生成视频片段时，跳过全部曲目片段（仅生成开场、结尾）", value=False)
-    force_render_clip = st.checkbox("生成视频片段时，强制覆盖已存在的视频文件（否则将跳过同名片段的生成）", value=False)
+    force_render_clip = st.checkbox("生成视频片段时，强制重新生成全部片段（默认自动更新设置已变化的片段）", value=False)
 
 trans_config_placeholder = st.empty()
 with trans_config_placeholder.container(border=True):
@@ -172,7 +173,14 @@ if not main_configs:
 if not intro_configs or not ending_configs:
     st.error("❌ 未找到片头或片尾配置，请检查4-2步骤是否正常保存！")
 
-def save_video_render_config():
+def save_video_render_config(include_main=True):
+    if include_main:
+        try:
+            for config in main_configs:
+                validate_image_style(config.get('main_image'), G_type, style_config, require_snapshot=True)
+        except ValueError as exc:
+            st.error(str(exc))
+            st.stop()
     # 保存配置
     G_config['ONLY_GENERATE_CLIPS'] = v_mode_index == 0
     G_config['VIDEO_RES'] = (v_res_width, v_res_height)
@@ -186,7 +194,7 @@ def save_video_render_config():
     st.toast("配置已保存！")
 
 if st.button("开始生成视频", use_container_width=True, type="primary"):
-    save_video_render_config()
+    save_video_render_config(include_main=not (v_mode_index == 0 and no_main_clip))
     video_res = (v_res_width, v_res_height)
 
     # 前置检查 FFmpeg 版本
