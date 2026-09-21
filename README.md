@@ -6,6 +6,12 @@
 
 Auto search and generate your best videos of MaimaiDX / Chunithm
 
+## ⭐号外！！！⭐
+
+只有手机也想生成视频？设备性能差，生成视频太慢？
+
+在线MBVGen视频云渲染服务现已上线！戳[这里](https://b50.maigen.qzz.io/)访问！
+
 ## 更新速览
 
 `v1.2.6` 更新
