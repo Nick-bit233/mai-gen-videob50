@@ -694,12 +694,15 @@ def render_download_controls(unmatched_count: int):
                         break
                 st.rerun()
 
+        next_disabled = unmatched_count > 0 or not st.session_state.download_completed
         if st.button(
             "进行下一步",
-            disabled=unmatched_count > 0 or not st.session_state.download_completed,
+            disabled=next_disabled,
             key="continue_after_video_download",
         ):
             st.switch_page("st_pages/Edit_Video_Content.py")
+        if next_disabled:
+            st.warning("找不到视频/下载反复失败？您可以点击页面左侧标签强行跳过该步骤，然后手动将正确视频文件命名并放置在对应文件夹来完成后续视频渲染，具体路径与视频命名方式详见后续'视频文件不存在'报错。")
 
 
 with st.container(border=True):
