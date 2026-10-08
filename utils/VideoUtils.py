@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import time
 import numpy as np
 import subprocess
@@ -15,6 +16,8 @@ from typing import Union, Tuple
 from utils.style_config import resolve_bgm
 from utils.theme_artifacts import clip_recipe, clip_is_current, record_clip_recipe, validate_image_style, record_clip_order, ordered_clip_files
 from uuid import uuid4
+from utils.moviepy_diagnostics import install_moviepy_diagnostics
+install_moviepy_diagnostics()
 
 
 def get_splited_text(text, text_max_bytes=60):
@@ -1016,7 +1019,7 @@ def render_complete_full_video(
                         trans_time=video_trans_time,
                         codec=hw_codec,
                         bitrate=video_bitrate,
-                        video_fps=video_fps
+                        video_fps=video_fps, video_res=video_res
                     )
                     print(f"[Timer] 步骤2 - 视频拼接(transition island)耗时: {time.perf_counter() - t_step:.2f}s")
                 else:
@@ -1048,6 +1051,8 @@ def render_complete_full_video(
 
     # CPU 渲染回退路径
     print(f"正在合成完整视频...")
+    temporary_output = os.path.join(video_output_path, f'.render-full-{uuid4().hex}.mp4')
+    final_video = None
     try:
         final_video = create_full_video(
             game_type=game_type,
@@ -1071,7 +1076,7 @@ def render_complete_full_video(
         print("=" * 60)
         
         final_video.write_videofile(
-            output_file, 
+            temporary_output,
             fps=video_fps,
             threads=12,  # CPU模式使用多线程
             codec='libx264',
@@ -1083,10 +1088,22 @@ def render_complete_full_video(
         )
         print("✓ CPU 渲染完成")
         final_video.close()
+        final_video = None
+        from utils.media_probe import probe_media
+        probe_media(temporary_output)
+        os.replace(temporary_output, output_file)
         return {"status": "success", "info": f"合成完整视频成功"}
     except Exception as e:
+        from utils.diagnostics import capture_exception
+        capture_exception(e, 'CPU完整视频')
         print(f"Error: 合成完整视频时发生异常: {traceback.format_exc()}")
         return {"status": "error", "info": f"合成完整视频时发生异常: {traceback.format_exc()}"}
+    finally:
+        if final_video is not None:
+            final_video.close()
+        if os.path.exists(temporary_output):
+            os.remove(temporary_output)
+
 
 
 def combine_full_video_direct(video_clip_path, auto_add_transition=False, trans_time=1,
@@ -1109,71 +1126,37 @@ def combine_full_video_direct(video_clip_path, auto_add_transition=False, trans_
 
     output_path = os.path.join(video_clip_path, "final_output.mp4")
 
-    # 带转场的拼接：使用 FFmpeg xfade 滤镜
     if auto_add_transition and len(sorted_files) > 1 and trans_time > 0:
-        output_path = _combine_with_xfade(video_clip_path, sorted_files, output_path, trans_time,
-                                          codec=codec, bitrate=bitrate, video_fps=video_fps)
-        print(f"[Timer] 拼接(xfade)总耗时: {time.perf_counter() - t_concat_start:.2f}s")
-        return output_path
-
-    # 无转场的快速拼接：TS remux + concat
-    temp_dir = os.path.join(video_clip_path, "temp_ts")
-    os.makedirs(temp_dir, exist_ok=True)
-    
+        return combine_full_video_xfade_islands(video_clip_path, trans_time=trans_time,
+                                               codec=codec, bitrate=bitrate, video_fps=video_fps)
+    from utils.media_probe import probe_media
+    from utils.diagnostics import capture_exception
+    folder = Path(video_clip_path).resolve()
+    pending = folder / f'.concat-{uuid4().hex}.mp4'
+    listing = folder / f'.concat-{uuid4().hex}.txt'
     try:
-        t_remux = time.perf_counter()
-        ts_list_file = os.path.join(video_clip_path, "ts_files.txt")
-        with open(ts_list_file, 'w', encoding='utf-8') as f:
-            for i, file in enumerate(sorted_files):
-                ts_name = f"{i:04d}.ts"
-                ts_path = os.path.join(temp_dir, ts_name)
-                
-                cmd = [
-                    get_ffmpeg_binary('ffmpeg'), '-y',
-                    '-i', os.path.join(video_clip_path, file),
-                    '-c', 'copy',
-                    '-bsf:v', 'h264_mp4toannexb',
-                    '-f', 'mpegts',
-                    ts_path
-                ]
-                subprocess.run(cmd, check=True)
-                
-                relative_ts_path = os.path.join('temp_ts', ts_name).replace('\\', '/')
-                f.write(f"file '{relative_ts_path}'\n")
-        print(f"[Timer] 拼接: TS remux 耗时: {time.perf_counter() - t_remux:.2f}s")
-
-        t_merge = time.perf_counter()
-        cmd = [
-            get_ffmpeg_binary('ffmpeg'), '-y',
-            '-f', 'concat',
-            '-safe', '0',
-            '-i', 'ts_files.txt',
-            '-c', 'copy',
-            'final_output.mp4'
-        ]
-        
-        subprocess.run(cmd, check=True, cwd=video_clip_path)
-        print(f"[Timer] 拼接: concat merge 耗时: {time.perf_counter() - t_merge:.2f}s")
-        print("视频拼接完成")
-        
+        inputs = [str(folder / name) for name in sorted_files]
+        for path in inputs:
+            probe_media(path)
+        _concat_island_segments(inputs, str(listing), str(pending), video_fps)
+        probe_media(pending)
+        os.replace(pending, output_path)
+        print(f"[Timer] 拼接(concat)总耗时: {time.perf_counter() - t_concat_start:.2f}s")
+        return output_path
+    except Exception as exc:
+        capture_exception(exc, '无转场拼接')
+        raise
     finally:
-        if os.path.exists(temp_dir):
-            for file in os.listdir(temp_dir):
-                os.remove(os.path.join(temp_dir, file))
-            os.rmdir(temp_dir)
-        for txt_file in ['mp4_files.txt', 'ts_files.txt']:
-            txt_path = os.path.join(video_clip_path, txt_file)
-            if os.path.exists(txt_path):
-                os.remove(txt_path)
-
-    print(f"[Timer] 拼接(concat)总耗时: {time.perf_counter() - t_concat_start:.2f}s")
-    return output_path
+        pending.unlink(missing_ok=True)
+        listing.unlink(missing_ok=True)
 
 
 def _normalize_video_audio(input_path: str, output_path: str):
     """对完整视频进行音频均衡化（单次 FFmpeg loudnorm，与 CPU 路径的 RMS 归一化效果近似）"""
-    if os.path.exists(output_path):
-        os.remove(output_path)
+    from utils.media_probe import probe_media
+    from utils.diagnostics import current_report
+    from uuid import uuid4
+    temporary_output = os.path.join(os.path.dirname(os.path.abspath(output_path)), f'.normalize-{uuid4().hex}.mp4')
     try:
         t_norm = time.perf_counter()
         cmd = [
@@ -1183,16 +1166,23 @@ def _normalize_video_audio(input_path: str, output_path: str):
             '-af', 'loudnorm=I=-20:TP=-1.5:LRA=11,aresample=48000:first_pts=0,asetpts=N/SR/TB',
             '-c:a', 'aac', '-b:a', '192k',
             '-ar', '48000',
-            output_path
+            temporary_output
         ]
-        subprocess.run(cmd, check=True)
+        try:
+            _run_subprocess_checked(cmd, '最终音频均衡化')
+            probe_media(temporary_output)
+        except Exception as exc:
+            current_report().exception(exc, '最终音频均衡化回退')
+            # Validate and copy the original before publishing; never accept a partial encode.
+            probe_media(input_path)
+            shutil.copy2(input_path, temporary_output)
+        os.replace(temporary_output, output_path)
         if os.path.exists(input_path) and input_path != output_path:
             os.remove(input_path)
         print(f"[AccelRenderer] ✓ 音频均衡化完成 (耗时 {time.perf_counter() - t_norm:.2f}s)")
-    except Exception as e:
-        print(f"[AccelRenderer] Warning: 音频均衡化失败 ({e})，直接使用原始文件")
-        if not os.path.exists(output_path):
-            os.rename(input_path, output_path)
+    finally:
+        if os.path.exists(temporary_output):
+            os.remove(temporary_output)
 
 
 def _get_video_duration(filepath: str) -> float:
@@ -1215,13 +1205,8 @@ def _format_seconds(value: float) -> str:
 
 
 def _run_subprocess_checked(cmd: list, stage: str):
-    result = subprocess.run(cmd, capture_output=True, text=True, errors='replace')
-    if result.returncode != 0:
-        stderr = (result.stderr or result.stdout or "").strip()
-        if len(stderr) > 2000:
-            stderr = stderr[-2000:]
-        raise RuntimeError(f"{stage} 失败，返回码 {result.returncode}: {stderr}")
-    return result
+    from utils.diagnostics import execute
+    return execute(cmd, stage)
 
 
 def _get_libx264_encoder_args():
@@ -1240,8 +1225,11 @@ def _get_encoder_args_with_fallback(codec: str, bitrate: str, force_software: bo
 
 def _run_ffmpeg_encode_with_fallback(cmd_prefix: list, output_path: str,
                                      codec: str, bitrate: str, stage: str):
+    from utils.diagnostics import current_report
+    report = current_report()
+    disabled = report.manifest.setdefault('disabled_encoders', [])
     attempts = []
-    if codec and codec != 'libx264':
+    if codec and codec != 'libx264' and codec not in disabled:
         attempts.append((codec, _get_encoder_args_with_fallback(codec, bitrate)))
     attempts.append(('libx264', _get_libx264_encoder_args()))
 
@@ -1265,6 +1253,11 @@ def _run_ffmpeg_encode_with_fallback(cmd_prefix: list, output_path: str,
         except RuntimeError as e:
             last_error = e
             if codec_name != 'libx264':
+                last_attempt = report.manifest['attempts'][-1] if report.manifest['attempts'] else {}
+                if last_attempt.get('category') in {'driver', 'unsupported_device', 'encoder_missing'}:
+                    if codec_name not in disabled:
+                        disabled.append(codec_name)
+                        report.note('task_encoder_disabled', {'codec': codec_name, 'reason': last_attempt.get('category')})
                 print(f"[Warning] {stage}: {codec_name} 编码失败，尝试回退 libx264")
                 continue
             raise
@@ -1274,14 +1267,12 @@ def _run_ffmpeg_encode_with_fallback(cmd_prefix: list, output_path: str,
 
 def _render_xfade_body_segment(input_path: str, start: float, duration: float,
                                output_path: str, codec: str, bitrate: str,
-                               video_fps: int, stage: str):
-    filter_complex = (
-        f"[0:v]trim=start={_format_seconds(start)}:duration={_format_seconds(duration)},"
-        f"setpts=PTS-STARTPTS,fps={video_fps},format=yuv420p,settb=AVTB[v];"
-        f"[0:a]atrim=start={_format_seconds(start)}:duration={_format_seconds(duration)},"
-        f"asetpts=PTS-STARTPTS,aresample=48000:async=1:first_pts=0,"
-        f"asetpts=N/SR/TB,aformat=sample_fmts=fltp:channel_layouts=stereo[a]"
-    )
+                               video_fps: int, stage: str, resolution=None):
+    from utils.media_probe import probe_media, normalized_video, normalized_audio
+    info = probe_media(input_path)
+    resolution = resolution or (info['video']['width'], info['video']['height'])
+    filter_complex = (normalized_video(0, start, duration, video_fps, resolution, 'v') + ';' +
+                      normalized_audio(0, start, duration, bool(info['audio']), 'a'))
     cmd_prefix = [
         get_ffmpeg_binary('ffmpeg'), '-y', '-hide_banner', '-loglevel', 'warning',
         '-i', input_path,
@@ -1294,21 +1285,18 @@ def _render_xfade_body_segment(input_path: str, start: float, duration: float,
 def _render_xfade_transition_segment(left_path: str, right_path: str,
                                      left_start: float, duration: float,
                                      output_path: str, codec: str, bitrate: str,
-                                     video_fps: int, stage: str):
+                                     video_fps: int, stage: str, resolution=None):
+    from utils.media_probe import probe_media, normalized_video, normalized_audio
+    left, right = probe_media(left_path), probe_media(right_path)
+    resolution = resolution or (left['video']['width'], left['video']['height'])
     duration_s = _format_seconds(duration)
     filter_complex = (
-        f"[0:v]trim=start={_format_seconds(left_start)}:duration={duration_s},"
-        f"setpts=PTS-STARTPTS,fps={video_fps},format=yuv420p,settb=AVTB[v0];"
-        f"[1:v]trim=start=0:duration={duration_s},"
-        f"setpts=PTS-STARTPTS,fps={video_fps},format=yuv420p,settb=AVTB[v1];"
+        normalized_video(0, left_start, duration, video_fps, resolution, 'v0') + ';' +
+        normalized_video(1, 0, duration, video_fps, resolution, 'v1') + ';' +
         f"[v0][v1]xfade=transition=fade:duration={duration_s}:offset=0,"
         f"format=yuv420p,settb=AVTB[vout];"
-        f"[0:a]atrim=start={_format_seconds(left_start)}:duration={duration_s},"
-        f"asetpts=PTS-STARTPTS,aresample=48000:async=1:first_pts=0,"
-        f"asetpts=N/SR/TB,aformat=sample_fmts=fltp:channel_layouts=stereo[a0];"
-        f"[1:a]atrim=start=0:duration={duration_s},"
-        f"asetpts=PTS-STARTPTS,aresample=48000:async=1:first_pts=0,"
-        f"asetpts=N/SR/TB,aformat=sample_fmts=fltp:channel_layouts=stereo[a1];"
+        + normalized_audio(0, left_start, duration, bool(left['audio']), 'a0') + ';'
+        + normalized_audio(1, 0, duration, bool(right['audio']), 'a1') + ';' +
         f"[a0][a1]acrossfade=d={duration_s}:c1=tri:c2=tri,"
         f"aresample=48000:async=1:first_pts=0,asetpts=N/SR/TB[aout]"
     )
@@ -1356,7 +1344,7 @@ def _concat_island_segments(segment_paths: list, list_file: str, output_path: st
 def combine_full_video_xfade_islands(video_clip_path: str, trans_time: float = 1,
                                      codec: str = None, bitrate: str = "5000k",
                                      video_fps: int = 60,
-                                     temp_dir_name: str = "xfade_islands_tmp"):
+                                     temp_dir_name: str = "xfade_islands_tmp", video_res=None):
     """低内存 xfade 拼接：每次只处理相邻两个片段的转场窗口，再 concat。
 
     此函数服务于 GPU 渲染路线，内部仅调用 FFmpeg/FFprobe，不依赖 MoviePy。
@@ -1373,12 +1361,15 @@ def combine_full_video_xfade_islands(video_clip_path: str, trans_time: float = 1
                                          trans_time=trans_time, video_fps=video_fps)
 
     file_paths = [os.path.join(video_clip_path, f) for f in sorted_files]
-    durations = []
-    for fp in file_paths:
-        duration = _get_video_duration(fp)
-        if duration <= 0:
-            raise ValueError(f"无法获取视频时长: {fp}")
-        durations.append(duration)
+    from utils.media_probe import probe_media
+    from utils.diagnostics import current_report, capture_exception
+    probes = [probe_media(fp) for fp in file_paths]
+    durations = [p['duration'] for p in probes]
+    video_res = video_res or (probes[0]['video']['width'], probes[0]['video']['height'])
+    if video_fps <= 0 or len(video_res) != 2 or any(int(v) != v or v < 2 or v % 2 for v in video_res):
+        raise ValueError('转场输出分辨率必须为正偶数，帧率必须为正数。')
+    current_report().note('transition_settings', {'resolution': list(video_res), 'fps': video_fps,
+                                                 'codec': codec, 'transition': trans_time})
 
     frame_epsilon = 1 / max(video_fps, 1)
     transition_times = []
@@ -1391,7 +1382,12 @@ def combine_full_video_xfade_islands(video_clip_path: str, trans_time: float = 1
         transition_times.append(max_duration if max_duration > frame_epsilon else 0.0)
 
     output_path = os.path.join(video_clip_path, "final_output.mp4")
+    from uuid import uuid4
+    pending_output = os.path.join(video_clip_path, f".concat-{uuid4().hex}.mp4")
     temp_dir = os.path.join(video_clip_path, temp_dir_name)
+    if (Path(temp_dir_name).name != temp_dir_name or temp_dir_name in {'.', '..'}
+            or Path(temp_dir).resolve().parent != Path(video_clip_path).resolve()):
+        raise ValueError('转场临时目录必须位于片段目录内。')
     if os.path.exists(temp_dir):
         shutil.rmtree(temp_dir)
     os.makedirs(temp_dir, exist_ok=True)
@@ -1419,7 +1415,7 @@ def combine_full_video_xfade_islands(video_clip_path: str, trans_time: float = 1
                     codec,
                     bitrate,
                     video_fps,
-                    f"主体片段 {i + 1}"
+                    f"主体片段 {i + 1}", video_res
                 )
                 generated_segments.append(body_path)
                 segment_index += 1
@@ -1441,7 +1437,7 @@ def combine_full_video_xfade_islands(video_clip_path: str, trans_time: float = 1
                         codec,
                         bitrate,
                         video_fps,
-                        f"转场 {i + 1}->{i + 2}"
+                        f"转场 {i + 1}->{i + 2}", video_res
                     )
                     generated_segments.append(transition_path)
                     segment_index += 1
@@ -1452,14 +1448,21 @@ def combine_full_video_xfade_islands(video_clip_path: str, trans_time: float = 1
             raise RuntimeError("transition island 未生成任何有效临时片段")
 
         list_file = os.path.join(temp_dir, "concat_list.txt")
-        _concat_island_segments(generated_segments, list_file, output_path, video_fps)
+        _concat_island_segments(generated_segments, list_file, pending_output, video_fps)
+        final_probe = probe_media(pending_output)
+        if not final_probe['audio'] or (final_probe['video']['width'], final_probe['video']['height']) != tuple(video_res):
+            raise RuntimeError('最终转场视频的尺寸或音轨无效。')
+        os.replace(pending_output, output_path)
         success = True
         print(f"[Timer] transition island 拼接总耗时: {time.perf_counter() - t_concat_start:.2f}s")
         return output_path
     except Exception as e:
+        capture_exception(e, 'transition island')
         print(f"[Error] transition island 拼接失败，临时文件保留在: {temp_dir}")
         raise RuntimeError(f"transition island 拼接失败: {e}。临时文件保留在: {temp_dir}") from e
     finally:
+        if os.path.exists(pending_output):
+            os.remove(pending_output)
         if success and os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
 

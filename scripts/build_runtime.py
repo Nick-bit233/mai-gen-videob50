@@ -8,7 +8,7 @@ import urllib.request
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = '1.2.6'
+VERSION = '1.2.8'
 PYTHON_VERSION = '3.12.10'  # Last python.org 3.12 Windows embeddable release.
 
 
@@ -20,7 +20,7 @@ def validate(stage):
     python = stage / 'runtime/python.exe'
     run([python, '-m', 'pip', 'check'], stage)
     run([python, '-c',
-         'import cv2, numpy, moviepy, taichi, streamlit, lxml, PIL, '
+         'import _distutils_hack, setuptools, openpyxl, cv2, numpy, moviepy, taichi, streamlit, lxml, PIL, '
          'bilibili_api, pytubefix, pilmoji, jieba, streamlit_sortables, streamlit_searchbox; '
          'assert cv2.__version__ == "4.14.0"; '
          'assert numpy.__version__ == "2.2.6"; '
@@ -104,6 +104,7 @@ def main():
             'FFmpeg source: https://ffmpeg.org/releases/ffmpeg-7.1.tar.xz\n'
             'Python and package licenses are also retained inside runtime.\n', encoding='utf-8')
         shutil.copy2(ROOT / 'scripts/runtime-start.bat', stage / 'start.bat')
+        shutil.copy2(ROOT / 'scripts/runtime_bootstrap.py', stage / 'runtime_bootstrap.py')
         shutil.copy2(ROOT / 'requirements.txt', stage / 'runtime-requirements.txt')
         (stage / 'runtime-gpu-requirements.txt').write_text(
             (ROOT / 'requirements-gpu.txt').read_text(encoding='utf-8').replace(
@@ -113,7 +114,7 @@ def main():
         (stage / 'runtime-installed.txt').write_text(frozen, encoding='utf-8')
         (stage / 'RUNTIME-README.txt').write_text(
             f'mai-gen-videob50 runtime v{VERSION} (Windows x64)\n\n'
-            'Extract all contents into the v1.2.6 application directory, then run start.bat.\n'
+            'Extract all contents into the v1.2.8 application directory, then run start.bat.\n'
             'For upgrades, rename the previous runtime directory before extracting; do not mix old DLLs/packages.\n'
             'Includes Python 3.12.10, Taichi 1.7.4, OpenCV 4.14.0.94, NumPy 2.2.6, MoviePy 2.2.1, FFmpeg/FFprobe 7.1.\n'
             'No system Python or separate Taichi install is required. GPU use is optional.\n'

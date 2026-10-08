@@ -123,8 +123,15 @@ def load_style_config(game_type, config_file=DEFAULT_STYLE_CONFIG_FILE_PATH):
 
 
 
-def update_music_metadata():
-    for game_type in ['maimai', 'chunithm']:
+def update_music_metadata(game_type=None):
+    game_type = game_type or st.session_state.get('game_type', 'maimai')
+    if game_type == 'maimai':
+        from utils.metadata_release import update_release
+        result = update_release()
+        if not result['updated']:
+            raise RuntimeError(result['message'])
+        return
+    for game_type in ['chunithm']:
         metadata_dir = './music_metadata/'
         if not os.path.exists(metadata_dir):
             os.makedirs(metadata_dir, exist_ok=True)

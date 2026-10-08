@@ -17,6 +17,7 @@ from utils.ChartUtils import (
 )
 from utils.ImageUtils import process_custom_jacket
 from utils.AssetManager import AssetManager
+from utils.excel_import_ui import render_excel_import
 
 # 检查streamlit扩展组件安装情况
 try:
@@ -196,6 +197,7 @@ def update_records_to_db():
                 to_save_records,
                 st.session_state.archive_name
             )
+            st.session_state.records = to_save_records
             st.toast("更改已保存到数据库！")
         except Exception as e:
             st.error(f"保存失败: {e}, {traceback.format_exc()}")
@@ -714,6 +716,8 @@ def update_record_grid(grid, external_placeholder):
     
     if st.session_state.get('metadata_edit_method') == "手动填写": # 手动填写模式，仅加载手动覆写表单控件
         render_manual_override_ui(grid, external_placeholder)
+        if st.button('提交存档修改', type='primary', key='manual_save_archive_records'):
+            save_current_archive()
     else:  # 自动填充模式的实现
         with external_placeholder.container():
             st.session_state.cur_search_level_index = 3  # 默认搜索MASTER难度
@@ -1307,6 +1311,9 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
 
         rating_compute_options = ["最新", "国服"]
         metadata_edit_options = ["自动填充", "手动填写"]
+        if st.session_state.pop('_excel_switch_manual', False):
+            st.session_state.metadata_edit_method = '手动填写'
+            st.session_state['metadata_edit_method_widget'] = '手动填写'
         if 'rating_compute_method' not in st.session_state:
             st.session_state.rating_compute_method = rating_compute_options[0]
         if 'metadata_edit_method' not in st.session_state:
@@ -1316,7 +1323,8 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
                 "选择元数据和成绩数据的填充方式",
                 help="自动填充（默认）：您仅可以修改个人成绩和游玩次数信息，乐曲元数据和rating等均自动计算，适合大多数用户；手动填写：允许直接编辑所有字段（包括上传曲绘），适合需要完全自定义的情况",
                 options=metadata_edit_options,
-                index=0,
+                index=metadata_edit_options.index(st.session_state.metadata_edit_method),
+                key='metadata_edit_method_widget',
                 horizontal=True
             )
             st.session_state.rating_compute_method = st.radio(
@@ -1337,6 +1345,7 @@ if 'archive_name' in st.session_state and st.session_state.archive_name:
                 \n - 上传自定义曲绘将会覆盖默认获取的曲绘；如果您自定义了不在可玩乐曲范围内的曲目，请搭配上传自定义曲绘，否则视频中将无法显示曲绘。
                 \n - 在填写成绩时，rating等信息不会自动计算，除非您勾选自动计算选项。""", icon="⚠️")
         
+        render_excel_import(cur_game_type, db_handler.load_save_archive(st.session_state.username, st.session_state.archive_name))
         chart_search_placeholder = st.empty()
         record_grid = st.container()
         update_record_grid(record_grid, chart_search_placeholder)  # 更新记录表格的显示

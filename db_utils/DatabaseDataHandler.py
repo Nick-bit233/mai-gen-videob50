@@ -193,62 +193,18 @@ class DatabaseDataHandler:
         if not archive_id:
             raise ValueError(f"Archive '{archive_name}' not found for user '{username}'")
 
-        # Get existing records from DB, mapped by chart_id for quick lookup
-        existing_records_list = self.db.get_archive_records_simple(archive_id)
-        existing_records_map = {rec['chart_id']: rec for rec in existing_records_list}
-        
-        processed_chart_ids = set()
-        download_tasks = []
-
-        with self.db.get_connection() as conn: # Use a single transaction
-            for i, record_data in enumerate(new_records_data):
-                # 1. Get or create the chart for the incoming record
-                chart_data = record_data.get('chart_data')
-                if not chart_data:
-                    raise ValueError("Each record must include 'chart_data' field.")
-                
-                # Always use get_or_create_chart - chart uniqueness is by (game_type, song_id, chart_type, level_index)
-                chart_id = self.db.get_or_create_chart(chart_data)
-                
-                processed_chart_ids.add(chart_id)
-
-                download_tasks.append({
-                    'game_type': chart_data.get('game_type', 'maimai'),
-                    'title': chart_data.get('song_name'),
-                    'artist': chart_data.get('artist')
-                })
-
-                # print(f"Updating record for chart_id {chart_id} with data: {record_data}")
-                # 2. Check if this chart already has a record in the archive
-                if chart_id in existing_records_map:
-                    # It exists, so update it
-                    existing_record = existing_records_map[chart_id]
-                    self.db.update_record(existing_record['id'], record_data)
-                else:
-                    # It's a new record for this archive, so add it
-                    self.db.add_record(archive_id, chart_id, record_data)
-            
-            # 3. Determine which records to delete
-            chart_ids_to_delete = set(existing_records_map.keys()) - processed_chart_ids
-            record_ids_to_delete = [
-                rec['id'] for chart_id, rec in existing_records_map.items() 
-                if chart_id in chart_ids_to_delete
-            ]
-            
-            if record_ids_to_delete:
-                self.db.delete_records(record_ids_to_delete)
-
-        # Update the record count in the archive table
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE archives SET record_count = ? WHERE id = ?",
-                (len(new_records_data), archive_id)
-            )
-            conn.commit()
-
-        AssetManager.start_background_download(download_tasks)
-
+        from db_utils.record_transaction import save_archive_records
+        save_archive_records(self.db, archive_id, new_records_data)
+        # Official records keep existing jacket prefetching. Excel custom records
+        # retain their explicitly imported jackets and never start this prefetch.
+        download_tasks = [
+            {'game_type': r['chart_data'].get('game_type', 'maimai'),
+             'title': r['chart_data'].get('song_name'), 'artist': r['chart_data'].get('artist')}
+            for r in new_records_data
+            if not str(r.get('chart_data', {}).get('song_id', '')).startswith('custom_excel_')
+        ]
+        if download_tasks:
+            AssetManager.start_background_download(download_tasks)
         return archive_id
 
     def copy_archive(self, username: str, source_archive_name: str) -> Optional[Tuple[int, str]]:

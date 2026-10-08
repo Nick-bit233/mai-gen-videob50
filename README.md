@@ -8,7 +8,11 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 ## 更新速览
 
-下一版本开发：新版主题系统
+`v1.2.8` 本地实现已包含 Excel 批量自定义导入、按线上 release 更新舞萌视频匹配元数据（中二沿用旧版搜索）、用户手动匿名直传错误日志、Python 启动隔离，以及转场输入兼容、硬件编码诊断和成品失败保护。
+
+使用方法见[Excel 导入说明](docs/excel_import_guide.md)，本地验证记录见[1.2.8 本地验收](docs/release_v1.2.8_local_acceptance.md)。正式中二素材、OSS 公共配置和真实网络验收按[收尾操作](docs/release_v1.2.8_closeout.md)完成；当前本地验收包带 `local` 标记。
+
+当前开发分支已完成：新版主题系统
 
 - 片头、片尾背景音乐可分别上传 MP3/WAV、试听和恢复主题默认；舞萌预设使用独立 opening/ending 配对。
 - 新增 maimai MAGiCAL 视频主题与页面配色。

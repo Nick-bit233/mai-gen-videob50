@@ -29,25 +29,9 @@ def process_custom_jacket(uploaded_file, save_dir: str = "static/assets/custom_j
         # 确保保存目录存在
         os.makedirs(save_dir, exist_ok=True)
         
-        # 读取图片
-        img = Image.open(uploaded_file)
-        
-        # 转换为 RGBA
-        if img.mode != 'RGBA':
-            img = img.convert('RGBA')
-        
-        # 检查比例并裁剪为正方形
-        width, height = img.size
-        if width != height:
-            # 裁剪为正方形（取中心）
-            size = min(width, height)
-            left = (width - size) // 2
-            top = (height - size) // 2
-            img = img.crop((left, top, left + size, top + size))
-        
-        # 缩放到 400x400
-        img = img.resize((400, 400), Image.LANCZOS)
-        
+        from utils.custom_jackets import prepare_jacket
+        img = prepare_jacket(uploaded_file)
+
         # 生成唯一文件名（使用原始文件名 + 时间戳）
         import time
         original_name = os.path.splitext(uploaded_file.name)[0]

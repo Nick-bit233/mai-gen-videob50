@@ -209,6 +209,9 @@ class FailedRenderTests(unittest.TestCase):
         writer.process = process
         writer._stderr = tempfile.TemporaryFile()
         writer._stderr.write(b'Invalid bitrate')
+        from utils.diagnostics import current_report
+        writer._diagnostic_attempt = current_report().attempt(['ffmpeg'], 'test pipe')
+        writer._diagnostic_attempt.stderr.write(b'Invalid bitrate')
         with self.assertRaisesRegex(RuntimeError, 'Invalid bitrate'):
             writer.write_frame(np.zeros((8, 8, 3), dtype=np.uint8))
         self.assertIsNone(writer.process)
@@ -224,6 +227,9 @@ class FailedRenderTests(unittest.TestCase):
         writer.process = process
         writer._stderr = tempfile.TemporaryFile()
         writer._stderr.write(b'encoder failed')
+        from utils.diagnostics import current_report
+        writer._diagnostic_attempt = current_report().attempt(['ffmpeg'], 'test encoder')
+        writer._diagnostic_attempt.stderr.write(b'encoder failed')
         with self.assertRaisesRegex(RuntimeError, 'encoder failed'):
             writer.close()
         self.assertIsNone(writer.process)

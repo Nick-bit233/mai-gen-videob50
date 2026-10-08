@@ -20,6 +20,7 @@ from utils.PageUtils import remove_invalid_chars
 from utils.video_frames import VideoFrameReader
 from utils.style_config import resolve_bgm
 from utils.theme_artifacts import clip_recipe, clip_is_current, record_clip_recipe, validate_image_style, record_clip_order, ordered_clip_files
+from utils.diagnostics import current_report, execute, capture_exception
 
 
 # ============================================================================
@@ -56,10 +57,8 @@ def check_ffmpeg_version():
     try:
         ffmpeg_path = get_ffmpeg_binary('ffmpeg')
         ffprobe_path = get_ffmpeg_binary('ffprobe')
-        result = subprocess.run(
-            [ffmpeg_path, '-version'],
-            capture_output=True, text=True, timeout=10
-        )
+        result = execute([ffmpeg_path, '-version'], 'FFmpeg 版本检查', timeout=10)
+        current_report().note('ffmpeg_version', {'path': ffmpeg_path, 'version': result.stdout})
         # 匹配多种版本号格式:
         #   "ffmpeg version 7.1-full_build-..."
         #   "ffmpeg version n4.3.2-160-gfbb9368226 ..."
@@ -78,10 +77,8 @@ def check_ffmpeg_version():
                 f"请更新 FFmpeg 或使用最新的 runtime 运行环境包。"
             )
         # xfade 拼接与时长探测依赖 ffprobe，前置确认可以避免在长时间渲染后才报 WinError 2。
-        subprocess.run(
-            [ffprobe_path, '-version'],
-            capture_output=True, text=True, timeout=10, check=True
-        )
+        probe_version = execute([ffprobe_path, '-version'], 'FFprobe 版本检查', timeout=10)
+        current_report().note('ffprobe_version', {'path': ffprobe_path, 'version': probe_version.stdout})
         _ffmpeg_version_checked = True
         print(f"[AccelRenderer] ✓ FFmpeg 版本: {major}.{minor}")
     except FileNotFoundError:
@@ -91,6 +88,19 @@ def check_ffmpeg_version():
 
 _hw_encoder_cache = None
 
+
+def _record_gpu_environment():
+    report = current_report()
+    if 'gpu' in report.manifest['environment']:
+        return
+    if binary := shutil.which('nvidia-smi'):
+        result = execute([binary, '--query-gpu=name,driver_version', '--format=csv,noheader'],
+                         'GPU型号与驱动版本', timeout=10, check=False)
+        report.manifest['environment']['gpu'] = result.stdout.strip() or '不可取得'
+    else:
+        report.manifest['environment']['gpu'] = 'nvidia-smi 不可取得'
+    report.save()
+
 def detect_hw_encoder() -> Tuple[str, str]:
     """
     检测可用的 FFmpeg 硬件编码器。
@@ -99,7 +109,9 @@ def detect_hw_encoder() -> Tuple[str, str]:
         (codec_name, display_name) 元组
     """
     global _hw_encoder_cache
+    _record_gpu_environment()
     if _hw_encoder_cache is not None:
+        current_report().note('cached_encoder', {'codec': _hw_encoder_cache[0], 'name': _hw_encoder_cache[1]})
         return _hw_encoder_cache
 
     encoders = [
@@ -110,19 +122,17 @@ def detect_hw_encoder() -> Tuple[str, str]:
     ]
 
     try:
-        result = subprocess.run(
-            [get_ffmpeg_binary('ffmpeg'), '-hide_banner', '-encoders'],
-            capture_output=True, text=True, timeout=10
-        )
+        result = execute([get_ffmpeg_binary('ffmpeg'), '-hide_banner', '-encoders'], '列举编码器', timeout=10)
         output = result.stdout + result.stderr
+        current_report().note('ffmpeg_encoders', {'binary': get_ffmpeg_binary('ffmpeg'), 'output': output})
         for codec, name in encoders:
             if codec in output:
                 # 实际探测编码器是否能工作（驱动版本可能不满足要求）
-                probe = subprocess.run(
+                probe = execute(
                     [get_ffmpeg_binary('ffmpeg'), '-y', '-hide_banner', '-loglevel', 'error',
                      '-f', 'lavfi', '-i', 'nullsrc=s=256x256:d=0.1:r=30',
-                     '-c:v', codec, '-f', 'null', '-'],
-                    capture_output=True, text=True, timeout=10
+                     '-vf', 'format=yuv420p', *get_ffmpeg_encoder_args(codec), '-f', 'null', '-'],
+                    f'硬件编码器检查 ({codec})', timeout=10, check=False
                 )
                 if probe.returncode == 0:
                     _hw_encoder_cache = (codec, name)
@@ -258,13 +268,15 @@ class FFmpegWriter:
             cmd += ['-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-map', '0:v', '-map', '1:a', '-shortest']
 
         cmd += [output_path]
+        self._diagnostic_attempt = current_report().attempt(cmd, f'写帧编码 ({codec})')
         
         try:
             self.process = subprocess.Popen(
-                cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
-                stderr=self._stderr,
+                cmd, stdin=subprocess.PIPE, stdout=self._diagnostic_attempt.stdout,
+                stderr=self._diagnostic_attempt.stderr,
             )
-        except Exception:
+        except Exception as exc:
+            self._diagnostic_attempt.finish(error=exc)
             self._stderr.close()
             raise
 
@@ -295,11 +307,14 @@ class FFmpegWriter:
             except OSError as exc:
                 pipe_error = exc
             code = self.process.wait(timeout=60)
+            self._diagnostic_attempt.finish(code, pipe_error)
             if code or pipe_error:
-                self._stderr.seek(0, os.SEEK_END)
-                self._stderr.seek(max(0, self._stderr.tell() - 4000))
-                error = self._stderr.read().decode('utf-8', errors='replace')
+                from utils.diagnostics import _tail
+                error = _tail(self._diagnostic_attempt.report.directory / self._diagnostic_attempt.item['stderr'], 4000)
                 raise RuntimeError(f"视频编码失败（{code}）: {error or pipe_error}")
+        except Exception as exc:
+            self._diagnostic_attempt.finish(self.process.poll(), exc)
+            raise
         finally:
             self.abort()
 
@@ -317,6 +332,8 @@ class FFmpegWriter:
                 self.process.stdin.close()
             except (OSError, ValueError):
                 pass
+            if hasattr(self, '_diagnostic_attempt'):
+                self._diagnostic_attempt.finish(self.process.poll(), RuntimeError('编码任务中止') if self.process.returncode is None else None)
             self.process = None
         if hasattr(self, '_stderr'):
             self._stderr.close()
@@ -714,6 +731,7 @@ def render_segment_accel(
 
     except Exception as e:
         print(f"[AccelRenderer] Error: {traceback.format_exc()}")
+        capture_exception(e, 'GPU曲目片段')
         return {"status": "error", "info": f"GPU渲染失败: {str(e)}"}
     finally:
         _cleanup_render(writer, (video_reader, bg_video_reader), temporary_output)
@@ -863,6 +881,7 @@ def render_info_segment_accel(
 
     except Exception as e:
         print(f"[AccelRenderer] Error: {traceback.format_exc()}")
+        capture_exception(e, 'GPU信息片段')
         return {"status": "error", "info": f"渲染失败: {str(e)}"}
     finally:
         _cleanup_render(writer, (bg_reader,), temporary_output)

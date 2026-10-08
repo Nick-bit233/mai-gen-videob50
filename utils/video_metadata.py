@@ -229,9 +229,18 @@ def build_desktop_manifest(source_payload: Any) -> dict[str, Any]:
     )
 
 
-@lru_cache(maxsize=1)
 def load_video_manifest(path: str | os.PathLike[str] | None = None) -> dict[str, Any]:
-    manifest_path = Path(path) if path is not None else VIDEO_METADATA_PATH
+    if path is None:
+        from utils.metadata_release import resolve_metadata_file
+        manifest_path = resolve_metadata_file('asset-manifest.json')
+    else:
+        manifest_path = Path(path)
+    return _load_video_manifest_file(str(manifest_path.resolve()))
+
+
+@lru_cache(maxsize=4)
+def _load_video_manifest_file(path):
+    manifest_path = Path(path)
     try:
         with manifest_path.open("r", encoding="utf-8") as handle:
             payload = json.load(handle)
@@ -242,10 +251,19 @@ def load_video_manifest(path: str | os.PathLike[str] | None = None) -> dict[str,
     return validate_desktop_manifest(payload)
 
 
-@lru_cache(maxsize=1)
-def _default_manifest_index() -> dict[tuple[str, str, str, int], dict[str, Any]]:
-    manifest = load_video_manifest()
+@lru_cache(maxsize=4)
+def _manifest_index(path) -> dict[tuple[str, str, str, int], dict[str, Any]]:
+    manifest = load_video_manifest(path)
     return {_asset_identity(asset): asset for asset in manifest["assets"]}
+
+
+def _default_manifest_index():
+    from utils.metadata_release import resolve_metadata_file
+    return _manifest_index(str(resolve_metadata_file('asset-manifest.json').resolve()))
+
+
+load_video_manifest.cache_clear = _load_video_manifest_file.cache_clear
+_default_manifest_index.cache_clear = _manifest_index.cache_clear
 
 
 def clear_video_manifest_cache() -> None:
@@ -463,6 +481,9 @@ def should_update_video_manifest(
     now: datetime | None = None,
     state_path: Path = VIDEO_METADATA_STATE_PATH,
 ) -> bool:
+    if state_path == VIDEO_METADATA_STATE_PATH:
+        from utils.metadata_release import should_update_release
+        return should_update_release()
     state = _read_update_state(state_path)
     raw_last_update = state.get("video_metadata_last_update")
     if not isinstance(raw_last_update, str):
@@ -481,12 +502,23 @@ def should_update_video_manifest(
 
 def update_video_manifest(
     *,
-    url: str = VIDEO_METADATA_URL,
+    url: str | None = None,
     destination: Path = VIDEO_METADATA_PATH,
     state_path: Path = VIDEO_METADATA_STATE_PATH,
     request_get=requests.get,
     now: datetime | None = None,
 ) -> VideoMetadataUpdateResult:
+    if url is None:
+        from utils.metadata_release import update_release
+        result = update_release()
+        try:
+            cached = get_video_manifest_status()
+        except VideoMetadataError:
+            cached = {}
+        return VideoMetadataUpdateResult(
+            updated=result['updated'], metadata_store_version=result.get('metadata_store_version', cached.get('metadata_store_version')),
+            generated_at=result.get('generated_at', cached.get('generated_at')),
+            usable_asset_count=result.get('usable_asset_count', cached.get('usable_asset_count', 0)), message=result['message'])
     try:
         response = request_get(url, timeout=30)
         response.raise_for_status()

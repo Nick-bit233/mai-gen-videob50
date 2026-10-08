@@ -385,20 +385,25 @@ def download_metadata(game_type="maimai") -> tuple[str, dict]:
         print(f"Failed to download metadata from {url}. Status code: {response.status_code}")
         raise FileNotFoundError
     
-@lru_cache(maxsize=2)
 def load_metadata(game_type: str) -> dict:
     metadata_dir = './music_metadata/'
     if game_type == "maimai":
-        json_path = os.path.join(metadata_dir, f"mai_fusion_data.json")
+        from utils.metadata_release import resolve_metadata_file
+        json_path = resolve_metadata_file('mai_fusion_data.json')
     elif game_type == "chunithm":
         json_path = os.path.join(metadata_dir, f"chuni_fusion_data.json")
     else:
         raise ValueError(f"Unsupported game type: {game_type}")
-    if os.path.exists(json_path):
-        with open(json_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    else:
-        raise FileNotFoundError(f"Metadata file not found: {json_path}")
+    return _load_metadata_file(str(os.path.abspath(json_path)))
+
+
+@lru_cache(maxsize=4)
+def _load_metadata_file(json_path):
+    with open(json_path, 'r', encoding='utf-8') as file:
+        return json.load(file)
+
+
+load_metadata.cache_clear = _load_metadata_file.cache_clear
 
 # --------------------------------------
 # song_id 编码/解码方法（TODO：暂时弃用，需要重新设计）

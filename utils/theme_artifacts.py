@@ -74,11 +74,13 @@ def clip_recipe(game, style, config, section, resolution, fps, bitrate, transiti
 
 
 def clip_is_current(path, recipe):
-    return Path(path).is_file() and read_recipe(path) == recipe
+    stored = read_recipe(path)
+    return (Path(path).is_file() and isinstance(stored, dict) and stored.get('recipe') == recipe
+            and stored.get('output') == file_reference(path))
 
 
 def record_clip_recipe(path, recipe):
-    write_json_atomic(metadata_path(path), recipe)
+    write_json_atomic(metadata_path(path), {'recipe': recipe, 'output': file_reference(path)})
 
 
 def record_clip_order(directory, filenames):

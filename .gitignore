@@ -218,3 +218,10 @@ static/assets/custom_jackets
 
 # Theme-system behavioral regressions.
 !tests/test_theme_system.py
+
+# Version 1.2.8 focused behavioral regressions and local-only diagnostics.
+!tests/test_release128.py
+logs/
+outputs/
+!static/error_report_config.json
+!static/metadata_release_config.json
