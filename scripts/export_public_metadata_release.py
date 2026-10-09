@@ -6,7 +6,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from utils.metadata_release import FILES, validate_charts
+from utils.metadata_release import FILES, validate_charts, normalize_charts
 from utils.video_metadata import build_desktop_manifest
 
 SONG_FIELDS = ('id_fish','id_fish_dx','id_lx','id_otoge','title','title_kana','artist','genre','version','bpm',
@@ -23,7 +23,7 @@ def export_release(source, output):
     descriptor = json.loads((source/'release.json').read_text(encoding='utf-8'))
     fusion = json.loads((source/FILES['chart_metadata']).read_text(encoding='utf-8'))
     raw = json.loads((source/FILES['asset_manifest']).read_text(encoding='utf-8'))
-    charts = [{k:v for k,v in song.items() if k in SONG_FIELDS} for song in fusion]
+    charts = normalize_charts([{k:v for k,v in song.items() if k in SONG_FIELDS} for song in fusion])
     for song in charts:
         song['charts_info'] = [{k:v for k,v in chart.items() if k in CHART_FIELDS} for chart in song['charts_info']]
     identities = validate_charts(charts)

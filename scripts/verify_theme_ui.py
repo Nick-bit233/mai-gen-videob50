@@ -72,6 +72,14 @@ def main():
     element(page.button, "应用预设").click().run(timeout=60)
     healthy(page)
     assert read_style("chunithm")["options"]["chunithm_constant_display"] == "latest"
+    element(page.radio, "视频样式预设").set_value("MATE").run(timeout=60)
+    element(page.button, "应用预设").click().run(timeout=60)
+    healthy(page)
+    mate = read_style('chunithm')
+    assert mate['style_name'] == 'MATE' and mate['options']['chunithm_constant_display'] == 'latest'
+    assert mate['asset_paths']['intro_bgm'].endswith('opening_chunithm_mate.mp3')
+    assert mate['asset_paths']['ending_bgm'].endswith('ending_chunithm_mate.mp3')
+    assert mate['asset_paths']['intro_video_bg'].endswith('opening_bg_chunithm_mate.mp4')
     element(page.button, "生成预览图").click().run(timeout=60)
     healthy(page)
     assert not page.error, page.error
@@ -123,6 +131,7 @@ def main():
     page_utils.change_theme(THEME_COLORS["maimai"]["Magical"])
     assert "#087f75" in (root / ".streamlit/config.toml").read_text()
     report = {"preset_and_custom_save": "passed", "game_switch_and_widget_reset": "passed",
+              "mate_preset_and_independent_bgm": "passed",
               "three_modes_and_image_batch": "passed", "stale_image_preflight": "passed",
               "render_failure_not_success": "passed", "magical_palette_save": "passed"}
     (root / "verification.json").write_text(json.dumps(report, indent=2), encoding="utf-8")

@@ -15,6 +15,7 @@ from uuid import uuid4
 import requests
 
 from utils.diagnostics import capture_exception
+from utils.metadata_identity import song_identity
 
 ACTIVE_RELEASE_URL = 'https://nickbit-maigen-images.oss-cn-shanghai.aliyuncs.com/metadata_json/active-release.json'
 FILES = {'chart_metadata': 'mai_fusion_data.json', 'asset_manifest': 'asset-manifest.json'}
@@ -98,20 +99,31 @@ def validate_pointer(payload):
     return {k: payload.get(k) for k in ('kind', 'schema_version', 'game_type', 'release_id', 'release_revision', 'metadata_store_version', 'state_row_version')}
 
 
-def validate_charts(charts):
+def normalize_charts(charts):
     if not isinstance(charts, list) or not charts:
         raise MetadataReleaseError('舞萌谱面数据必须是非空数组。')
-    identities = set()
+    normalized = []
     for song in charts:
-        if not isinstance(song, dict) or not isinstance(song.get('title'), str) or not song['title'].strip() or not isinstance(song.get('artist'), str):
+        if not isinstance(song, dict) or 'artist' not in song:
             raise MetadataReleaseError('谱面歌曲字段无效。')
+        try:
+            title, artist = song_identity(song.get('title'), song['artist'])
+        except ValueError as exc:
+            raise MetadataReleaseError(f'谱面歌曲字段无效：{exc}') from exc
+        normalized.append(dict(song, title=title, artist=artist))
+    return normalized
+
+
+def validate_charts(charts):
+    identities = set()
+    for song in normalize_charts(charts):
         chart_list = song.get('charts_info')
         if not isinstance(chart_list, list):
             raise MetadataReleaseError('谱面列表缺失。')
         for chart in chart_list:
             if not isinstance(chart, dict) or chart.get('type') not in {'standard', 'dx', 'utage', 'buddy'} or type(chart.get('difficulty')) is not int:
                 raise MetadataReleaseError('谱面类型或难度无效。')
-            identity = (song['title'].strip(), song['artist'].strip(), chart['type'], chart['difficulty'])
+            identity = (song['title'], song['artist'], chart['type'], chart['difficulty'])
             if identity in identities:
                 raise MetadataReleaseError(f'谱面身份重复：{identity}')
             identities.add(identity)
@@ -200,7 +212,7 @@ def update_release(*, url=None, files_root=None, root=None, session=None, allow_
         descriptor = _fetch_json(client, prefix + 'release.json')
         if not isinstance(descriptor, dict) or descriptor.get('game_type') != 'maimai' or descriptor.get('schema_version') != 1 or descriptor.get('release_revision') != revision or descriptor.get('metadata_store_version') != pointer['metadata_store_version'] or descriptor.get('files') != FILES:
             raise MetadataReleaseError('发布描述与索引不一致。')
-        charts = _fetch_json(client, prefix + FILES['chart_metadata'])
+        charts = normalize_charts(_fetch_json(client, prefix + FILES['chart_metadata']))
         identities = validate_charts(charts)
         raw_manifest = _fetch_json(client, prefix + FILES['asset_manifest'])
         if not isinstance(raw_manifest, dict) or raw_manifest.get('metadata_store_version') != pointer['metadata_store_version'] or raw_manifest.get('release_revision', revision) != revision:

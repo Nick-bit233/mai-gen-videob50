@@ -8,9 +8,11 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 ## 更新速览
 
-`v1.2.8` 本地实现已包含 Excel 批量自定义导入、按线上 release 更新舞萌视频匹配元数据（中二沿用旧版搜索）、用户手动匿名直传错误日志、Python 启动隔离，以及转场输入兼容、硬件编码诊断和成品失败保护。
+`v1.2.8` 已完成本地开发、自动测试和 OSS 实网联调，等待人工验收。包含 Excel 批量自定义导入、按线上 release 更新舞萌视频匹配元数据（中二沿用旧版搜索）、用户手动匿名只写提交错误日志、Python 启动隔离，以及转场输入兼容、硬件编码诊断和成品失败保护。
 
-使用方法见[Excel 导入说明](docs/excel_import_guide.md)，本地验证记录见[1.2.8 本地验收](docs/release_v1.2.8_local_acceptance.md)。正式中二素材、OSS 公共配置和真实网络验收按[收尾操作](docs/release_v1.2.8_closeout.md)完成；当前本地验收包带 `local` 标记。
+中二新增 **MATE** 视频预设：使用新增背景视频与独立片头/片尾 BGM，成绩底图沿用 Verse；Verse/X-Verse 使用补齐的 Verse 音乐配对。正式透明版本 Logo 已接入，旧内置音乐路径失效时迁移到新配对，自定义音乐保留。
+
+使用方法见[Excel 导入说明](docs/excel_import_guide.md)，验证记录见[1.2.8 验收](docs/release_v1.2.8_local_acceptance.md)，人工检查步骤见[收尾说明](docs/release_v1.2.8_closeout.md)。日志桶及舞萌现有 release 已通过实际网络验收；人工验收包带 `manual` 标记，尚未推送或发布。
 
 当前开发分支已完成：新版主题系统
 
@@ -18,7 +20,7 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 - 新增 maimai MAGiCAL 视频主题与页面配色。
 - 中二成绩图片支持“国服 / 最新 / 定数对比”，单版本等级标识同步变化，Rating 和分表排序保持原存档值。
 - 修改音乐或展示选项后自动识别需要重生成的片段；旧成绩图片需重新生成一次。
-- 中二独立底图与 Logo 当前使用经确认的拆分占位素材，正式素材及中二新版 BGM 待补充。
+- 中二共用已确认的 Verse 底图和标题层，使用正式透明 Logo，并提供 Verse/X-Verse/MATE 三种视频预设。
 
 使用方法、升级行为与验收范围见[新版主题系统说明](docs/theme_system.md)。
 

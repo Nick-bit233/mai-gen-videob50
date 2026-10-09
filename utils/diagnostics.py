@@ -67,9 +67,21 @@ def reports_root() -> Path:
 
 
 def _write_json(path: Path, payload):
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(temporary, path)
+    temporary = path.with_name(f".{path.name}-{uuid4().hex}.tmp")
+    try:
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        for attempt in range(6):
+            try:
+                os.replace(temporary, path)
+                break
+            except OSError as exc:
+                # Windows readers/indexers can briefly hold a handle without
+                # FILE_SHARE_DELETE. Retry that lock, never an unrelated error.
+                if getattr(exc, 'winerror', None) not in {5, 32, 33} or attempt == 5:
+                    raise
+                time.sleep(.025 * 2**attempt)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def classify_error(message: str) -> str:
@@ -293,9 +305,21 @@ def package_report(directory: Path | str) -> bytes:
     return data.getvalue()
 
 
+class ReportUploadConflict(RuntimeError):
+    """An existing object cannot be verified through an anonymous write-only bucket."""
+
+    def __init__(self, report_id, object_key, request_id=""):
+        self.report_id = report_id
+        self.object_key = object_key
+        self.request_id = request_id
+        super().__init__(
+            f"报告编号 {report_id} 已存在，未覆盖远端文件。无法确认既有报告内容，"
+            "请保留报告编号供维护者核对；本地诊断包仍可下载。")
+
+
 def upload_report(data: bytes, report_id: str, endpoint: str, prefix="reports", *, timeout=30,
                   max_bytes=MAX_REPORT_BYTES, allow_local_http=False, session=None):
-    """Explicit anonymous PUT. Retry reuses the same key and checks bytes, never hashes."""
+    """Explicit write-only anonymous PUT; retries never download or overwrite objects."""
     if not endpoint:
         raise ValueError("尚未配置日志桶地址，请先下载本地诊断包。")
     parsed = urlsplit(endpoint)
@@ -319,17 +343,7 @@ def upload_report(data: bytes, report_id: str, endpoint: str, prefix="reports", 
     try:
         response = client.put(url, data=data, headers={"Content-Type": "application/zip", "x-oss-forbid-overwrite": "true"}, timeout=timeout, allow_redirects=False)
         if response.status_code == 409:
-            previous = client.get(url, timeout=timeout, allow_redirects=False, stream=True)
-            try:
-                content = bytearray()
-                for chunk in previous.iter_content(65536):
-                    content.extend(chunk)
-                    if len(content) > max_bytes:
-                        break
-                if previous.status_code != 200 or bytes(content) != data:
-                    raise RuntimeError("报告编号已存在且内容不同，未覆盖远端文件。")
-            finally:
-                previous.close()
+            raise ReportUploadConflict(report_id, key, response.headers.get("x-oss-request-id", ""))
         elif response.status_code not in {200, 201, 204}:
             raise RuntimeError(f"日志提交失败，HTTP {response.status_code}；本地诊断包仍可下载。")
         return {"report_id": report_id, "object_key": key, "url": url,

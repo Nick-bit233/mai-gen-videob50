@@ -9,6 +9,9 @@ import zipfile
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 from utils.app_version import APP_VERSION
+from utils.themes import DEFAULT_STYLES
+from utils.metadata_release import validate_charts
+from utils.video_metadata import validate_desktop_manifest
 
 
 def write_archive(target, entries):
@@ -26,7 +29,8 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--runtime-application',required=True,type=Path)
     parser.add_argument('--output',required=True,type=Path)
-    parser.add_argument('--application-only',action='store_true',help='Rebuild only the app after documentation-only edits')
+    parser.add_argument('--application-only',action='store_true',help='Rebuild only the app when the validated runtime is unchanged')
+    parser.add_argument('--manual-acceptance',action='store_true',help='Label the build for local human acceptance, without publishing')
     args=parser.parse_args()
     runtime_application=args.runtime_application.resolve()
     if not runtime_application.is_relative_to(ROOT/'test_output') or not (runtime_application/'runtime/python.exe').is_file():
@@ -54,6 +58,19 @@ def main():
         if not isinstance(payload,list) or not payload:
             raise ValueError(f'Missing bundled {game} chart snapshot')
         application[f'music_metadata/{filename}']=source
+        if game == 'maimai':
+            chart_identities = validate_charts(payload)
+    manifest = validate_desktop_manifest(json.loads((ROOT/'video_metadata/asset-manifest.json').read_text(encoding='utf-8')))
+    if any((a['song_title'],a['artist'],a['chart_type'],a['difficulty']) not in chart_identities for a in manifest['assets']):
+        raise ValueError('Bundled video manifest does not match the bundled maimai charts')
+    for styles in DEFAULT_STYLES.values():
+        for style in styles:
+            for key,value in style['asset_paths'].items():
+                resource = (ROOT/value).resolve()
+                if resource.is_dir():
+                    continue
+                if not resource.is_file() or not resource.is_relative_to(ROOT) or resource.relative_to(ROOT).as_posix() not in application:
+                    raise ValueError(f"Missing preset resource: {style['style_name']} / {key} / {value}")
     for name in ('st_app.py','static/error_report_config.json','static/metadata_release_config.json',
                  'static/import_templates/maimai_custom_import.xlsx','static/import_templates/chunithm_custom_import.xlsx',
                  'video_metadata/asset-manifest.json'):
@@ -79,13 +96,14 @@ def main():
     runtime['RUNTIME-README.txt']=(f'Runtime {APP_VERSION}, Windows x64. Extract beside st_app.py and run start.bat.\n'
         'For upgrades, rename the old runtime directory and extract the complete new runtime; do not mix packages.\n'
         'Python 3.12.10, NumPy 2.2.6, OpenCV 4.14.0.94, MoviePy 2.2.1, Taichi 1.7.4 and openpyxl 3.1.5.\n'
-        'Local acceptance build: online endpoints and final CHUNITHM materials remain pending.\n').encode()
-    app_zip=output/f'maigen_release_v{APP_VERSION}_local.zip'
-    runtime_zip=output/f'runtime_v{APP_VERSION}_windows_x64_local.zip'
+        'Local acceptance build: automatic checks and supplied materials are documented in docs/release_v1.2.8_local_acceptance.md; human acceptance is required before publishing.\n').encode()
+    label='manual' if args.manual_acceptance else 'local'
+    app_zip=output/f'maigen_release_v{APP_VERSION}_{label}.zip'
+    runtime_zip=output/f'runtime_v{APP_VERSION}_windows_x64_{label}.zip'
     write_archive(app_zip,application)
     if not args.application_only:
         write_archive(runtime_zip,runtime)
-    report={'version':APP_VERSION,'status':'local_acceptance','application':str(app_zip),'runtime':str(runtime_zip),
+    report={'version':APP_VERSION,'status':'manual_acceptance_pending' if args.manual_acceptance else 'local_acceptance','application':str(app_zip),'runtime':None if args.application_only else str(runtime_zip),
             'application_file_count':len(application),'runtime_file_count':len(runtime),
             'runtime_archive_created':not args.application_only}
     (output/'build-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')

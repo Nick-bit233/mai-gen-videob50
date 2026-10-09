@@ -190,6 +190,7 @@ cython_debug/
 # Bundled, reviewed maimai video metadata is part of the desktop release.
 !video_metadata/
 !video_metadata/asset-manifest.json
+!music_metadata/mai_fusion_data.json
 
 # Keep ad-hoc data ignored while tracking the focused runtime regressions.
 !tests/
@@ -221,6 +222,7 @@ static/assets/custom_jackets
 
 # Version 1.2.8 focused behavioral regressions and local-only diagnostics.
 !tests/test_release128.py
+!tests/test_video_metadata.py
 logs/
 outputs/
 !static/error_report_config.json

@@ -6,7 +6,7 @@ import shutil
 import streamlit as st
 
 from utils.app_version import APP_VERSION
-from utils.diagnostics import reports_root, package_report, upload_report, begin_report, capture_exception, execute
+from utils.diagnostics import reports_root, package_report, upload_report, begin_report, capture_exception, execute, ReportUploadConflict
 
 st.title("错误报告与硬件检查")
 st.caption(f"版本 {APP_VERSION} · 日志仅在确认提交后上传，也可以直接下载。")
@@ -78,7 +78,8 @@ else:
         st.info("日志桶尚未配置，当前可以下载本地诊断包。线上地址将在版本收尾时补齐。")
     description = st.text_area("问题描述（可选）", key="report_description")
     confirmed = st.checkbox("我已查看提交内容，确认提交此报告", key=f"report_consent_{chosen.name}")
-    if st.button("确认提交错误报告", disabled=not endpoint or not confirmed):
+    submitted_key = f"submitted_{chosen.name}"
+    if st.button("确认提交错误报告", disabled=not endpoint or not confirmed or bool(st.session_state.get(submitted_key))):
         frozen_key = f"report_package_{chosen.name}"
         if frozen_key not in st.session_state:
             if description.strip():
@@ -94,8 +95,11 @@ else:
         try:
             result = upload_report(st.session_state[frozen_key], chosen.name, endpoint,
                                    config.get('prefix', 'reports'))
-            st.session_state[f"submitted_{chosen.name}"] = result
+            st.session_state[submitted_key] = result
+        except ReportUploadConflict as exc:
+            st.warning(str(exc))
         except Exception as exc:
             st.error(str(exc))
-    if result := st.session_state.get(f"submitted_{chosen.name}"):
+    if result := st.session_state.get(submitted_key):
         st.success(f"报告已提交：{result['report_id']}；请求编号：{result['request_id']}")
+        st.caption("报告由维护者查看；本地诊断包仍可下载。")

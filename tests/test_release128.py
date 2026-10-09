@@ -12,11 +12,40 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 import zipfile
 
-from utils.diagnostics import begin_report, diagnostic_scope, execute, package_report, upload_report, redact_text
+from utils.diagnostics import begin_report, diagnostic_scope, execute, package_report, upload_report, redact_text, ReportUploadConflict
 from utils.excel_import import ExcelCell, ExcelTable, suggest_mapping, convert_rows
 
 
 class DiagnosticTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == 'win32', 'Windows sharing-handle regression')
+    def test_manifest_publication_survives_real_windows_read_lock(self):
+        import ctypes
+        with tempfile.TemporaryDirectory() as directory, diagnostic_scope(root=directory):
+            report = begin_report('sharing test', directory)
+            path = report.directory/'report.json'
+            kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+            kernel.CreateFileW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32, ctypes.c_uint32,
+                                           ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p]
+            kernel.CreateFileW.restype = ctypes.c_void_p
+            kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+            handle = kernel.CreateFileW(str(path), 0x80000000, 3, None, 3, 0, None)
+            self.assertNotEqual(handle, ctypes.c_void_p(-1).value)
+            def release():
+                time.sleep(.1)
+                kernel.CloseHandle(handle)
+            reader = threading.Thread(target=release)
+            reader.start()
+            import os
+            try:
+                with patch('utils.diagnostics.os.replace', wraps=os.replace) as replacement:
+                    report.note('after_lock', 'complete manifest')
+                    self.assertGreater(replacement.call_count, 1)
+            finally:
+                reader.join()
+            saved = json.loads(path.read_text(encoding='utf-8'))
+            self.assertEqual(saved['events'][-1]['value'], 'complete manifest')
+            self.assertEqual(list(report.directory.glob('*.tmp')), [])
+
     def test_full_stderr_and_first_failure_survive_later_success(self):
         with tempfile.TemporaryDirectory() as directory, diagnostic_scope(root=directory):
             report = begin_report('test', directory)
@@ -66,6 +95,7 @@ class ReportHTTPTests(unittest.TestCase):
         self.objects = {}
         self.requests = []
         self.forbidden = False
+        self.public_read = False
         self.delay = 0
         owner = self
 
@@ -74,9 +104,9 @@ class ReportHTTPTests(unittest.TestCase):
                 pass
 
             def do_PUT(self):
-                owner.requests.append((self.path, dict(self.headers)))
+                owner.requests.append(('PUT', self.path, dict(self.headers)))
                 data = self.rfile.read(int(self.headers['Content-Length']))
-                if owner.forbidden:
+                if owner.forbidden or not self.path.startswith('/reports/'):
                     self.send_response(403)
                     self.end_headers()
                     return
@@ -91,9 +121,19 @@ class ReportHTTPTests(unittest.TestCase):
                 self.end_headers()
 
             def do_GET(self):
-                self.send_response(200 if self.path in owner.objects else 404)
+                owner.requests.append(('GET', self.path, dict(self.headers)))
+                self.send_response(200 if owner.public_read else 403)
                 self.end_headers()
-                self.wfile.write(owner.objects.get(self.path, b''))
+
+            def do_HEAD(self):
+                owner.requests.append(('HEAD', self.path, dict(self.headers)))
+                self.send_response(403)
+                self.end_headers()
+
+            def do_DELETE(self):
+                owner.requests.append(('DELETE', self.path, dict(self.headers)))
+                self.send_response(403)
+                self.end_headers()
 
         self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -105,16 +145,53 @@ class ReportHTTPTests(unittest.TestCase):
         self.server.server_close()
         self.thread.join(2)
 
-    def test_anonymous_put_retry_same_object_and_conflict(self):
+    def test_write_only_upload_and_conflicts_never_read_or_overwrite(self):
         args = (b'complete diagnostic', '20261008T123456-abc', self.endpoint)
         first = upload_report(*args, allow_local_http=True)
-        second = upload_report(*args, allow_local_http=True)
-        self.assertEqual(first['object_key'], second['object_key'])
-        self.assertEqual(len(self.objects), 1)
-        self.assertTrue(all('Authorization' not in headers for _, headers in self.requests))
-        self.assertTrue(all(headers['x-oss-forbid-overwrite'] == 'true' for _, headers in self.requests))
-        with self.assertRaisesRegex(RuntimeError, '内容不同'):
+        with self.assertRaises(ReportUploadConflict) as repeated:
+            upload_report(*args, allow_local_http=True)
+        self.assertEqual(first['object_key'], repeated.exception.object_key)
+        with self.assertRaisesRegex(ReportUploadConflict, '无法确认'):
             upload_report(b'changed', args[1], self.endpoint, allow_local_http=True)
+        self.assertEqual(len(self.objects), 1)
+        self.assertEqual(self.objects['/'+first['object_key']], args[0])
+        self.assertEqual([method for method, _, _ in self.requests], ['PUT', 'PUT', 'PUT'])
+        self.assertTrue(all('Authorization' not in headers for _, _, headers in self.requests))
+        self.assertTrue(all(headers['x-oss-forbid-overwrite'] == 'true' for _, _, headers in self.requests))
+
+    def test_network_acceptance_checks_write_only_policy(self):
+        import requests
+        from scripts.verify_release128_network import check_report_policy
+        uploaded = upload_report(b'synthetic report', 'policy-test', self.endpoint, allow_local_http=True)
+        with requests.Session() as client:
+            client.trust_env = False
+            checks = check_report_policy(client, uploaded, self.endpoint, 'reports', check_negative=True)
+        self.assertEqual({k: v for k, v in checks.items() if k != 'outside_test_key'},
+                         {'get': 403, 'head': 403, 'list': 403, 'delete_synthetic_report': 403, 'outside_prefix_put': 403})
+        self.assertEqual(len(self.objects), 1)
+        self.assertTrue(all('Authorization' not in headers for _, _, headers in self.requests))
+
+    def test_network_acceptance_rejects_public_read_and_preserves_failure_evidence(self):
+        from scripts import verify_release128_network as verifier
+        self.public_read = True
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root/'static').mkdir()
+            (root/'static/error_report_config.json').write_text(
+                json.dumps({'endpoint': self.endpoint, 'prefix': 'reports'}), encoding='utf-8')
+            def submit(data, report_id, endpoint, prefix):
+                return upload_report(data, report_id, endpoint, prefix, allow_local_http=True)
+            with patch.object(verifier, 'ROOT', root), \
+                    patch.object(verifier, 'upload_report', side_effect=submit), \
+                    patch.object(sys, 'argv', ['verify', '--submit-test-report', '--check-negative-policy']), \
+                    diagnostic_scope(root=root/'diagnostics'):
+                with self.assertRaisesRegex(RuntimeError, 'write-only policy check failed'):
+                    verifier.main()
+            evidence = next((root/'test_output').glob('release128-network-*/verification.json'))
+            saved = json.loads(evidence.read_text(encoding='utf-8'))
+            self.assertEqual(saved['status'], 'failed')
+            self.assertEqual(saved['negative_policy']['get'], 200)
+            self.assertNotIn('anonymous_read_denied', saved['report'])
 
     def test_invalid_config_or_oversize_never_sends_request(self):
         for endpoint, prefix, size in ((self.endpoint, 'reports', 100), ('https://host', '../other', 100),
@@ -122,6 +199,51 @@ class ReportHTTPTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 upload_report(b'bytes', 'report', endpoint, prefix, max_bytes=size)
         self.assertEqual(self.requests, [])
+
+    def test_report_page_consent_failure_success_and_duplicate_session(self):
+        from streamlit.testing.v1 import AppTest
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory, diagnostic_scope(root=directory):
+            report = begin_report('synthetic page test', directory)
+
+            def submit(data, report_id, endpoint, prefix):
+                # Only the transport is redirected to the actual local write-only server.
+                return upload_report(data, report_id, self.endpoint, prefix, allow_local_http=True)
+
+            with patch('utils.diagnostics.reports_root', return_value=Path(directory)), \
+                    patch('utils.diagnostics.upload_report', side_effect=submit):
+                page = AppTest.from_file(str(root/'st_pages/Error_Reports.py')).run(timeout=30)
+                def button():
+                    return next(item for item in page.button if item.label == '确认提交错误报告')
+                self.assertFalse(page.exception)
+                self.assertTrue(button().disabled)
+                self.assertEqual(self.requests, [])
+                page.checkbox[0].check().run(timeout=30)
+                self.forbidden = True
+                button().click().run(timeout=30)
+                self.assertFalse(page.exception)
+                self.assertTrue(page.error)
+                self.assertFalse(page.success)
+                self.assertNotIn(f'submitted_{report.report_id}', page.session_state)
+                self.forbidden = False
+                button().click().run(timeout=30)
+                self.assertFalse(page.exception)
+                self.assertTrue(page.success)
+                page.run(timeout=30)
+                self.assertTrue(button().disabled)
+                self.assertEqual(len(self.requests), 2)
+                self.assertEqual(len(self.objects), 1)
+
+                # A new session cannot verify an existing object and must show a warning.
+                page = AppTest.from_file(str(root/'st_pages/Error_Reports.py')).run(timeout=30)
+                page.checkbox[0].check().run(timeout=30)
+                button().click().run(timeout=30)
+                self.assertFalse(page.exception)
+                self.assertTrue(page.warning)
+                self.assertFalse(page.success)
+                self.assertNotIn(f'submitted_{report.report_id}', page.session_state)
+                self.assertTrue(all(method == 'PUT' for method, _, _ in self.requests))
+                self.assertEqual(len(self.objects), 1)
 
     def test_http_forbidden_and_timeout_preserve_local_payload_for_retry(self):
         data=b'complete local evidence'
@@ -134,6 +256,12 @@ class ReportHTTPTests(unittest.TestCase):
         import requests
         with self.assertRaises(requests.Timeout):
             upload_report(data,'20261008T123456-timeout',self.endpoint,allow_local_http=True,timeout=.02)
+        time.sleep(.2)  # The server accepted this timed-out request; its reply was lost.
+        self.delay=0
+        with self.assertRaises(ReportUploadConflict):
+            upload_report(data,'20261008T123456-timeout',self.endpoint,allow_local_http=True)
+        self.assertTrue(all(method == 'PUT' for method, _, _ in self.requests))
+        self.assertEqual(len(self.objects), 1)
         self.assertEqual(data,b'complete local evidence')
 
 
@@ -221,6 +349,18 @@ class ExcelConversionTests(unittest.TestCase):
 
 
 class MetadataReleaseTests(unittest.TestCase):
+    def test_default_video_update_delegates_to_release_without_legacy_http(self):
+        from utils.video_metadata import update_video_manifest
+        with patch('utils.metadata_release.update_release', return_value={
+                'updated':True,'metadata_store_version':'paired-release','generated_at':'2026-10-09T00:00:00Z',
+                'usable_asset_count':2,'message':'paired'}) as updater, \
+                patch('utils.video_metadata.get_video_manifest_status', return_value={}), \
+                patch('utils.video_metadata.requests.get', side_effect=AssertionError('unexpected legacy GET')):
+            result = update_video_manifest()
+        updater.assert_called_once_with()
+        self.assertEqual(result.metadata_store_version, 'paired-release')
+        self.assertTrue(result.updated)
+
     def setUp(self):
         self.folder = tempfile.TemporaryDirectory()
         self.root = Path(self.folder.name)
@@ -288,6 +428,38 @@ class MetadataReleaseTests(unittest.TestCase):
             self.assertEqual(resolve_metadata_file('mai_fusion_data.json',self.root),old)
             self.assertEqual(resolve_metadata_file('asset-manifest.json',self.root).parent,old.parent)
         self.assertNotEqual(resolve_metadata_file('mai_fusion_data.json',self.root),old)
+
+    def test_public_catalog_null_artist_and_fullwidth_title_remain_exactly_matchable(self):
+        from copy import deepcopy
+        from utils.metadata_release import update_release, resolve_metadata_file
+        from utils.video_metadata import resolve_maimai_video
+        prefix = '/metadata_json/releases/r1/'
+        charts = [{'title':'\u3000','artist':'x0o0x_','charts_info':[{'type':'dx','difficulty':3}]},
+                  {'title':'Link(CoF)','artist':None,'charts_info':[{'type':'dx','difficulty':2}]}]
+        self.documents[prefix+'mai_fusion_data.json'] = charts
+        original = deepcopy(charts)
+        manifest = self.documents[prefix+'asset-manifest.json']
+        first = manifest['assets'][0]
+        first.update(song_title='\u3000', artist='x0o0x_')
+        manifest['assets'].append(dict(first, chart_key='unknown-artist', asset_id='second',
+                                       song_title='Link(CoF)', artist=None, difficulty=2))
+        result = update_release(url=self.url, root=self.root, allow_local_http=True)
+        self.assertTrue(result['updated'], result)
+        saved = json.loads(resolve_metadata_file('mai_fusion_data.json', self.root).read_text(encoding='utf-8'))
+        self.assertEqual(saved[0]['title'], '\u3000')
+        self.assertEqual(saved[1]['artist'], '')
+        self.assertEqual(charts, original)
+        videos = json.loads(resolve_metadata_file('asset-manifest.json', self.root).read_text(encoding='utf-8'))
+        for title, artist, difficulty in (('\u3000','x0o0x_',3),('Link(CoF)',None,2)):
+            matched = resolve_maimai_video({'game_type':'maimai','song_name':title,'artist':artist,
+                                            'chart_type':1,'level_index':difficulty}, videos)
+            self.assertIsNotNone(matched)
+            self.assertEqual(matched['id'], first['source_id'])
+        self.publish('r2', 2)
+        self.documents['/metadata_json/releases/r2/mai_fusion_data.json'][0]['title'] = ' '
+        self.assertFalse(update_release(url=self.url, root=self.root, allow_local_http=True)['updated'])
+        self.assertEqual(resolve_metadata_file('mai_fusion_data.json', self.root).parent,
+                         resolve_metadata_file('asset-manifest.json', self.root).parent)
 
     def test_wrong_game_or_traversal_cannot_download_or_publish_release(self):
         from utils.metadata_release import update_release

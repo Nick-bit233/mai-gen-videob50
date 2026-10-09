@@ -20,10 +20,13 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--backend", choices=("cpu", "cuda", "vulkan"), default="cpu")
     parser.add_argument("--transition", type=float, default=0.5)
+    parser.add_argument("--preset-assets", action="store_true", help="Also render supplied CHUNITHM preset music and compare decoded audio")
     args = parser.parse_args()
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     os.chdir(ROOT)
+    from utils.diagnostics import begin_report
+    diagnostics = begin_report('主题实际渲染验收', output/'diagnostics')
     # Match the system FFmpeg used by the GPU renderer and by release builds.
     from utils.AccelRenderer import get_ffmpeg_binary
     ffmpeg, ffprobe = get_ffmpeg_binary(), get_ffmpeg_binary("ffprobe")
@@ -91,7 +94,7 @@ def main():
     chuni_record = dict(title="新版主题测试", artist="测试", level_index=3,
         ds_cur=14.4, ds_next=14.6, ds_cn=14.4, ds_latest=14.6, score=1009000,
         ra=16.55, combo_type="aj", chain_type="fc", play_count=5)
-    for theme in ("Verse", "X-Verse"):
+    for theme in ("Verse", "X-Verse", "MATE"):
         for mode in ("cn", "latest", "compare"):
             chuni = preset_style("chunithm", theme)
             chuni["options"]["chunithm_constant_display"] = mode
@@ -116,10 +119,12 @@ def main():
              "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", video])
     transparent = output / "transparent.png"
     Image.new("RGBA", (1920, 1080)).save(transparent)
-    for game, game_style, main_image in (("maimai", style, transparent),
-                                         ("chunithm", chuni, output / "difficulty-3.png")):
+    cases = [("maimai", "Magical", style, transparent)] + [
+        ("chunithm", name, preset_style("chunithm", name), output/f"{name}-compare.png")
+        for name in ("Verse", "X-Verse", "MATE")]
+    for game, theme, game_style, main_image in cases:
         game_style["asset_paths"].update(intro_bgm=uploaded["intro"], ending_bgm=uploaded["ending"])
-        destination = output / game
+        destination = output / f"{game}-{theme}"
         destination.mkdir()
         main = dict(clip_title_name="Best 1", video=str(video), main_image=str(main_image),
                     bg_image=None, duration=1.2, start=0, end=1.2, text="主题测试", auto_center_align=False)
@@ -134,11 +139,53 @@ def main():
         assert abs(frequency_at(final, .4) - 440) < 15
         video_duration = float(next(stream for stream in durations["streams"] if stream["codec_type"] == "video")["duration"])
         assert abs(frequency_at(final, video_duration - .4) - 880) < 15
-        report["full_videos"].append({"game": game, "streams": [
+        report["full_videos"].append({"game": game, "theme": theme, "output": str(final), "streams": [
             {key: stream.get(key) for key in ("codec_type", "codec_name", "duration", "width", "height")}
             for stream in durations["streams"]]})
         for part in ("intro", "ending"):
-            get_video_preview_frame(game, config, game_style, (640, 360), part=part).save(output / f"{game}-{part}.png")
+            get_video_preview_frame(game, config, game_style, (640, 360), part=part).save(output / f"{game}-{theme}-{part}.png")
+
+    if args.preset_assets:
+        def samples(path, start, duration):
+            raw = command([ffmpeg, '-v', 'error', '-ss', start, '-i', path, '-t', duration,
+                           '-vn', '-ac', '1', '-ar', '12000', '-f', 'f32le', '-']).stdout
+            return np.frombuffer(raw, dtype=np.float32).astype(np.float64)
+
+        def audio_similarity(rendered, source):
+            reference = samples(source, .3, .8)
+            actual = samples(rendered, .15, 1.7)
+            if float(np.max(np.abs(reference))) < .0001:
+                assert float(np.max(np.abs(actual))) < .001, 'Unexpected background audio in a silent BGM window'
+                return None
+            reference -= reference.mean()
+            length = len(reference)
+            sums = np.concatenate(([0.], np.cumsum(actual)))
+            squares = np.concatenate(([0.], np.cumsum(actual*actual)))
+            variance = squares[length:]-squares[:-length]-(sums[length:]-sums[:-length])**2/length
+            denominator = np.sqrt(np.maximum(variance, 1e-20)*np.dot(reference,reference))
+            value = float(np.max(np.abs(np.correlate(actual,reference,'valid')/denominator)))
+            assert value > .85, (rendered, source, value)
+            return value
+
+        report['preset_music'] = []
+        for theme in ('Verse','X-Verse','MATE'):
+            real_style = preset_style('chunithm',theme)
+            destination = output/f'preset-{theme}'
+            destination.mkdir()
+            real_config = {'duration':2.4,'text':'1.2.8 主题验收','clip_title_name':theme}
+            render_all_video_clips('chunithm',real_style,[],str(destination),
+                intro_configs=[dict(real_config)],ending_configs=[dict(real_config)],
+                video_res=(640,360),video_fps=30,video_bitrate='1500k',auto_add_transition=False,
+                use_gpu_accel=args.backend!='cpu',taichi_backend=args.backend)
+            for section,name in (('intro','0_INTRO.mp4'),('ending','1_ENDING.mp4')):
+                path = destination/name
+                source = real_style['asset_paths']['intro_bgm' if section=='intro' else 'ending_bgm']
+                recipe = json.loads(Path(str(path)+'.theme.json').read_text(encoding='utf-8'))
+                assert recipe['recipe']['audio']['path'] == str(Path(source).resolve())
+                command([ffmpeg,'-v','error','-i',path,'-f','null','-'])
+                report['preset_music'].append({'theme':theme,'section':section,'source':source,
+                                              'output':str(path),'audio_similarity':audio_similarity(path,source)})
+    report['diagnostic_report'] = str(diagnostics.directory)
     report["actual_backend"] = get_backend_name()
     (output / "verification.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False, indent=2))

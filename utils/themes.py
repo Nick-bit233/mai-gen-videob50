@@ -185,8 +185,8 @@ DEFAULT_STYLES = {
     ]
 }
 
-# Keep legacy audio files available for saved styles; new presets use separate
-# opening/ending tracks. CHUNITHM defaults await the user's replacement tracks.
+# Presets use separate opening/ending tracks; removed builtin audio references
+# are migrated by style_config without replacing custom uploads.
 magical_style = deepcopy(DEFAULT_STYLES["maimai"][2])
 magical_style["style_name"] = "Magical"
 for asset_key, relative in {
@@ -197,6 +197,18 @@ for asset_key, relative in {
     magical_style["asset_paths"][asset_key] = os.path.join(default_static_dir, relative)
 DEFAULT_STYLES["maimai"].append(magical_style)
 
+mate_style = deepcopy(DEFAULT_STYLES["chunithm"][0])
+mate_style["style_name"] = "MATE"
+mate_style["asset_paths"].update({
+    "intro_video_bg": os.path.join(default_static_dir, "bg_clips/opening_bg_chunithm_mate.mp4"),
+    "content_bg_video": os.path.join(default_static_dir, "bg_clips/opening_bg_chunithm_mate.mp4"),
+})
+DEFAULT_STYLES["chunithm"].append(mate_style)
+THEME_COLORS["chunithm"]["MATE"] = {
+    "primaryColor": "#f4a340", "backgroundColor": "#fff9dd",
+    "secondaryBackgroundColor": "#ffe6cf", "textColor": "#6b4127",
+}
+
 for game, styles in DEFAULT_STYLES.items():
     for style in styles:
         style["style_schema_version"] = 2
@@ -206,7 +218,9 @@ for game, styles in DEFAULT_STYLES.items():
             style["asset_paths"]["intro_bgm"] = os.path.join(default_static_dir, f"audios/opening_maimai_{suffix}.mp3")
             style["asset_paths"]["ending_bgm"] = os.path.join(default_static_dir, f"audios/ending_maimai_{suffix}.mp3")
         else:
-            style["asset_paths"]["ending_bgm"] = style["asset_paths"]["intro_bgm"]
+            suffix = "mate" if style["style_name"] == "MATE" else "verse"
+            style["asset_paths"]["intro_bgm"] = os.path.join(default_static_dir, f"audios/opening_chunithm_{suffix}.mp3")
+            style["asset_paths"]["ending_bgm"] = os.path.join(default_static_dir, f"audios/ending_chunithm_{suffix}.mp3")
             style["options"]["chunithm_constant_display"] = "compare"
             constant_root = os.path.join(default_static_dir, "images/Chunithm/ConstantDisplay")
             style["asset_paths"].update({
@@ -217,4 +231,4 @@ for game, styles in DEFAULT_STYLES.items():
                 "constant_logo_latest": os.path.join(constant_root, "logo_latest_mate.png"),
             })
 
-del magical_style, style, styles, game, suffix, asset_key, relative
+del magical_style, mate_style, style, styles, game, suffix, asset_key, relative

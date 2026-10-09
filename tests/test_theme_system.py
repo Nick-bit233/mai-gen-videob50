@@ -27,15 +27,31 @@ class StyleTests(unittest.TestCase):
 
     def test_new_presets_have_real_assets_and_isolated_mutation(self):
         for game, names in (("maimai", ("Buddies", "Prism", "Circle", "Magical")),
-                            ("chunithm", ("Verse", "X-Verse"))):
+                            ("chunithm", ("Verse", "X-Verse", "MATE"))):
             for name in names:
                 style = preset_style(game, name)
                 for key, value in style["asset_paths"].items():
                     self.assertTrue(Path(value).exists(), (name, key, value))
-                if game == "maimai":
-                    self.assertNotEqual(resolve_bgm(style, "intro"), resolve_bgm(style, "ending"))
+                self.assertNotEqual(resolve_bgm(style, "intro"), resolve_bgm(style, "ending"))
                 style["options"]["dummy"] = True
                 self.assertNotIn("dummy", preset_style(game, name)["options"])
+
+    def test_mate_and_legacy_builtin_audio_migration_keep_custom_paths(self):
+        mate = preset_style('chunithm', 'MATE')
+        verse = preset_style('chunithm', 'Verse')
+        self.assertEqual(mate['asset_paths']['score_image_base'], verse['asset_paths']['score_image_base'])
+        self.assertIn('opening_bg_chunithm_mate.mp4', mate['asset_paths']['intro_video_bg'])
+        self.assertEqual(mate['asset_paths']['intro_video_bg'], mate['asset_paths']['content_bg_video'])
+        legacy = {'style_name': 'X-Verse', 'asset_paths': {'intro_bgm': './static/assets/audios/intro_chunithm_verse.mp3'}}
+        migrated = normalize_style(legacy, 'chunithm')
+        self.assertTrue(resolve_bgm(migrated, 'intro').endswith('opening_chunithm_verse.mp3'))
+        self.assertTrue(resolve_bgm(migrated, 'ending').endswith('ending_chunithm_verse.mp3'))
+        self.assertNotIn('ending_bgm', legacy['asset_paths'])
+        custom = {'style_name': 'Custom', 'base_style_name': 'MATE',
+                  'asset_paths': {'intro_bgm': 'user-opening.wav', 'ending_bgm': 'user-ending.wav'}}
+        retained = normalize_style(custom, 'chunithm')
+        self.assertEqual(retained['asset_paths']['intro_bgm'], 'user-opening.wav')
+        self.assertEqual(retained['asset_paths']['ending_bgm'], 'user-ending.wav')
 
     def test_bad_mode_and_missing_explicit_ending_fail(self):
         with self.assertRaises(ValueError):
@@ -160,7 +176,7 @@ class ImageLayoutTests(unittest.TestCase):
         from utils.ImageUtils import ChuniImageGenerater
         record = dict(title="Layout test", artist="Test", level_index=3, ds_cur=14.4, ds_next=14.6,
                       ds_cn=14.4, ds_latest=14.6, score=1009000, ra=16.55, combo_type="aj", chain_type="fc")
-        for theme in ("Verse", "X-Verse"):
+        for theme in ("Verse", "X-Verse", "MATE"):
             images = {}
             for mode in ("cn", "latest", "compare"):
                 style = preset_style("chunithm", theme)

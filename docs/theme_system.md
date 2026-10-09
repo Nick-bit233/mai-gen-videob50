@@ -40,7 +40,7 @@
 
 ## 旧配置与产物
 
-- 老配置缺少 `ending_bgm` 时，片尾继续使用该配置原有的 `intro_bgm`；应用新版预设后才切换新配对。旧音频文件保留。
+- 老自定义配置缺少 `ending_bgm` 时，片尾继续使用其原有的 `intro_bgm`。已移除的旧内置 Verse 音频引用迁移到新配对；其他仍存在的旧音频和用户上传音频保留。
 - 缺少定数展示选项时，默认为“定数对比”。按游戏补全配置，不覆盖另一游戏保存值。
 - 新图片旁记录 `.theme.json`，片段也保存直接可比较的配置记录；不计算文件或状态 hash。
 - 旧成绩图缺少记录时需重新生成一次。之后，仅 BGM 变化不会要求重做成绩图；定数模式、成绩底图或相应字体变化会在视频生成前提示重做图片。
@@ -48,15 +48,17 @@
 - 未变化的片段仍可跳过。新片段成功后替换旧文件；拼接只使用本次完成的片段列表，避免混入其他存档或旧编号片段。
 - 旧图片批次和上传文件不自动删除。本版本不做存档数据迁移。
 
-## 后续正式素材替换
+## 1.2.8 正式素材和 MATE
 
-中二当前采用用户授权的简单拆分占位图。独立素材在 `static/assets/images/Chunithm/ConstantDisplay/`，具体规格见该目录的 `README.md`：
+中二内容底图及标题层沿用用户已确认的 Verse 资源，正式透明版本 Logo 已补齐。素材位于 `static/assets/images/Chunithm/ConstantDisplay/`，具体规格见该目录的 `README.md`：
 
 - `content_base.png`：1920×1080 中性底图。
 - `header_compare.png` / `header_single.png`：两种标题。
 - `logo_cn_2027.png` / `logo_latest_mate.png`：两个独立版本 Logo。
 
-当前 Logo 仍包含原图底色，中性区域由空白行延伸制作，不代表最终美术。正式透明 PNG 到位后可替换同名文件或调整 `utils/themes.py` 中路径，再重生成图片。不要再次运行占位制作脚本覆盖正式素材。
+新增 MATE 预设使用 `opening_bg_chunithm_mate.mp4` 作为片头/片尾与内容动态背景，使用 `opening_chunithm_mate.mp3` / `ending_chunithm_mate.mp3`。Verse/X-Verse 使用 `opening_chunithm_verse.mp3` / `ending_chunithm_verse.mp3`，共用 Verse 成绩底图。缺失的旧内置 `intro_chunithm_verse.mp3` 引用在读取时迁移；其他用户自定义音乐不被替换。不要再次运行占位制作脚本覆盖正式 Logo。
+
+当前 1.2.8 的 51 项 unittest、19 项视频匹配 pytest、三预设页面流程，以及 CPU/CUDA 的 9 张中二图、4 种完整短片及 6 个正式音乐片段均通过。最新证据见 `docs/release_v1.2.8_local_acceptance.md`；下方记录保留先前主题开发阶段的证据。
 
 ## 已完成验证
 

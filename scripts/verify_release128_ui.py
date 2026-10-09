@@ -73,13 +73,21 @@ def main():
             results.append({'game':game,'draft_did_not_write':True,'save_reload_passed':True,'manual_editor_selected':True})
     report=begin_report('UI report',root/'logs/error_reports')
     report.note('fixture','local diagnostic')
-    report_page=AppTest.from_file(str(root/'st_pages/Error_Reports.py'))
-    report_page.run(timeout=60)
-    healthy(report_page)
-    assert element(report_page.button,'确认提交错误报告').disabled
-    assert any('日志桶尚未配置' in item.value for item in report_page.info)
-    element(report_page.checkbox,'我已查看提交内容，确认提交此报告').check().run(timeout=60)
-    assert element(report_page.button,'确认提交错误报告').disabled
+    config_path=root/'static/error_report_config.json'
+    original_config=config_path.read_bytes()
+    try:
+        # Exercise unconfigured behavior without depending on the shipped live endpoint.
+        # This is an isolated acceptance application; restore its config afterwards.
+        config_path.write_text(json.dumps({'endpoint':'','prefix':'reports'}),encoding='utf-8')
+        report_page=AppTest.from_file(str(root/'st_pages/Error_Reports.py'))
+        report_page.run(timeout=60)
+        healthy(report_page)
+        assert element(report_page.button,'确认提交错误报告').disabled
+        assert any('日志桶尚未配置' in item.value for item in report_page.info)
+        element(report_page.checkbox,'我已查看提交内容，确认提交此报告').check().run(timeout=60)
+        assert element(report_page.button,'确认提交错误报告').disabled
+    finally:
+        config_path.write_bytes(original_config)
     results.append({'report_page':True,'unconfigured_upload_disabled':True})
     (root/'release128-ui-verification.json').write_text(json.dumps(results,ensure_ascii=False,indent=2),encoding='utf-8')
     print(json.dumps(results,ensure_ascii=False))

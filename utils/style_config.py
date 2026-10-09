@@ -49,6 +49,11 @@ def normalize_style(style, game_type):
     result["type"] = game_type
     if game_type == "chunithm":
         constant_mode(result)
+        legacy_audio = Path("static/assets/audios/intro_chunithm_verse.mp3").resolve()
+        for audio_key in ("intro_bgm", "ending_bgm"):
+            audio_path = Path(result["asset_paths"].get(audio_key) or "")
+            if audio_path.resolve() == legacy_audio and not audio_path.is_file():
+                result["asset_paths"][audio_key] = defaults["asset_paths"][audio_key]
         old_base = Path(old_paths.get("score_image_base") or "").resolve()
         if old_base == Path("static/assets/images/Chunithm/content_base_chunithm_verse.png").resolve():
             result["asset_paths"]["score_image_base"] = defaults["asset_paths"]["score_image_base"]

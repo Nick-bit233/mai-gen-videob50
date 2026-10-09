@@ -12,6 +12,7 @@ from typing import Any, Mapping
 from urllib.parse import parse_qs, urlparse
 
 import requests
+from utils.metadata_identity import song_identity
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -66,8 +67,10 @@ def _required_text(value: Any, field_name: str) -> str:
 
 
 def _asset_identity(asset: Mapping[str, Any]) -> tuple[str, str, str, int]:
-    title = _required_text(asset.get("song_title"), "song_title")
-    artist = _required_text(asset.get("artist"), "artist")
+    try:
+        title, artist = song_identity(asset.get("song_title"), asset.get("artist"))
+    except ValueError as exc:
+        raise VideoMetadataError(str(exc)) from exc
     chart_type = _required_text(asset.get("chart_type"), "chart_type")
     difficulty = asset.get("difficulty")
     if not isinstance(difficulty, int) or isinstance(difficulty, bool):
@@ -209,9 +212,9 @@ def build_desktop_manifest(source_payload: Any) -> dict[str, Any]:
             raw.get("source_id"), raw.get("source_url"), raw.get("source_pid")
         ):
             continue
-        if not str(raw.get("song_title") or "").strip() or not str(
-            raw.get("artist") or ""
-        ).strip():
+        try:
+            song_identity(raw.get("song_title"), raw.get("artist"))
+        except ValueError:
             # A desktop client without a persisted chart_key cannot safely resolve
             # entries whose legacy title/artist identity is incomplete.
             continue
@@ -279,16 +282,16 @@ def chart_identity(chart: Mapping[str, Any]) -> tuple[str, str, str, int] | None
     chart_type = _CHART_TYPE_NAMES.get(chart.get("chart_type"))
     difficulty = chart.get("level_index")
     if (
-        not isinstance(title, str)
-        or not title.strip()
-        or not isinstance(artist, str)
-        or not artist.strip()
-        or chart_type is None
+        chart_type is None
         or not isinstance(difficulty, int)
         or isinstance(difficulty, bool)
     ):
         return None
-    return title.strip(), artist.strip(), chart_type, difficulty
+    try:
+        title, artist = song_identity(title, artist)
+    except ValueError:
+        return None
+    return title, artist, chart_type, difficulty
 
 
 def asset_to_video_info(
@@ -503,12 +506,12 @@ def should_update_video_manifest(
 def update_video_manifest(
     *,
     url: str | None = None,
-    destination: Path = VIDEO_METADATA_PATH,
-    state_path: Path = VIDEO_METADATA_STATE_PATH,
-    request_get=requests.get,
+    destination: Path | None = None,
+    state_path: Path | None = None,
+    request_get=None,
     now: datetime | None = None,
 ) -> VideoMetadataUpdateResult:
-    if url is None:
+    if url is None and destination is None and state_path is None and request_get is None and now is None:
         from utils.metadata_release import update_release
         result = update_release()
         try:
@@ -519,6 +522,12 @@ def update_video_manifest(
             updated=result['updated'], metadata_store_version=result.get('metadata_store_version', cached.get('metadata_store_version')),
             generated_at=result.get('generated_at', cached.get('generated_at')),
             usable_asset_count=result.get('usable_asset_count', cached.get('usable_asset_count', 0)), message=result['message'])
+    # Explicit destinations/transports retain the legacy single-file contract;
+    # never ignore a caller's isolated target and update the application's root.
+    url = url or VIDEO_METADATA_URL
+    destination = destination if destination is not None else VIDEO_METADATA_PATH
+    state_path = state_path if state_path is not None else VIDEO_METADATA_STATE_PATH
+    request_get = request_get if request_get is not None else requests.get
     try:
         response = request_get(url, timeout=30)
         response.raise_for_status()
