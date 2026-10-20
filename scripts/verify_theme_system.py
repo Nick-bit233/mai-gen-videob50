@@ -20,6 +20,8 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--backend", choices=("cpu", "cuda", "vulkan"), default="cpu")
     parser.add_argument("--transition", type=float, default=0.5)
+    parser.add_argument("--difficulty", type=int, choices=range(5), default=3,
+                        help="CHUNITHM difficulty used by the nine preset images and full videos")
     parser.add_argument("--preset-assets", action="store_true", help="Also render supplied CHUNITHM preset music and compare decoded audio")
     args = parser.parse_args()
     output = args.output.resolve()
@@ -40,7 +42,8 @@ def main():
     from utils.bgm_upload import save_bgm_upload
     from utils.TaichiAccel import init_taichi, get_backend_name, is_available
 
-    report = {"transition": args.transition, "backend": args.backend, "audio": {}, "images": [], "full_videos": []}
+    report = {"transition": args.transition, "backend": args.backend, "difficulty": args.difficulty,
+              "audio": {}, "images": [], "full_videos": []}
     if args.backend != "cpu":
         init_taichi(args.backend)
         assert is_available() and args.backend in get_backend_name().lower(), get_backend_name()
@@ -91,7 +94,7 @@ def main():
     assert abs(frequency_at(clips / "1_ENDING.mp4", .95) - 440) < 15
     style["asset_paths"]["ending_bgm"] = uploaded["ending"]
 
-    chuni_record = dict(title="新版主题测试", artist="测试", level_index=3,
+    chuni_record = dict(title="新版主题测试", artist="测试", level_index=args.difficulty,
         ds_cur=14.4, ds_next=14.6, ds_cn=14.4, ds_latest=14.6, score=1009000,
         ra=16.55, combo_type="aj", chain_type="fc", play_count=5)
     for theme in ("Verse", "X-Verse", "MATE"):
@@ -109,8 +112,7 @@ def main():
     report["missing_existing_frames"] = []
     for level in range(5):
         if not (ROOT / f"static/assets/images/Chunithm/Frames/{level}.png").is_file():
-            report["missing_existing_frames"].append(level)
-            continue
+            raise FileNotFoundError(f"Missing CHUNITHM difficulty frame: {level}.png")
         generate_single_image("chunithm", chuni, dict(chuni_record, level_index=level),
                               str(output / f"difficulty-{level}.png"), "Best 1").close()
     video = output / "chart.mp4"

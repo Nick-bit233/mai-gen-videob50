@@ -5,6 +5,8 @@ import json
 import traceback
 from datetime import datetime
 from utils.user_gamedata_handlers import fetch_user_gamedata, unify_user_gamedata
+from utils.score_oauth_ui import render_score_oauth
+from utils.score_oauth import OAuthError
 from utils.PageUtils import process_username, get_game_type_text
 from db_utils.DatabaseDataHandler import get_database_handler
 from utils.PathUtils import get_user_base_dir
@@ -175,32 +177,6 @@ def view_b50_data(username: str, archive_name: str):
             }
         )
 
-@st.dialog("落雪查分器配置说明")
-def lxns_api_instructions():
-    """Displays instructions for obtaining and using the Luoxue Score Checker personal API key."""
-    st.markdown("""
-    
-    首先，打开[落雪查分器官网](https://maimai.lxns.net/)并登录您的账号。
-                
-    ### 如何获取好友码？
-                
-    1. 进入“账号详情”页面。
-    2. 在页面中找到“好友码”一栏，复制您的好友码，粘贴到输入框即可。
-    """)
-
-    st.warning("关于个人API密钥：通常情况下，您不需要使用个人API密钥即可从落雪查分器获取数据，\
-               如果常规查询失败或遇到访问限制时，参考下方说明使用个人API密钥。")
-
-    st.markdown("""
-    ### 如何获取落雪查分器的个人API密钥？
-
-    1. 进入“账号详情”页面。
-    2. 找到“第三方应用”选项，点击下方生成个人 API 密钥按钮，生成并复制个人API密钥。
-    3. 将该密钥粘贴到输入框中，点击保存凭证按钮。
-    
-    **注意**：请妥善保管您的API密钥，不要泄露给他人，本项目仅将此密钥保存在本地，不会上传或分享给任何第三方。
-    """)
-
 @st.dialog("国际服/日服数据导入说明")
 def other_data_import_guide():
     # 加载markdown
@@ -316,6 +292,8 @@ def handle_new_data(username: str, source: str, params: dict = None):
         st.session_state.data_created_step1 = True
         st.rerun()
 
+    except OAuthError as e:
+        st.error(str(e))
     except Exception as e:
         st.error(f"创建新存档时发生错误: {e}")
         st.expander("错误详情").write(traceback.format_exc())
@@ -339,7 +317,7 @@ with st.container(border=True):
         input_username = st.text_input(
             "输入您的用户名",
             value=st.session_state.get("username", ""),
-            help="如果你从水鱼等查分器获取数据，请输入在对应平台的用户名，否则请自拟用户名。",
+            help="此名称仅用于管理本地存档，可以自拟；查分器账号由 OAuth 授权决定。",
             placeholder="请输入用户名"
         )
     with col_user2:
@@ -483,132 +461,11 @@ if st.session_state.get('config_saved', False):
         st.info(f"💡 从外部数据源获取您的分表成绩，并创建一个新的本地存档。")
         st.caption(f"当前用户名: **{username}**")
         
-        # Data from FISH (CN Server)
-        with st.expander("🌊 从水鱼查分器获取（国服）", expanded=True):
-            st.markdown(f"**数据源**: [水鱼查分器](https://www.diving-fish.com/maimaidx/prober) | **用户名**: {username}")
-            
-            if G_type == "maimai":
-                col_fish1, col_fish2 = st.columns(2)
-                with col_fish1:
-                    if st.button("📥 获取 B50 数据", key="fish_maimai_b50", use_container_width=True, type="primary"):
-                        with st.spinner("正在从水鱼查分器获取B50数据..."):
-                            handle_new_data(username, source="fish", 
-                                            params={"type": "maimai", "query": "best"})
-                with col_fish2:
-                    if st.button("⭐ 获取 AP B50 数据", key="fish_maimai_ap", use_container_width=True):
-                        with st.spinner("正在从水鱼查分器获取AP B50数据..."):
-                            handle_new_data(username, source="fish",
-                                            params={"type": "maimai", "query": "all", "filter": {"tag": "ap", "top": 50}})
-            
-            elif G_type == "chunithm":
-                if st.button("📥 获取 B50 数据", key="fish_chunithm_b50", use_container_width=True, type="primary"):
-                    with st.spinner("正在从水鱼查分器获取B50数据..."):
-                        handle_new_data(username, source="fish", 
-                                        params={"type": "chunithm", "query": "best"})
-                # TODO: 添加中二仅获取b30的选项
-            else:
-                st.error(f"❌ 错误的游戏类型: {G_type}，请返回首页刷新重试。")
+        with st.expander("🌊 从水鱼查分器获取（OAuth）", expanded=True):
+            render_score_oauth("fish", G_type, username, handle_new_data)
 
-        # Data from Luoxue Score Checker (落雪查分器)
-        with st.expander(":snowflake: 从落雪查分器获取"):
-
-            # 加载保存的凭证（个人api密钥）
-            lxns_credentials_file = f"{user_base_dir}/lxns_credentials.json"
-            saved_friend_code = ""
-            saved_api_key = ""
-            
-            if os.path.exists(lxns_credentials_file):
-                try:
-                    with open(lxns_credentials_file, 'r', encoding='utf-8') as f:
-                        credentials = json.load(f)
-                        saved_friend_code = credentials.get('friend_code', '')
-                        saved_api_key = credentials.get('api_key', '')
-                except:
-                    pass
-            
-            friend_code_input = st.text_input(
-                "好友码",
-                value=saved_friend_code,
-                help="您的落雪查分器好友码，填写后点击下方保存凭证，后续使用则无需重复填写。"
-            )
-            local_user_api = st.checkbox(
-                "使用个人API密钥",
-                value=False,
-                help="启用后需要使用落雪查分器的个人API密钥进行数据获取，建议在常规查询失败时使用。"
-            )
-            if local_user_api:
-                api_key_input = st.text_input(
-                    "API密钥",
-                    value=saved_api_key,
-                    type="password",
-                    help="落雪查分器的个人API密钥，您在这里填写过一次后，此密钥将会保存在对于用户名的本地文件中, 后续使用无需重复填写。"
-                )
-            else:
-                api_key_input = saved_api_key  # 如果不使用个人API密钥，则保持为空或之前保存的值
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("保存凭证", key="save_lxns_credentials"):
-                    if friend_code_input:
-                        credentials = {
-                            "friend_code": friend_code_input,
-                            "api_key": api_key_input
-                        }
-                        with open(lxns_credentials_file, 'w', encoding='utf-8') as f:
-                            json.dump(credentials, f, ensure_ascii=False, indent=2)
-                        st.success("凭证已保存！")
-                    else:
-                        st.warning("最少需要填写好友码才能保存凭证。")
-            with col2:
-                if st.button("落雪查分器使用指南", key="read_lxns_api_instructions"):
-                    lxns_api_instructions()
-
-            st.divider() 
-            
-            if friend_code_input:
-                if G_type == "maimai":
-                    col1_lxns, col2_lxns = st.columns(2)
-                    with col1_lxns: 
-                        if st.button("📥 获取 B50 数据", key="lxns_maimai_b50", use_container_width=True, type="primary"):
-                            with st.spinner("正在从落雪查分器获取B50数据..."):
-                                handle_new_data(username, source="lxns",
-                                                params={
-                                                    "type": "maimai",
-                                                    "query": "best",
-                                                    "friend_code": friend_code_input,
-                                                    "local_user_api": local_user_api,
-                                                    "api_key": api_key_input if local_user_api else None
-                                                })
-                    with col2_lxns:
-                        if st.button("⭐ 获取 AP B50 数据", key="lxns_maimai_ap", use_container_width=True):
-                            query_type = "all" if local_user_api else "best_ap"  # 如果使用开发者API，指定特殊的查询类型（有待测试AP B50的查询接口）
-                            query_filter = {"tag": "ap", "top": 50} if query_type == "all" else {}
-                            with st.spinner("正在从落雪查分器获取AP B50数据..."):
-                                handle_new_data(username, source="lxns",
-                                                params={
-                                                    "type": "maimai",
-                                                    "query": query_type,
-                                                    "filter": query_filter,
-                                                    "friend_code": friend_code_input,
-                                                    "local_user_api": local_user_api,
-                                                    "api_key": api_key_input if local_user_api else None
-                                                    
-                                                })
-
-                elif G_type == "chunithm":
-                    if st.button("📥 获取 B50 数据", key="lxns_chunithm_b50", use_container_width=True, type="primary"):
-                        with st.spinner("正在从落雪查分器获取B50数据..."):
-                            handle_new_data(username, source="lxns",
-                                            params={
-                                                "type": "chunithm",
-                                                "query": "best",
-                                                "friend_code": friend_code_input,
-                                                "local_user_api": local_user_api,
-                                                "api_key": api_key_input if local_user_api else None
-                                            })
-            else:
-                st.warning("请先填写好友码后再获取数据。")
-                
+        with st.expander(":snowflake: 从落雪查分器获取（OAuth）"):
+            render_score_oauth("lxns", G_type, username, handle_new_data)
 
         # Data from DX Web (INTL/JP Server)
         with st.expander("🌏 手动导入数据 (国际服/日服)"):

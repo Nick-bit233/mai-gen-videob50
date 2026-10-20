@@ -1,6 +1,6 @@
 # 1.2.8 本地实现和验收记录
 
-开发分支为 `codex/new-theme-system`，版本号为 `1.2.8`。本地开发、自动回归、OSS 实网联调和用户补充中二素材接入已完成，新增 MATE 预设，等待本地人工验收。尚未推送或正式发布。最新状态以本文件末尾 2026-10-09 最终收尾记录为准，前面的阶段记录保留其当时范围。
+开发分支为 `codex/new-theme-system`，版本号为 `1.2.8`。本地开发、自动回归、OSS 实网联调和用户补充中二素材接入已完成，新增 MATE 预设，等待本地人工验收。尚未推送或正式发布。最新状态以本文件末尾 2026-10-20 OAuth 真实授权记录为准，前面的阶段记录保留其当时范围。
 
 ## 实现范围
 
@@ -71,3 +71,39 @@
 - 自动视频样本为 640×360/30fps，不代表长 B50、1080p60、所有用户设备或全部 Bilibili 视频下载验收。原 ADVANCED `Frames/1.png` 缺口保留；既有难度框通过。人工检查列表见 `release_v1.2.8_closeout.md`。
 - 本轮应用与 runtime 生成到 `dist/release128-manual-acceptance/`，文件名带 `manual`，构建状态为 `manual_acceptance_pending`。不推送远端、不部署；人工验收通过后再由用户决定发布。
 - 最终包含 298 个应用文件及 10258 个 runtime 文件，已实际解压到 `test_output/release128 人工验收`；18 份关键源码、配置、正式素材和离线 JSON 直接比较字节一致。包内启动隔离及两种最小损坏 runtime 的失败诊断、实际页面 Excel 保存重载、日志配置恢复均通过。证据：`dist/release128-manual-acceptance/package-verification.json`。包不包含用户数据库、日志、上传资源或 pytest 测试依赖。
+
+
+## 2026-10-13 OAuth 导入补充
+
+- 水鱼和落雪统一为公开客户端 OAuth 授权码 + PKCE、本机回调、全部成绩快照、本地筛选与存档。删除用户名、好友码、个人 API 密钥和旧代理查分路径。未读取或复制 SaaS 的应用密钥。
+- 舞萌默认 B50（旧曲 35 + 新曲 15），可选 AP B50（AP/AP+ 跨版本最多 50 个谱面）；同分依次按定数、达成率和来源顺序排列。水鱼核对服务端新版本分组，落雪按谱面版本分类并排除确认停用的谱面。中二保留 B30/N20，改用授权后的全部成绩。
+- 新增 `tests/test_score_oauth.py` 的 16 项测试，以及既有 ExcelConversionTests 的 5 项回归，均在配套 Python 3.12.10 / Streamlit 1.55.0 runtime 通过（首批 20 项一起运行，最后补充的页面发起授权测试独立通过）。覆盖真实本机 HTTP 回调、模拟两家查分器端点、PKCE/state、单次兑换、取消/过期/错误、版本分组、AP 过滤与去重、Rating 取整、缺失曲库、页面授权与模式切换、隔离 SQLite 保存重载及跨本地用户隔离。
+- 系统 Python / Streamlit 1.40.2 另已通过首批 15 项 OAuth 测试与 5 项 Excel 回归；修复该版本不允许嵌套 expander 的兼容问题。编译检查与 diff 空白检查通过。未安装新依赖。
+- 公开客户端 ID 分发配置为 `static/oauth_public_clients.json`，已加入打包必需文件列表；当前 ID 留空，支持本地配置与环境变量覆盖。真实授权需要维护者登记两家公开客户端并填入 ID。指南见 `docs/OAuthGuide.md`。
+- 验收边界：查分器响应为本地替身，HTTP 回调和 SQLite 为真实隔离运行；不等于真实账号授权或查分器成绩一致性验收。没有重打包、推送或发布；此前 `dist/release128-manual-acceptance/` 的包仍是旧版本代码。未操作真实用户数据库或线上 SaaS。
+
+
+## 2026-10-20 OAuth 真实授权和成绩读取
+
+用户填入两家公开客户端 ID 后，程序实际加载成功，无本地配置或环境变量覆盖。首次水鱼请求提示回调地址不一致；用户修正后台登记后，原始授权请求返回 302 并进入登录页。随后用户分别在两家官网完成真实登录与授权，本机回调完成 state 校验、授权码兑换和 Bearer 成绩请求，均进入 `ready` 状态。
+
+| 查分器 | 全部成绩快照 | B50 | AP B50 | 存档数据转换 |
+| --- | ---: | --- | --- | --- |
+| 水鱼 | 1442 条 | 50 条，旧曲 35 + 新曲 15 | 8 条，全部 AP/AP+ | 两种模式均通过 |
+| 落雪 | 1522 条 | 50 条，旧曲 35 + 新曲 15 | 9 条，全部 AP/AP+ | 两种模式均通过 |
+
+- 使用当前 `utils/score_oauth.py`、`utils/score_selection.py` 与实际配置，未用模拟成绩替代；读取权限分别为 `prober.records.read` 和 `read_player`，未携带 `client_secret`。
+- 临时验证服务位于 `127.0.0.1:8765`，回调为 `127.0.0.1:8766/callback` 和 `127.0.0.1:8767/callback`。证据为本地忽略目录 `outputs/oauth-live-check-20261020/summary.json`，仅记录状态、数量和检查结果。
+- 授权令牌与原始成绩只保存在验证进程内存中；没有写入正式用户数据库，没有保存令牌或原始成绩文件，没有计算文件或历史状态 hash。PKCE 的 S256 为 OAuth 协议必需计算。
+- 验收范围是舞萌真实授权、全部成绩读取、两种分表筛选与存档数据转换；本轮没有执行真实账号数据的页面保存/重载、中二真实授权或撤销授权后重试，也没有重打包、推送或发布。此前隔离 SQLite 自动测试的结论与本次真实获取证据分别保留。
+
+
+## 2026-10-20 收尾：ADVANCED、真实页面与验收包准备
+
+- 用户明确授权以 Python 精确重着色补齐中二 ADVANCED 边框。参考 SEGA 官方难度选择画面（https://chunithm.sega.com/play/ 的 `assets/img/play/game/05.png`），选用橙色色相；现有 EXPERT 边框的 1311×780 尺寸、透明通道、轮廓及明暗层次保留。生成脚本为 `scripts/build_chunithm_advanced_frame.py`，资产为 `static/assets/images/Chunithm/Frames/1.png`；没有生成式重绘或图像缩放。透明通道直接比较字节一致，不计算 hash。
+- 三预设（Verse/X-Verse/MATE）× 三定数模式均生成 ADVANCED 图片，检查橙色区域和透明窗口；联系表为 `test_output/release128-closeout-20261020/advanced-contact-sheet.png`。五个难度边框均存在，打包和主题验证脚本对缺失边框立即报错。
+- 配套 Python 3.12.10 / Streamlit 1.55.0 下 69 项 unittest 全部通过，视频匹配 19 项 pytest 全部通过。实际 CUDA/NVENC 验证生成 4 个完整短片；CPU 使用 `--difficulty 1` 将 ADVANCED 图片纳入三套中二完整短片，连同舞萌共 4 个短片均完成转场、音频路由和完整解码检查。结果分别为 `advanced-cuda/verification.json`、`advanced-cpu/verification.json`。Taichi 仍有既存缓存锁警告，未改动全局缓存；实际后端和渲染验证成功。
+- 两家真实舞萌成绩使用当前页面保存至独立 SQLite，再用无 OAuth 快照的新页面会话重载：水鱼 B50/AP B50 为 50/8 条，落雪为 50/9 条，选中、保存、重载条数一致，AP 标记全部符合。结果为 `test_output/release128-live-maimai-20261020/verification.json`。
+- 用户在两家后台撤销本地版应用授权后重新同意授权，真实读取与上述页面保存/重载再次全部通过，结果为 `test_output/release128-reauth-maimai-20261020/verification.json`。验收目录中的真实成绩快照与 SQLite 属于私有测试数据，不进入 Git 或安装包；令牌不保存。
+- 中二真实账号授权验收按用户本轮明确指令跳过，停止对应临时流程，不将自动用例或舞萌结果冒充中二真实验收。
+- 用户要求只提交本地代码并重打验收版，明确不正式发布。后续产物目录为 `dist/release128-manual-20261020/`；构建和解压验证结果以该目录报告为准。完整用户分表的常用参数/主观音画验收，以及日志桶保留期、费用告警、维护者下载核对的控制台证据仍保留为发布前检查项。

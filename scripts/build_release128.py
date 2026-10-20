@@ -42,7 +42,7 @@ def main():
     listed=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','-z'],cwd=ROOT).decode('utf-8').split('\0')
     roots=('utils/','db_utils/','st_pages/','static/assets/','static/import_templates/','video_metadata/','md_res/','docs/')
     files={'st_app.py','README.md','LICENSE','requirements.txt','requirements-gpu.txt','global_config.yaml',
-           'static/error_report_config.json','static/metadata_release_config.json','scripts/runtime_bootstrap.py',
+           'static/error_report_config.json','static/metadata_release_config.json','static/oauth_public_clients.json','scripts/runtime_bootstrap.py',
            'scripts/export_public_metadata_release.py','scripts/verify_release128_network.py'}
     application={}
     for name in listed:
@@ -71,11 +71,15 @@ def main():
                     continue
                 if not resource.is_file() or not resource.is_relative_to(ROOT) or resource.relative_to(ROOT).as_posix() not in application:
                     raise ValueError(f"Missing preset resource: {style['style_name']} / {key} / {value}")
-    for name in ('st_app.py','static/error_report_config.json','static/metadata_release_config.json',
+    for name in ('st_app.py','static/error_report_config.json','static/metadata_release_config.json','static/oauth_public_clients.json',
                  'static/import_templates/maimai_custom_import.xlsx','static/import_templates/chunithm_custom_import.xlsx',
                  'video_metadata/asset-manifest.json'):
         if name not in application:
             raise ValueError(f'Required application resource is not included: {name}')
+    for level in range(5):
+        name = f'static/assets/images/Chunithm/Frames/{level}.png'
+        if name not in application:
+            raise ValueError(f'Required CHUNITHM difficulty frame is not included: {name}')
     runtime={}
     for file in (runtime_application/'runtime').rglob('*'):
         if file.is_file() and '__pycache__' not in file.parts and file.suffix != '.pyc':

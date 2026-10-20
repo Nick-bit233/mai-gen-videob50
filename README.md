@@ -10,6 +10,10 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 `v1.2.8` 已完成本地开发、自动测试和 OSS 实网联调，等待人工验收。包含 Excel 批量自定义导入、按线上 release 更新舞萌视频匹配元数据（中二沿用旧版搜索）、用户手动匿名只写提交错误日志、Python 启动隔离，以及转场输入兼容、硬件编码诊断和成品失败保护。
 
+2026-10-13 补充查分器 OAuth 重构：先授权获取全部成绩，再默认筛选 B50 或选择 AP B50。2026-10-20 已配置两家公开客户端，并通过舞萌真实账号授权、全部成绩读取、B50/AP B50 筛选和存档数据转换验证；此前生成的 `manual` 包不包含本次改动。详见 [OAuth 导入说明](docs/OAuthGuide.md)。
+
+2026-10-20 收尾补充：舞萌两家 OAuth 的实际页面保存/重载、撤销后重新授权已通过；补齐中二 ADVANCED 橙色边框，新增五难度打包检查。中二真实账号验收按用户决定跳过。本轮仅制作新的 `manual` 验收包，未正式发布。
+
 中二新增 **MATE** 视频预设：使用新增背景视频与独立片头/片尾 BGM，成绩底图沿用 Verse；Verse/X-Verse 使用补齐的 Verse 音乐配对。正式透明版本 Logo 已接入，旧内置音乐路径失效时迁移到新配对，自定义音乐保留。
 
 使用方法见[Excel 导入说明](docs/excel_import_guide.md)，验证记录见[1.2.8 验收](docs/release_v1.2.8_local_acceptance.md)，人工检查步骤见[收尾说明](docs/release_v1.2.8_closeout.md)。日志桶及舞萌现有 release 已通过实际网络验收；人工验收包带 `manual` 标记，尚未推送或发布。
@@ -92,9 +96,11 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 国服专属的查分器导入
 
-- [x] [水鱼查分器](https://www.diving-fish.com/maimaidx/prober/)：请注意在个人选项中关闭掩码，并允许公开获取你的B50数据。
+- [x] [水鱼查分器](https://www.diving-fish.com/maimaidx/prober/)：OAuth 授权获取全部成绩，再筛选分表。查分器开启成绩掩码时仍会影响返回成绩。
 
-- [x] [落雪查分器](https://maimai.lxns.net/)：直接通过好友码获取（请在账户设置中打开相关权限）。如果您不愿意授权开发者读取，可选择填入落雪后台生成的个人 API KEY 拉取数据。
+- [x] [落雪查分器](https://maimai.lxns.net/)：OAuth 授权获取全部成绩，再筛选分表。
+
+1.2.8 舞萌默认筛选 **B50（旧曲 35 + 新曲 15）**，可选 **AP B50（AP/AP+，跨版本最多前 50 谱）**。用户名仅用于管理本地存档，不再支持用户名、好友码、个人 Token 查分。应用登记、配置和使用步骤见 [OAuth 导入说明](docs/OAuthGuide.md)。两家公开客户端已配置，舞萌真实账号授权与成绩读取已于 2026-10-20 验证通过。
 
 以下为国际服/日服的数据导入，需要额外操作或借助其他工具。您可以在创建存档的页面或[点此查看国际服/日服数据获取插件使用教程](docs/DataImportGuide.md)）
 

@@ -15,7 +15,6 @@ from lxml import etree
 # 服务器bucket用于转存融合过的的metadata
 BUCKET_ENDPOINT = "https://nickbit-maigen-images.oss-cn-shanghai.aliyuncs.com"
 # 服务器函数计算用于代理获取需要开发者key的查分器api数据
-FC_PROXY_ENDPOINT = "https://fish-usta-proxy-efexqrwlmf.cn-shanghai.fcapp.run"
 
 # 第三方原始数据源api用于获取曲绘等CDN资源
 LXNS_API_ENDPOINT = "https://assets.lxns.net"  # 落雪查分器api
@@ -869,7 +868,9 @@ def lxns_to_new_record_format(lxns_record: dict, game_type: str = "maimai") -> d
             matched_chart_info = ci
             break
     # 解析定数
-    resolved_ds = get_level_value_from_chart_meta(matched_chart_info) if matched_chart_info else 0.0
+    resolved_ds = lxns_record.get('ds')
+    if resolved_ds is None:
+        resolved_ds = get_level_value_from_chart_meta(matched_chart_info) if matched_chart_info else 0.0
     # 计算max_dx_score
     if matched_chart_info:
         total_notes = matched_chart_info.get('note_counts', {}).get('total', 0) or 0  # 防止NULL

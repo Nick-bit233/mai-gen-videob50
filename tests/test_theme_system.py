@@ -10,6 +10,41 @@ from utils.style_config import (normalize_style, read_style, write_style, preset
                                 resolve_bgm, constant_mode)
 
 
+class AdvancedFrameTests(unittest.TestCase):
+    def test_advanced_frame_preserves_alpha_and_uses_orange_palette(self):
+        import colorsys
+        from PIL import Image
+        directory = Path(__file__).resolve().parents[1] / 'static/assets/images/Chunithm/Frames'
+        with Image.open(directory/'1.png') as advanced, Image.open(directory/'2.png') as expert:
+            self.assertEqual(advanced.size, (1311, 780))
+            self.assertEqual(advanced.mode, 'RGBA')
+            self.assertEqual(advanced.getchannel('A').tobytes(), expert.getchannel('A').tobytes())
+            visible = [pixel for pixel in advanced.getdata() if pixel[3] > 128]
+            orange = [p for p in visible if p[0] > p[1] > p[2] and
+                      20 <= colorsys.rgb_to_hsv(*(v/255 for v in p[:3]))[0]*360 <= 40]
+            self.assertGreater(len(orange)/len(visible), 0.95)
+            self.assertEqual(advanced.getpixel((700, 400))[3], 0)
+
+    def test_advanced_renders_in_all_chunithm_presets_and_display_modes(self):
+        from utils.ImageUtils import generate_single_image
+        record = dict(title='ADVANCED 验收', artist='Test', level_index=1,
+                      ds_cur=7.5, ds_next=7.7, ds_cn=7.5, ds_latest=7.7,
+                      score=1009000, ra=9.65, combo_type='aj', chain_type='fc', play_count=1)
+        with tempfile.TemporaryDirectory() as directory:
+            for name in ('Verse', 'X-Verse', 'MATE'):
+                for mode in ('cn', 'latest', 'compare'):
+                    with self.subTest(preset=name, mode=mode):
+                        style = preset_style('chunithm', name)
+                        style['options']['chunithm_constant_display'] = mode
+                        result = generate_single_image('chunithm', style, record,
+                            str(Path(directory)/f'{name}-{mode}.png'), 'Best 1')
+                        self.assertEqual(result.size, (1920, 1080))
+                        r,g,b,_ = result.convert('RGBA').getpixel((400,55))
+                        self.assertGreater(r,g)
+                        self.assertGreater(g,b)
+                        result.close()
+
+
 class StyleTests(unittest.TestCase):
     def test_legacy_custom_keeps_audio_and_other_game(self):
         with tempfile.TemporaryDirectory() as directory:
