@@ -14,6 +14,8 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 2026-10-20 收尾补充：舞萌两家 OAuth 的实际页面保存/重载、撤销后重新授权已通过；补齐中二 ADVANCED 橙色边框，新增五难度打包检查。中二真实账号验收按用户决定跳过。本轮仅制作新的 `manual` 验收包，未正式发布。
 
+本轮新验收包位于 `dist/release128-manual-20261020/`，应用代码基线为 `e724faf`，实际解压与启动、OAuth 真实成绩回放保存/重载、Excel 页面检查已通过。应用包和 runtime 包须解压到同一个新目录，再运行 `start.bat`。
+
 中二新增 **MATE** 视频预设：使用新增背景视频与独立片头/片尾 BGM，成绩底图沿用 Verse；Verse/X-Verse 使用补齐的 Verse 音乐配对。正式透明版本 Logo 已接入，旧内置音乐路径失效时迁移到新配对，自定义音乐保留。
 
 使用方法见[Excel 导入说明](docs/excel_import_guide.md)，验证记录见[1.2.8 验收](docs/release_v1.2.8_local_acceptance.md)，人工检查步骤见[收尾说明](docs/release_v1.2.8_closeout.md)。日志桶及舞萌现有 release 已通过实际网络验收；人工验收包带 `manual` 标记，尚未推送或发布。
