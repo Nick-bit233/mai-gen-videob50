@@ -1,3 +1,4 @@
+from utils.chunithm_display import archive_constants
 from typing import Dict, List, Optional, Tuple, Any, Union
 from db_utils.DatabaseManager import DatabaseManager
 from utils.DataUtils import query_songs_metadata, format_record_tag, get_valid_time_range, get_level_value_from_chart_meta
@@ -192,62 +193,18 @@ class DatabaseDataHandler:
         if not archive_id:
             raise ValueError(f"Archive '{archive_name}' not found for user '{username}'")
 
-        # Get existing records from DB, mapped by chart_id for quick lookup
-        existing_records_list = self.db.get_archive_records_simple(archive_id)
-        existing_records_map = {rec['chart_id']: rec for rec in existing_records_list}
-        
-        processed_chart_ids = set()
-        download_tasks = []
-
-        with self.db.get_connection() as conn: # Use a single transaction
-            for i, record_data in enumerate(new_records_data):
-                # 1. Get or create the chart for the incoming record
-                chart_data = record_data.get('chart_data')
-                if not chart_data:
-                    raise ValueError("Each record must include 'chart_data' field.")
-                
-                # Always use get_or_create_chart - chart uniqueness is by (game_type, song_id, chart_type, level_index)
-                chart_id = self.db.get_or_create_chart(chart_data)
-                
-                processed_chart_ids.add(chart_id)
-
-                download_tasks.append({
-                    'game_type': chart_data.get('game_type', 'maimai'),
-                    'title': chart_data.get('song_name'),
-                    'artist': chart_data.get('artist')
-                })
-
-                # print(f"Updating record for chart_id {chart_id} with data: {record_data}")
-                # 2. Check if this chart already has a record in the archive
-                if chart_id in existing_records_map:
-                    # It exists, so update it
-                    existing_record = existing_records_map[chart_id]
-                    self.db.update_record(existing_record['id'], record_data)
-                else:
-                    # It's a new record for this archive, so add it
-                    self.db.add_record(archive_id, chart_id, record_data)
-            
-            # 3. Determine which records to delete
-            chart_ids_to_delete = set(existing_records_map.keys()) - processed_chart_ids
-            record_ids_to_delete = [
-                rec['id'] for chart_id, rec in existing_records_map.items() 
-                if chart_id in chart_ids_to_delete
-            ]
-            
-            if record_ids_to_delete:
-                self.db.delete_records(record_ids_to_delete)
-
-        # Update the record count in the archive table
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE archives SET record_count = ? WHERE id = ?",
-                (len(new_records_data), archive_id)
-            )
-            conn.commit()
-
-        AssetManager.start_background_download(download_tasks)
-
+        from db_utils.record_transaction import save_archive_records
+        save_archive_records(self.db, archive_id, new_records_data)
+        # Official records keep existing jacket prefetching. Excel custom records
+        # retain their explicitly imported jackets and never start this prefetch.
+        download_tasks = [
+            {'game_type': r['chart_data'].get('game_type', 'maimai'),
+             'title': r['chart_data'].get('song_name'), 'artist': r['chart_data'].get('artist')}
+            for r in new_records_data
+            if not str(r.get('chart_data', {}).get('song_id', '')).startswith('custom_excel_')
+        ]
+        if download_tasks:
+            AssetManager.start_background_download(download_tasks)
         return archive_id
 
     def copy_archive(self, username: str, source_archive_name: str) -> Optional[Tuple[int, str]]:
@@ -400,22 +357,8 @@ class DatabaseDataHandler:
                 level_index = record.get('level_index', 0)
                 song_id = record.get('song_id', '')
                 
-                # 获取定数信息（优先从元数据，如果无采用自定义数据）
-                ds_value_cur = None
-                ds_value_next = None
-                metadata = query_songs_metadata(game_type, title, artist)
-                if metadata:
-                    chart_info = metadata.get('charts_info', [])
-                    for chart_meta in chart_info:
-                        chart_level_index = chart_meta.get('difficulty', -1)
-                        if chart_level_index == level_index:
-                            ds_value_cur = get_level_value_from_chart_meta(chart_meta)
-                            ds_value_next = get_level_value_from_chart_meta(chart_meta, latest_first=True)
-                # 如果定数信息不存在，使用record中的difficulty字段, fallback为"--"
-                if ds_value_cur is None:
-                    ds_value_cur = record.get('difficulty', None)
-                if ds_value_cur is None:
-                    ds_value_cur = "--"
+                constants = archive_constants(
+                    query_songs_metadata(game_type, title, artist), level_index, record.get('difficulty'))
                 reformat_data = {
                     'chart_id': record.get('chart_id'),
                     'song_id': song_id,
@@ -423,8 +366,7 @@ class DatabaseDataHandler:
                     'artist': artist,
                     'type': record.get('chart_type', 0),
                     'level_index': level_index,
-                    'ds_cur': ds_value_cur,
-                    'ds_next': ds_value_next,
+                    **constants,
                     'score': int(record.get('achievement', 0)), # Format as integer score
                     'combo_type': record.get('fc_status', 'none'), 
                     'chain_type': record.get('fs_status', 'none'),
@@ -492,23 +434,8 @@ class DatabaseDataHandler:
                 level_index = record.get('level_index', 0)
                 song_id = record.get('song_id', '')
                 
-                # 获取定数信息（优先从元数据，如果无采用自定义数据）
-                ds_value_cur = None
-                ds_value_next = None
-                metadata = query_songs_metadata(game_type, title, artist)
-                if metadata:
-                    chart_info = metadata.get('charts_info', [])
-                    for chart_meta in chart_info:
-                        chart_level_index = chart_meta.get('difficulty', -1)
-                        if chart_level_index == level_index:
-                            ds_value_cur = get_level_value_from_chart_meta(chart_meta)
-                            ds_value_next = get_level_value_from_chart_meta(chart_meta, latest_first=True)
-                # 如果定数信息不存在，使用record中的difficulty字段, fallback为"--"
-                if ds_value_cur is None:
-                    ds_value_cur = record.get('difficulty', None)
-                if ds_value_cur is None:
-                    ds_value_cur = "--"
-                
+                constants = archive_constants(
+                    query_songs_metadata(game_type, title, artist), level_index, record.get('difficulty'))
                 reformat_data = {
                     'chart_id': record.get('chart_id'),
                     'song_id': song_id,
@@ -516,8 +443,7 @@ class DatabaseDataHandler:
                     'artist': artist,
                     'type': record.get('chart_type', 0),
                     'level_index': level_index,
-                    'ds_cur': ds_value_cur,
-                    'ds_next': ds_value_next,
+                    **constants,
                     'score': int(record.get('achievement', 0)), # Format as integer score
                     'combo_type': record.get('fc_status', 'none'), 
                     'chain_type': record.get('fs_status', 'none'),
@@ -602,6 +528,22 @@ class DatabaseDataHandler:
     # Configuration table and
     # Video_extra_configs table handler using video_config format
     # --------------------------------------
+    def update_image_configs_batch(self, archive_id, updates):
+        """Publish a fully generated batch in one transaction."""
+        with self.db.get_connection() as conn:
+            with conn:
+                for chart_id, data in updates:
+                    if not conn.execute("SELECT 1 FROM records WHERE archive_id=? AND chart_id=?",
+                                        (archive_id, chart_id)).fetchone():
+                        raise ValueError("图片对应的成绩已不在当前存档，请重新生成。")
+                    conn.execute("""
+                        INSERT INTO configurations (archive_id, chart_id, achievement_image_path, background_image_path)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(archive_id, chart_id) DO UPDATE SET
+                            achievement_image_path=excluded.achievement_image_path,
+                            background_image_path=COALESCE(excluded.background_image_path, configurations.background_image_path)
+                        """, (archive_id, chart_id, data['achievement_image_path'], data.get('background_image_path')))
+
     def update_image_config_for_record(self, archive_id: int, chart_id: int, image_path_data: Dict) -> bool:
         # Update image configuration for a specific record
         bg_image_path = image_path_data.get('background_image_path', None)

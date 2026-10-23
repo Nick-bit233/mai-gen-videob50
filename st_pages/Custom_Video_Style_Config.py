@@ -7,6 +7,9 @@ from copy import deepcopy
 from pathlib import Path
 from datetime import datetime
 from utils.themes import DEFAULT_STYLES
+from utils.style_config import read_style, write_style, preset_style, RESET_STYLES, CONSTANT_MODES, constant_mode
+from utils.bgm_upload import save_bgm_upload
+from uuid import uuid4
 from utils.PageUtils import read_global_config, get_game_type_text, DEFAULT_STYLE_CONFIG_FILE_PATH
 from utils.ImageUtils import generate_single_image
 from utils.VideoUtils import get_video_preview_frame
@@ -43,33 +46,29 @@ _2085 = """
 """
 ABS_TEST_LINES = _kop7 if G_type == "maimai" else _2085
 
-if os.path.exists(video_style_config_path):
-    with open(video_style_config_path, "r") as f:
-        custom_styles = json.load(f)
-    current_style = deepcopy(custom_styles.get(G_type, {}))
-else:
-    current_style = deepcopy(DEFAULT_STYLES.get(G_type, {})[-1]) # 默认使用最后一个预设样式
+def style_key(name):
+    return f"style_{G_type}_{st.session_state.get('style_ui_revision', 0)}_{name}"
 
-if 'selected_style_name' not in st.session_state:
-    st.session_state.selected_style_name = current_style.get("style_name", "Custom")
-    # print(f"Initialized selected_style_name to {st.session_state.selected_style_name}")
+
+def refresh_style_widgets():
+    st.session_state.style_ui_revision = st.session_state.get('style_ui_revision', 0) + 1
+
+
+saved_style = read_style(G_type, video_style_config_path)
+if st.session_state.get(f"style_saved_{G_type}") != saved_style:
+    st.session_state[f"style_saved_{G_type}"] = deepcopy(saved_style)
+    st.session_state[f"style_draft_{G_type}"] = deepcopy(saved_style)
+    refresh_style_widgets()
+current_style = st.session_state[f"style_draft_{G_type}"]
+
 
 def save_style_config(style_config, is_custom_style):
-    """保存样式配置到文件"""
-    if is_custom_style:  # 保存自定义样式Flag
+    if is_custom_style:
         style_config["style_name"] = "Custom"
-        st.session_state.selected_style_name = "Custom"
-
-    with open(video_style_config_path, "r") as f:
-        custom_styles = json.load(f)
-
-    # 仅替换当前游戏类型的样式配置
-    custom_styles[G_type] = style_config
-
-    with open(video_style_config_path, "w") as f:
-        json.dump(custom_styles, f, indent=4)
-
+    write_style(G_type, style_config, video_style_config_path)
+    st.session_state[f"style_saved_{G_type}"] = read_style(G_type, video_style_config_path)
     st.success("样式配置已保存！", icon="✅")
+
 
 
 def format_file_path(file_path):
@@ -79,44 +78,27 @@ def format_file_path(file_path):
 
 
 def save_uploaded_file(uploaded_file, directory):
-    """保存上传的文件并返回保存路径"""
     if uploaded_file is None:
         return None
-    
-    # 确保目录存在
-    os.makedirs(directory, exist_ok=True)
-    
-    # 生成文件名（使用原始文件名）
-    file_path = os.path.join(directory, uploaded_file.name)
-    
-    # 保存文件
-    with open(file_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-    
-    return file_path
+    # UploadedFile IDs belong to Streamlit's uploader; no content hashes.
+    cache = st.session_state.setdefault("style_uploaded_files", {})
+    token = (G_type, directory, uploaded_file.file_id)
+    if token not in cache or not Path(cache[token]).is_file():
+        Path(directory).mkdir(parents=True, exist_ok=True)
+        destination = Path(directory) / f"{uuid4().hex}{Path(uploaded_file.name).suffix.lower()}"
+        destination.write_bytes(uploaded_file.getbuffer())
+        cache[token] = str(destination)
+    return cache[token]
 
 
-@st.dialog("确认重置自定义样式")
+@st.dialog("恢复本游戏默认样式")
 def reset_custom_style_dialog():
-    st.warning("确定要重置所有自定义样式设置吗？此操作将删除已上传的自定义文件，且不可撤销！")
+    st.write("恢复本游戏的默认样式。已上传文件保留，其他游戏的设置不受影响。")
     if st.button("确认重置"):
-        # 删除所有自定义文件
-        user_bg_dir = os.path.join(user_static_dir, "backgrounds")
-        user_music_dir = os.path.join(user_static_dir, "audios")
-        user_fonts_dir = os.path.join(user_static_dir, "fonts")
-        user_video_dir = os.path.join(user_static_dir, "bg_clips")
-        
-        for dir_path in [user_bg_dir, user_music_dir, user_fonts_dir, user_video_dir]:
-            for file_name in os.listdir(dir_path):
-                file_path = os.path.join(dir_path, file_name)
-                if os.path.isfile(file_path):
-                    os.remove(file_path)
-        
-        # 恢复默认样式
-        current_style = deepcopy(DEFAULT_STYLES.get(G_type, {})[-1])
-        save_style_config(current_style, is_custom_style=False)
-
-        st.success("已重置所有自定义样式！")
+        style = preset_style(G_type, RESET_STYLES[G_type])
+        save_style_config(style, is_custom_style=False)
+        st.session_state[f"style_draft_{G_type}"] = style
+        refresh_style_widgets()
         st.rerun()
 
 @st.dialog("来点抽象测试文案？")
@@ -147,7 +129,9 @@ def update_preview_images(style_config, placeholder, test_string):
         "chunithm":{
                 "score": 1010000,
                 "ds_cur": 14.5,
-                "ds_next": 14.5,
+                "ds_next": 14.6,
+                "ds_cn": 14.4,
+                "ds_latest": 14.6,
                 "combo_type": "ajc",
                 "chain_type": "fcr",
                 "level_index": 3,
@@ -187,6 +171,9 @@ def update_preview_images(style_config, placeholder, test_string):
             part="intro"
         )
         st.image(pil_img1, caption="预览图1(片头)")
+        ending_frame = get_video_preview_frame(
+            G_type, intro_template, style_config, G_config.get("VIDEO_RES", (1920, 1080)), part="ending")
+        st.image(ending_frame, caption="片尾预览")
 
         # Render Preview 2
         # generate test image
@@ -308,14 +295,14 @@ def show_current_style_preview(to_preview_style=None):
                 st.markdown("> 正片未启用自定义同一背景图片。")
 
         with preview_col2:
-            st.write("片头片尾背景音乐")
+            for section, label in (("intro", "片头"), ("ending", "片尾")):
+                st.write(f"{label}背景音乐")
+                bgm_path = current_asset_config[f"{section}_bgm"]
+                if os.path.isfile(bgm_path):
+                    st.audio(bgm_path, format="audio/wav" if Path(bgm_path).suffix.lower() == ".wav" else "audio/mp3")
+                else:
+                    st.error(f"找不到{label}背景音乐：{bgm_path}")
 
-            intro_bgm_path = current_asset_config["intro_bgm"]
-            if os.path.exists(intro_bgm_path):
-                st.audio(intro_bgm_path, format="audio/mp3")
-            else:
-                st.error(f"找不到背景音乐：{intro_bgm_path}")
-            
             st.write("字体文件")
             st.write(f"片头片尾字体: {os.path.basename(current_asset_config['ui_font'])}")
             # TODO: 显示一段该字体的测试文字
@@ -334,38 +321,24 @@ st.write("在这里配置视频生成时使用的背景图片、背景音乐、�
 tab1, tab2 = st.tabs(["预设样式", "自定义样式"])
 
 with tab1:
-    preset_select_area = st.container(border=False)
-    preset_apply_button = st.button("应用预设", type="primary")
-
-    default_style_list = DEFAULT_STYLES.get(G_type, "maimai")
-    style_options = [t.get("style_name", "Unknown") for t in default_style_list]
-    len_style_options = len(style_options)
-
-    # 按钮逻辑（在radio button前应用，以实现点击后刷新选项）
-    if preset_apply_button:
-        set_index = style_options.index(st.session_state.selected_style_name)
-        current_style = deepcopy(default_style_list[set_index])
-        save_style_config(current_style, is_custom_style=False)
-        st.success(f"已切换到{st.session_state.selected_style_name}！")
-
-    # 样式选择区域
-    with preset_select_area:
-        st.subheader("选择预设样式")
-        if st.session_state.selected_style_name == "Custom":
-            st.warning("注意：应用预设样式将覆盖已保存的自定义设置！")
-        
-        # 样式选择菜单
-        st.session_state.selected_style_name = st.radio(
-            "视频样式预设",
-            options=style_options,
-            index=None
-        )
-
-    custom_preview_area = st.container(border=False)
-
-    # 预览区域（先刷新但是后显示）
-    with custom_preview_area:
-        show_current_style_preview(current_style)
+    st.subheader("选择预设样式")
+    style_options = [item["style_name"] for item in DEFAULT_STYLES[G_type]]
+    selected_base = current_style.get("base_style_name")
+    selected = st.radio("视频样式预设", options=style_options,
+                        index=style_options.index(selected_base) if selected_base in style_options else 0,
+                        format_func=lambda name: "MAGiCAL" if name == "Magical" else name,
+                        key=style_key("preset"))
+    if current_style.get("style_name") == "Custom":
+        st.warning("应用预设样式将覆盖已保存的自定义设置。")
+    if st.button("应用预设", type="primary"):
+        style = preset_style(G_type, selected)
+        if G_type == "chunithm":
+            style["options"]["chunithm_constant_display"] = constant_mode(current_style)
+        save_style_config(style, is_custom_style=False)
+        st.session_state[f"style_draft_{G_type}"] = style
+        refresh_style_widgets()
+        st.rerun()
+    show_current_style_preview(current_style)
 
 with tab2:
     custom_setting_area = st.container(border=True)
@@ -391,7 +364,7 @@ with tab2:
             # 片头背景上传
             uploaded_intro_video_bg = st.file_uploader("片头片尾背景视频",
                                                     help="片头/片尾时位于视频最底层的动态背景，若不指定则使用预设的背景视频",
-                                                    type=["mp4", "mov"], key="intro_video_bg")
+                                                    type=["mp4", "mov"], key=style_key("intro_video_bg"))
             if uploaded_intro_video_bg:
                 file_path = save_uploaded_file(uploaded_intro_video_bg, os.path.join(user_static_dir, "bg_clips"))
                 if file_path:
@@ -402,7 +375,7 @@ with tab2:
                                                     help="放置于片头片尾视频的中央作为文本框的背景图片。\
                                                         注意：因为该图片直接叠放在视频上方，所以只有其四周为透明背景的情况下才不会遮挡背景视频，如自定义制作，请使用png格式。\
                                                         若不指定则使用预设的背景图片",
-                                                    type=["png"], key="intro_bg")
+                                                    type=["png"], key=style_key("intro_bg"))
             if uploaded_intro_text_bg:
                 file_path = save_uploaded_file(uploaded_intro_text_bg, os.path.join(user_static_dir, "backgrounds"))
                 if file_path:
@@ -418,18 +391,18 @@ with tab2:
                 label="正片背景使用动态视频背景",
                 help="如果勾选了，将使用 版本预设 / 自定义上传 的背景视频作为正片的动态背景，与自定义背景图片的选项互斥。",
                 value=current_options.get("content_use_video_bg", False),
-                key="enable_content_video_bg")
+                key=style_key("enable_content_video_bg"))
             
             current_options["override_content_default_bg"] = st.checkbox(
                 label="不使用动态视频背景，而使用自定义背景图片",
                 help="强制所有正片的背景为图片，如果勾选，请在下方上传默认图片，您也可以在配置视频详情页面为每个片段上传单独的背景图片。",
                 value=current_options.get("override_content_default_bg", False),
-                key="enable_custom_content_bg")
+                key=style_key("enable_custom_content_bg"))
 
             # 正片背景上传
             uploaded_content_bg = st.file_uploader("自定义正片背景图片（默认）",
                                                 help="如果确定所有正片背景都需要使用自定义图片，请在此上传。",
-                                                type=["png", "jpg", "jpeg"], key="video_bg")
+                                                type=["png", "jpg", "jpeg"], key=style_key("video_bg"))
             if uploaded_content_bg:
                 file_path = save_uploaded_file(uploaded_content_bg, os.path.join(user_static_dir, "backgrounds"))
                 if file_path:
@@ -438,20 +411,48 @@ with tab2:
             
 
             st.divider()
-            # 背景音乐上传
-            uploaded_intro_bgm = st.file_uploader("片头片尾背景音乐", type=["mp3", "wav"], key="intro_bgm")
-            if uploaded_intro_bgm:
-                file_path = save_uploaded_file(uploaded_intro_bgm, os.path.join(user_static_dir, "audios"))
-                if file_path:
-                    current_asset_config["intro_bgm"] = format_file_path(file_path)
-                    st.success(f"已上传：{uploaded_intro_bgm.name}")
-
+            st.write("背景音乐")
+            base_names = [item["style_name"] for item in DEFAULT_STYLES[G_type]]
+            if current_style.get("base_style_name") not in base_names:
+                current_style["base_style_name"] = st.selectbox(
+                    "恢复音乐时使用的基础主题", base_names, key=style_key("base_theme"))
+            for section, label in (("intro", "片头"), ("ending", "片尾")):
+                uploaded = st.file_uploader(f"{label}背景音乐", type=["mp3", "wav"], key=style_key(f"{section}_bgm"))
+                if uploaded is not None:
+                    token = (G_type, section, uploaded.file_id)
+                    cache = st.session_state.setdefault("bgm_uploaded_files", {})
+                    try:
+                        if token not in cache or not Path(cache[token]).is_file():
+                            with st.spinner("正在检查音频……"):
+                                cache[token] = save_bgm_upload(uploaded.name, uploaded.getvalue(),
+                                    Path(user_static_dir) / "audios", G_type, section)
+                        current_asset_config[f"{section}_bgm"] = cache[token]
+                        current_style.setdefault("bgm_display_names", {})[section] = uploaded.name
+                    except (ValueError, OSError) as exc:
+                        st.error(str(exc))
+                bgm_path = current_asset_config[f"{section}_bgm"]
+                st.caption(current_style.get("bgm_display_names", {}).get(section) or Path(bgm_path).name)
+                if os.path.isfile(bgm_path):
+                    st.audio(bgm_path, format="audio/wav" if Path(bgm_path).suffix.lower() == ".wav" else "audio/mp3")
+                if st.button(f"恢复{label}主题默认音乐", key=style_key(f"reset_{section}_bgm")):
+                    base = preset_style(G_type, current_style["base_style_name"])
+                    current_asset_config[f"{section}_bgm"] = base["asset_paths"][f"{section}_bgm"]
+                    current_style.get("bgm_display_names", {}).pop(section, None)
+                    refresh_style_widgets()
+                    st.rerun()
+            if G_type == "chunithm":
+                st.caption("中二默认音乐暂沿用现有音频，可分别上传替换。")
+                current_options["chunithm_constant_display"] = st.radio(
+                    "定数展示选项", list(CONSTANT_MODES),
+                    index=list(CONSTANT_MODES).index(constant_mode(current_style)),
+                    format_func=CONSTANT_MODES.get, horizontal=True, key=style_key("constant_mode"))
+            st.caption("修改后请保存自定义样式。短音乐会循环至片段结束。")
             st.divider()
             # 预览调整
             test_str = st.text_area("【测试】样式预览",
                                     placeholder="输入任意文本，以预览素材/文本样式调整的效果", 
                                     height=480,
-                                    key="comment_preview_text_area")
+                                    key=style_key("comment_preview_text_area"))
             sub_col1, sub_col2 = st.columns([2, 1])
             with sub_col1:
                 preview_btn = st.button("生成预览图", type="primary")
@@ -465,7 +466,7 @@ with tab2:
             # 成绩图字体上传
             uploaded_text_font = st.file_uploader("成绩图字体", type=["ttf", "otf"], 
                                                 help="这个字体将应用于成绩图中的曲名和标题名称",
-                                                key="text_font")
+                                                key=style_key("text_font"))
             if uploaded_text_font:
                 file_path = save_uploaded_file(uploaded_text_font, os.path.join(user_static_dir, "fonts"))
                 if file_path:
@@ -475,7 +476,7 @@ with tab2:
             # 文本字体上传
             uploaded_comment_font = st.file_uploader("文本字体", type=["ttf", "otf"],
                                                     help="这个字体将应用于片头片尾和心得体会的评论文本", 
-                                                    key="comment_font")
+                                                    key=style_key("comment_font"))
             if uploaded_comment_font:
                 file_path = save_uploaded_file(uploaded_comment_font, os.path.join(user_static_dir, "fonts"))
                 if file_path:
@@ -485,43 +486,43 @@ with tab2:
 
             with st.expander("片头片尾文本样式调整"):
                 current_itext["font_size"] = st.number_input("片头片尾文本字体大小", min_value=10, max_value=400,
-                            value=current_itext.get("font_size", 44), key="intro_font_size")
+                            value=current_itext.get("font_size", 44), key=style_key("intro_font_size"))
                 current_itext["interline"] = st.slider("片头片尾文本字体行距", min_value=1.0, max_value=20.0, step=0.1,
-                            value=current_itext.get("interline", 6.5), key="intro_line_spacing")
+                            value=current_itext.get("interline", 6.5), key=style_key("intro_line_spacing"))
                 current_itext["horizontal_align"] = st.selectbox("片头片尾文本对齐方式",
                     options=["left", "center", "right"],
                     index=["left", "center", "right"].index(current_itext.get("horizontal_align", "left")),
-                    key="intro_horizontal_align"
+                    key=style_key("intro_horizontal_align")
                 )
                 current_itext["inline_max_chara"] = st.number_input("片头片尾文本每行最大字数", min_value=1, max_value=100,
                                 help="每行文本的最大字符数，超过此长度将自动换行。注意：此项设置过大可能导致文本超出画面",
-                                value=current_itext.get("inline_max_chara", 26), key="intro_inline_max_chara")
-                current_itext["font_color"] = st.color_picker("片头片尾文本字体颜色", value=current_itext.get("font_color", "#FFFFFF"), key="intro_font_color")
-                current_itext["enable_stroke"] = st.checkbox("片头片尾文本字体描边", value=current_itext.get("enable_stroke", True), key="intro_enable_stroke")
+                                value=current_itext.get("inline_max_chara", 26), key=style_key("intro_inline_max_chara"))
+                current_itext["font_color"] = st.color_picker("片头片尾文本字体颜色", value=current_itext.get("font_color", "#FFFFFF"), key=style_key("intro_font_color"))
+                current_itext["enable_stroke"] = st.checkbox("片头片尾文本字体描边", value=current_itext.get("enable_stroke", True), key=style_key("intro_enable_stroke"))
                 if current_itext.get("enable_stroke", False):
-                    current_itext["stroke_color"] = st.color_picker("片头片尾文本字体描边颜色", value=current_itext.get("stroke_color", "#000000"), key="intro_stroke_color")
+                    current_itext["stroke_color"] = st.color_picker("片头片尾文本字体描边颜色", value=current_itext.get("stroke_color", "#000000"), key=style_key("intro_stroke_color"))
                     current_itext["stroke_width"] = st.slider("片头片尾文本字体描边宽度", min_value=1, max_value=10,
-                            value=current_itext.get("stroke_width", 2), key="intro_stroke_width")
+                            value=current_itext.get("stroke_width", 2), key=style_key("intro_stroke_width"))
         
             with st.expander("评论文本样式调整"):
                 current_ctext["font_size"] = st.number_input("评论字体大小", min_value=10, max_value=360, 
-                        value=current_ctext.get("font_size", 28), key="comment_font_size")
+                        value=current_ctext.get("font_size", 28), key=style_key("comment_font_size"))
                 current_ctext["interline"] = st.slider("评论字体行距", min_value=1.0, max_value=20.0, step=0.1,
-                        value=current_ctext.get("interline", 6.5), key="comment_line_spacing")
+                        value=current_ctext.get("interline", 6.5), key=style_key("comment_line_spacing"))
                 current_ctext["horizontal_align"] = st.selectbox("评论文本对齐方式",
                     options=["left", "center", "right"],
                     index=["left", "center", "right"].index(current_ctext.get("horizontal_align", "left")),
-                    key="comment_horizontal_align"
+                    key=style_key("comment_horizontal_align")
                 )
                 current_ctext["inline_max_chara"] = st.number_input("评论每行最大字数", min_value=1, max_value=100,
                                 help="每行文本的最大字符数，超过此长度将自动换行。注意：此项设置过大可能导致文本超出画面",
-                                value=current_ctext.get("inline_max_chara", 24), key="comment_inline_max_chara")
-                current_ctext["font_color"] = st.color_picker("评论字体颜色", value=current_ctext.get("font_color", "#FFFFFF"), key="comment_font_color")
-                current_ctext["enable_stroke"] = st.checkbox("字体描边", value=current_ctext.get("enable_stroke", True), key="comment_enable_stroke")
+                                value=current_ctext.get("inline_max_chara", 24), key=style_key("comment_inline_max_chara"))
+                current_ctext["font_color"] = st.color_picker("评论字体颜色", value=current_ctext.get("font_color", "#FFFFFF"), key=style_key("comment_font_color"))
+                current_ctext["enable_stroke"] = st.checkbox("字体描边", value=current_ctext.get("enable_stroke", True), key=style_key("comment_enable_stroke"))
                 if current_ctext.get("enable_stroke", False):
-                    current_ctext["stroke_color"] = st.color_picker("评论字体描边颜色", value=current_ctext.get("stroke_color", "#000000"), key="comment_stroke_color")
+                    current_ctext["stroke_color"] = st.color_picker("评论字体描边颜色", value=current_ctext.get("stroke_color", "#000000"), key=style_key("comment_stroke_color"))
                     current_ctext["stroke_width"] = st.slider("评论字体描边宽度", min_value=1, max_value=10, 
-                            value=current_ctext.get("stroke_width", 2), key="comment_stroke_width")
+                            value=current_ctext.get("stroke_width", 2), key=style_key("comment_stroke_width"))
 
         preview_image_placeholder = st.empty()
         if preview_btn:
@@ -533,7 +534,7 @@ with tab2:
             save_style_config(current_style, is_custom_style=True)
 
         # 重置自定义样式按钮
-        if st.button("重置所有自定义样式"):
+        if st.button("恢复本游戏默认样式"):
             reset_custom_style_dialog()
 
 

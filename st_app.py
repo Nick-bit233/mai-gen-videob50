@@ -1,4 +1,8 @@
 import streamlit as st
+from utils.app_version import APP_VERSION
+from utils.diagnostics import diagnostic_scope, current_report, install_streamlit_error_capture
+from utils.metadata_release import metadata_snapshot
+install_streamlit_error_capture()
 
 # 设置应用标题
 st.set_page_config(
@@ -48,10 +52,12 @@ composite_page = st.Page("st_pages/Composite_Videos.py",
                 title="5. 合成视频",
                 icon=":material/animated_images:",
                 url_path="composite")
+report_page = st.Page("st_pages/Error_Reports.py", title="错误报告与硬件检查",
+                      icon=":material/bug_report:", url_path="reports")
 
 pg = st.navigation(
     {
-        "首页": [homepage, custom_video_style],
+        "首页": [homepage, custom_video_style, report_page],
         "数据管理": [
             setup_page,
             custom_setup_page,
@@ -69,4 +75,10 @@ pg = st.navigation(
     }
 )
 
-pg.run()
+with diagnostic_scope(), metadata_snapshot():
+    try:
+        pg.run()
+    finally:
+        report = current_report(create=False)
+        if report:
+            st.session_state['last_diagnostic_report'] = report.report_id

@@ -14,6 +14,18 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 ## 更新速览
 
+`v1.2.8` 更新
+
+- 查分器 OAuth 重构：现在水鱼和落雪均使用新版OAuth查分路径，筛选b50更加准确。详见 [OAuth 导入说明](docs/OAuthGuide.md)。
+- 主题系统更新：
+    - 现在片头、片尾背景音乐可分别上传 MP3/WAV 指定。
+    - 新增 maimai MAGiCAL / chunithm MATE 视频主题与页面配色。
+    - 中二成绩图片支持选择显示“国服 / 最新 / 定数对比”三种模式，请按照分表来源自行选配。
+- 乐曲元数据更新：现支持至maimai MAGiCAL首日更新
+- 现在支持通过外部excel表格批量导入自定义分表数据，包括曲绘图片。
+- 现在，使用生成器期间出现异常时，您可从“错误反馈与上报”页面导出一份错误日志和系统自检报告并上传，提供该报告可以帮助开发者更好地定位视频编码器与硬件驱动问题。
+- 修复若干和查分器相关的已知问题。
+
 `v1.2.6` 更新
 - 更新了部分图片素材，现在生成中二节奏模板将展示`中二节奏2027`和`CHUNITHM Mate`定数变动
 - 缓存重复读取的视频帧，减少 30fps 素材输出 60fps 时的重复定位开销。
@@ -81,9 +93,11 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
 
 国服专属的查分器导入
 
-- [x] [水鱼查分器](https://www.diving-fish.com/maimaidx/prober/)：请注意在个人选项中关闭掩码，并允许公开获取你的B50数据。
+- [x] [水鱼查分器](https://www.diving-fish.com/maimaidx/prober/)：OAuth 授权获取全部成绩，再筛选分表。查分器开启成绩掩码时仍会影响返回成绩。
 
-- [x] [落雪查分器](https://maimai.lxns.net/)：直接通过好友码获取（请在账户设置中打开相关权限）。如果您不愿意授权开发者读取，可选择填入落雪后台生成的个人 API KEY 拉取数据。
+- [x] [落雪查分器](https://maimai.lxns.net/)：OAuth 授权获取全部成绩，再筛选分表。
+
+1.2.8 舞萌默认筛选 **B50（旧曲 35 + 新曲 15）**，可选 **AP B50（AP/AP+，跨版本最多前 50 谱）**。用户名仅用于管理本地存档，不再支持用户名、好友码、个人 Token 查分。应用登记、配置和使用步骤见 [OAuth 导入说明](docs/OAuthGuide.md)。两家公开客户端已配置，舞萌真实账号授权与成绩读取已于 2026-10-20 验证通过。
 
 以下为国际服/日服的数据导入，需要额外操作或借助其他工具。您可以在创建存档的页面或[点此查看国际服/日服数据获取插件使用教程](docs/DataImportGuide.md)）
 
@@ -203,7 +217,7 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
     ```
     说明你使用的ip地址可能被youtube识别为机器人导致封禁，最简单的办法是尝试更换代理ip后重试。
 
-    如果更改代理仍然无法解决问题，请尝试配置`PO_TOKEN`或`OAUTH_TOKEN`后抓取视频，参考[使用自定义OAuth或PO Token](UseTokenGuide.md)。
+    如果更改代理仍然无法解决问题，请尝试配置`PO_TOKEN`或`OAUTH_TOKEN`后抓取视频，参考[使用自定义OAuth或PO Token](docs/UseTokenGuide.md)。
 
     如果仍然被风控请考虑使用 YouTube Data API v3 进行搜索（更稳定可靠）
 

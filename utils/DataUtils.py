@@ -14,8 +14,6 @@ from lxml import etree
 
 # 服务器bucket用于转存融合过的的metadata
 BUCKET_ENDPOINT = "https://nickbit-maigen-images.oss-cn-shanghai.aliyuncs.com"
-# 服务器函数计算用于代理获取需要开发者key的查分器api数据
-FC_PROXY_ENDPOINT = "https://fish-usta-proxy-efexqrwlmf.cn-shanghai.fcapp.run"
 
 # 第三方原始数据源api用于获取曲绘等CDN资源
 LXNS_API_ENDPOINT = "https://assets.lxns.net"  # 落雪查分器api
@@ -385,20 +383,25 @@ def download_metadata(game_type="maimai") -> tuple[str, dict]:
         print(f"Failed to download metadata from {url}. Status code: {response.status_code}")
         raise FileNotFoundError
     
-@lru_cache(maxsize=2)
 def load_metadata(game_type: str) -> dict:
     metadata_dir = './music_metadata/'
     if game_type == "maimai":
-        json_path = os.path.join(metadata_dir, f"mai_fusion_data.json")
+        from utils.metadata_release import resolve_metadata_file
+        json_path = resolve_metadata_file('mai_fusion_data.json')
     elif game_type == "chunithm":
-        json_path = os.path.join(metadata_dir, f"chuni_fusion_data.json")
+        json_path = os.path.join(metadata_dir, "chuni_fusion_data.json")
     else:
         raise ValueError(f"Unsupported game type: {game_type}")
-    if os.path.exists(json_path):
-        with open(json_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    else:
-        raise FileNotFoundError(f"Metadata file not found: {json_path}")
+    return _load_metadata_file(str(os.path.abspath(json_path)))
+
+
+@lru_cache(maxsize=4)
+def _load_metadata_file(json_path):
+    with open(json_path, 'r', encoding='utf-8') as file:
+        return json.load(file)
+
+
+load_metadata.cache_clear = _load_metadata_file.cache_clear
 
 # --------------------------------------
 # song_id 编码/解码方法（TODO：暂时弃用，需要重新设计）
@@ -864,7 +867,9 @@ def lxns_to_new_record_format(lxns_record: dict, game_type: str = "maimai") -> d
             matched_chart_info = ci
             break
     # 解析定数
-    resolved_ds = get_level_value_from_chart_meta(matched_chart_info) if matched_chart_info else 0.0
+    resolved_ds = lxns_record.get('ds')
+    if resolved_ds is None:
+        resolved_ds = get_level_value_from_chart_meta(matched_chart_info) if matched_chart_info else 0.0
     # 计算max_dx_score
     if matched_chart_info:
         total_notes = matched_chart_info.get('note_counts', {}).get('total', 0) or 0  # 防止NULL
@@ -1621,6 +1626,8 @@ def filter_unified_b50(unified_data: list, filter: dict, game_type="maimai") -> 
         while keep_past_len < len(past_results) and past_results[keep_past_len][1]["dx_rating"] == cutoff_rating:
             keep_past_len += 1
         past_results = past_results[:keep_past_len]
+    else:
+        past_results = past_results[:best_past_len]
 
     def dx_rating_support_ordering(results):
         """当在 dx_rating 标记了负值作为辅助排序序号使用, 保证成绩的相对位置不变"""

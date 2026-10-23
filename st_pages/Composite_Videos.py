@@ -1,3 +1,4 @@
+from utils.theme_artifacts import validate_image_style
 import streamlit as st
 import traceback
 import os
@@ -8,6 +9,14 @@ from utils.PageUtils import load_style_config, open_file_explorer, read_global_c
 from utils.PathUtils import get_user_media_dir
 from utils.VideoUtils import render_all_video_clips, combine_full_video_direct, combine_full_video_ffmpeg_concat_gl, render_complete_full_video
 from db_utils.DatabaseDataHandler import get_database_handler
+from utils.diagnostics import begin_report, capture_exception
+
+
+def show_render_error(exc, message):
+    report = capture_exception(exc, '视频生成')
+    st.session_state['last_diagnostic_report'] = report.report_id
+    st.error(f"{message}: {exc}")
+    st.info(f"诊断编号：{report.report_id}。可在“错误报告与硬件检查”下载或手动提交完整日志。")
 
 G_config = read_global_config()
 G_type = st.session_state.get('game_type', 'maimai')
@@ -94,7 +103,7 @@ with st.container(border=True):
             index=_mode_index)
     
     no_main_clip = st.checkbox("生成视频片段时，跳过全部曲目片段（仅生成开场、结尾）", value=False)
-    force_render_clip = st.checkbox("生成视频片段时，强制覆盖已存在的视频文件（否则将跳过同名片段的生成）", value=False)
+    force_render_clip = st.checkbox("生成视频片段时，强制重新生成全部片段（默认自动更新设置已变化的片段）", value=False)
 
 trans_config_placeholder = st.empty()
 with trans_config_placeholder.container(border=True):
@@ -172,7 +181,14 @@ if not main_configs:
 if not intro_configs or not ending_configs:
     st.error("❌ 未找到片头或片尾配置，请检查4-2步骤是否正常保存！")
 
-def save_video_render_config():
+def save_video_render_config(include_main=True):
+    if include_main:
+        try:
+            for config in main_configs:
+                validate_image_style(config.get('main_image'), G_type, style_config, require_snapshot=True)
+        except ValueError as exc:
+            st.error(str(exc))
+            st.stop()
     # 保存配置
     G_config['ONLY_GENERATE_CLIPS'] = v_mode_index == 0
     G_config['VIDEO_RES'] = (v_res_width, v_res_height)
@@ -186,7 +202,10 @@ def save_video_render_config():
     st.toast("配置已保存！")
 
 if st.button("开始生成视频", use_container_width=True, type="primary"):
-    save_video_render_config()
+    report = begin_report('视频生成', settings={'game_type': G_type, 'resolution': [v_res_width, v_res_height],
+                          'fps': v_fps, 'gpu': gpu_accel, 'taichi_backend': taichi_backend})
+    st.session_state['last_diagnostic_report'] = report.report_id
+    save_video_render_config(include_main=not (v_mode_index == 0 and no_main_clip))
     video_res = (v_res_width, v_res_height)
 
     # 前置检查 FFmpeg 版本
@@ -237,7 +256,7 @@ if st.button("开始生成视频", use_container_width=True, type="primary"):
                         st.info("已启动批量视频片段生成，请在控制台窗口查看进度……")
             st.success("视频片段生成结束！点击下方按钮打开视频所在文件夹")
         except Exception as e:
-            st.error(f"视频片段生成失败，错误: {e}，转到控制台查看详情")
+            show_render_error(e, '视频片段生成失败')
 
     else:
         try:
@@ -269,7 +288,7 @@ if st.button("开始生成视频", use_container_width=True, type="primary"):
                     st.write(output_info['info'])
             st.success("完整视频生成结束！点击下方按钮打开视频所在文件夹")
         except Exception as e:
-            st.error(f"完整视频生成失败，错误: {e}，转到控制台查看详情")
+            show_render_error(e, '完整视频生成失败')
 
 abs_path = os.path.abspath(video_output_path)
 if st.button("打开视频输出文件夹"):
@@ -285,6 +304,8 @@ with st.expander("展开其他视频生成方案"):
         st.write("【低内存模式】生成完整视频")
         st.info("GPU 加速时将使用低内存 xfade 转场拼接；CPU 路线仍使用直接拼接视频片段的简单模式。")
         if st.button("直接拼接方式生成完整视频"):
+            report = begin_report('低内存视频生成')
+            st.session_state['last_diagnostic_report'] = report.report_id
             save_video_render_config()
             video_res = (v_res_width, v_res_height)
             try:
@@ -322,7 +343,7 @@ with st.expander("展开其他视频生成方案"):
                         st.write(output_info['info'])
                     st.success("GPU低内存模式生成完成！点击上方按钮打开文件夹查看视频")
                 except Exception as e:
-                    st.error(f"GPU低内存模式生成失败，错误: {e}，转到控制台查看详情")
+                    show_render_error(e, 'GPU低内存模式生成失败')
             else:
                 # CPU快速模式：原有逻辑
                 with st.spinner("正在生成所有视频片段……"):

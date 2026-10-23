@@ -1,4 +1,6 @@
 import streamlit as st
+from utils.app_version import APP_VERSION
+from utils.metadata_release import resolve_metadata_file
 from utils.PageUtils import change_theme, get_game_type_text, update_music_metadata, DEFAULT_STYLE_CONFIG_FILE_PATH, get_db_manager, clear_all_user_data
 from utils.DataUtils import load_metadata
 from db_utils.DataMigration import old_data_migration
@@ -92,30 +94,36 @@ def should_update_metadata(threshold_hours=24):
     
     # 如果配置文件不存在，则创建并立即返回True
     if not config_file.exists():
-        with open(config_file, "w") as f:
-            json.dump({"last_update": current_time.isoformat()}, f)
         return True
     
     # 读取上次更新时间
     try:
         with open(config_file, "r") as f:
             data = json.load(f)
-            last_update = datetime.datetime.fromisoformat(data.get("last_update", "2000-01-01T00:00:00"))
+            last_update = datetime.datetime.fromisoformat(data.get("chunithm_last_update", data.get("last_update", "2000-01-01T00:00:00")))
     except (json.JSONDecodeError, ValueError):
         # 文件损坏或格式错误，重新创建
-        with open(config_file, "w") as f:
-            json.dump({"last_update": current_time.isoformat()}, f)
         return True
     
     # 计算时间差
     time_diff = current_time - last_update
     if time_diff.total_seconds() / 3600 >= threshold_hours:
-        # 更新时间戳
-        with open(config_file, "w") as f:
-            json.dump({"last_update": current_time.isoformat()}, f)
         return True
     
     return False
+
+
+def mark_music_metadata_updated():
+    if G_type != 'chunithm':
+        return
+    path = get_user_config_dir() / 'metadata_update.json'
+    try:
+        payload = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
+    except (OSError, ValueError):
+        payload = {}
+    payload['chunithm_last_update'] = datetime.datetime.now().isoformat()
+    from utils.style_config import write_json_atomic
+    write_json_atomic(path, payload)
 
 @st.dialog("刷新主题")
 def refresh_theme(theme_name=None):
@@ -146,7 +154,7 @@ with col_header2:
                 st.session_state.theme = "Verse"
                 change_theme(THEME_COLORS["chunithm"]["Verse"])
     G_type = st.session_state.get('game_type', 'maimai')
-    st.caption(f"当前版本 v1.2.6 |\
+    st.caption(f"当前版本 v{APP_VERSION} |\
                Created by: [Nickbit](https://github.com/Nick-bit233), \
                Thanks to: [MetallicAllex](https://github.com/MetallicAllex), \
                [YelonNotXTD](https://github.com/YelonNotXTD), \
@@ -233,30 +241,15 @@ st.markdown("### 🔧 系统状态")
 # Taichi加速组件状态
 with st.container(border=False):
     if not st.session_state.taichi_accel_installed:
-        st.warning("⚠️ 尚未安装GPU加速组件。如果您在使用整合包runtime，请点击下方按钮安装。")
-        if st.button("安装Taichi加速库", key="install_taichi_btn", use_container_width=False, type="primary"):
-            with st.spinner("正在安装Taichi加速库..."):
-                try:
-                    import subprocess
-                    if os.name == 'nt':
-                        python_executable = os.path.join(os.getcwd(), "runtime", "python.exe")
-                        if not os.path.exists(python_executable):
-                            st.warning("⚠️ 在整合包中未找到python.exe，正在尝试使用系统Python安装Taichi...")
-                            python_executable = sys.executable
-                    else:
-                        python_executable = sys.executable
-                    subprocess.check_call([python_executable, "-m", "pip", "install", "taichi==1.7.4"])
-                    st.success("✅ Taichi加速库安装成功！请重新启动应用以生效。")
-                except Exception as e:
-                    st.error(f"❌ 安装失败: {e}")
-        st.markdown(f"> 如果您是从源代码手动部署，运行下列命令安装依赖，然后重启应用：\n\n```bash\n{sys.executable} -m pip install -r requirements-gpu.txt\n```")
+        st.warning("尚未安装 GPU 加速组件。整合包用户请完整更新 runtime；源码部署请在自己的虚拟环境安装 requirements-gpu.txt。")
+        st.code(f'"{sys.executable}" -m pip install -r requirements-gpu.txt', language='text')
     else:
         st.success("✅ GPU加速组件已安装，您已可以在合成视频前启用GPU加速！", icon="⚡")
 
 # 元数据状态 - 根据当前游戏类型检查对应的元数据文件
 metadata_ready = False
 if G_type == "maimai":
-    metadata_path = "./music_metadata/mai_fusion_data.json"
+    metadata_path = resolve_metadata_file('mai_fusion_data.json')
 elif G_type == "chunithm":
     metadata_path = "music_metadata/chuni_fusion_data.json"
 metadata_ready = os.path.exists(metadata_path)
@@ -320,6 +313,7 @@ with st.container(border=True):
     theme = st.selectbox(
         "选择页面主题",
         options=options,
+        format_func=lambda name: "MAGiCAL" if name == "Magical" else name,
         index=options.index(st.session_state.theme) if st.session_state.theme in options else 0,
         help="选择您喜欢的主题配色方案"
     )
@@ -338,14 +332,17 @@ st.markdown("#### 📚 更新乐曲元数据")
 with st.container(border=True):
     try:
         # 根据当前游戏类型检查对应的元数据文件
-        needs_update = should_update_metadata(24) or not metadata_ready
-        if needs_update:
+        needs_update = (should_update_video_manifest() if G_type == 'maimai' else should_update_metadata(24)) or not metadata_ready
+        attempted_key = f'music_metadata_auto_update_attempted_{G_type}'
+        if needs_update and not st.session_state.get(attempted_key, False):
+            st.session_state[attempted_key] = True
             with st.spinner("正在更新乐曲元数据..."):
                 update_music_metadata()
                 refresh_music_metadata_cache()
+                mark_music_metadata_updated()
             st.success("✅ 乐曲元数据已更新")
         else:
-            st.info("ℹ️ 最近已更新过乐曲元数据（24小时内），如有需要可以手动更新")
+            st.info("本次会话已尝试自动更新，可手动重试。" if needs_update else "ℹ️ 最近已更新过乐曲元数据（24小时内），如有需要可以手动更新")
             col_meta1, col_meta2 = st.columns([3, 1])
             with col_meta1:
                 st.caption("乐曲元数据用于识别和匹配歌曲信息，建议定期更新以获取最新曲目")
@@ -354,6 +351,7 @@ with st.container(border=True):
                     with st.spinner("正在更新..."):
                         update_music_metadata()
                         refresh_music_metadata_cache()
+                        mark_music_metadata_updated()
                     st.success("✅ 乐曲元数据已更新")
                     st.rerun()
     except Exception as e:
@@ -377,6 +375,8 @@ if G_type == "maimai":
             st.warning(f"本地视频 Metadata 不可用：{exc}")
 
         auto_update_needed = should_update_video_manifest()
+        if st.session_state.get('music_metadata_auto_update_attempted_maimai'):
+            st.session_state.video_metadata_auto_update_attempted = True
         if auto_update_needed and not st.session_state.get(
             "video_metadata_auto_update_attempted", False
         ):

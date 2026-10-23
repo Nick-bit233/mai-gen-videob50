@@ -190,11 +190,7 @@ cython_debug/
 # Bundled, reviewed maimai video metadata is part of the desktop release.
 !video_metadata/
 !video_metadata/asset-manifest.json
-
-# Keep ad-hoc data ignored while tracking the focused runtime regressions.
-!tests/
-tests/*
-!tests/test_runtime_regressions.py
+!music_metadata/mai_fusion_data.json
 
 # debug and test resources
 test_html.txt
@@ -215,3 +211,17 @@ static/assets/custom_jackets
 # dsstore
 *.DS_Store
 .DS_Store
+
+# Local-only diagnostics.
+logs/
+outputs/
+!static/error_report_config.json
+!static/metadata_release_config.json
+!static/oauth_public_clients.json
+
+# Local development scripts and internal asset notes.
+/db_utils/test_database_schema.py
+/scripts/build_import_templates.mjs
+/scripts/prepare_chunithm_placeholders.py
+/scripts/build_chunithm_advanced_frame.py
+/static/assets/images/Chunithm/ConstantDisplay/README.md

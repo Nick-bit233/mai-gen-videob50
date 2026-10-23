@@ -118,16 +118,20 @@ def write_global_config(config):
 
 # r/w video_style_config.json
 def load_style_config(game_type, config_file=DEFAULT_STYLE_CONFIG_FILE_PATH):
-    if os.path.exists(config_file):
-        with open(config_file, 'r', encoding='utf-8') as f:
-            style_config = json.load(f)
-            return style_config.get(game_type, {})
-    else:
-        return None
+    from utils.style_config import read_style
+    return read_style(game_type, config_file)
 
 
-def update_music_metadata():
-    for game_type in ['maimai', 'chunithm']:
+
+def update_music_metadata(game_type=None):
+    game_type = game_type or st.session_state.get('game_type', 'maimai')
+    if game_type == 'maimai':
+        from utils.metadata_release import update_release
+        result = update_release()
+        if not result['updated']:
+            raise RuntimeError(result['message'])
+        return
+    for game_type in ['chunithm']:
         metadata_dir = './music_metadata/'
         if not os.path.exists(metadata_dir):
             os.makedirs(metadata_dir, exist_ok=True)
