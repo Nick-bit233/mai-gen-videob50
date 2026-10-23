@@ -8,8 +8,8 @@ import streamlit as st
 from utils.app_version import APP_VERSION
 from utils.diagnostics import reports_root, package_report, upload_report, begin_report, capture_exception, execute, ReportUploadConflict
 
-st.title("错误报告与硬件检查")
-st.caption(f"版本 {APP_VERSION} · 日志仅在确认提交后上传，也可以直接下载。")
+st.title("错误报告与上传")
+st.caption(f"版本 {APP_VERSION} · 如果在使用时出现严重问题，请在此页获得错误报告并上传给开发者。")
 root = reports_root()
 reports = sorted((p for p in root.glob("*") if (p / "report.json").is_file()), reverse=True)
 if st.button("检查硬件编码"):
@@ -25,7 +25,7 @@ if st.button("检查硬件编码"):
             report.note('gpu_environment', device.stdout.strip())
         codec, name = renderer.detect_hw_encoder()
         report.note("selected_encoder", {"codec": codec, "name": name})
-        st.info(f"检查结果：{name} ({codec})。实际渲染仍需按输出参数验证。")
+        st.info(f"检查结果：{name} ({codec})。")
     except Exception as exc:
         capture_exception(exc, "硬件编码检查")
         st.error(str(exc))
@@ -49,7 +49,7 @@ if startup.is_dir() and st.button('收集最近一次启动错误'):
         reports = sorted((p for p in root.glob('*') if (p / 'report.json').is_file()), reverse=True)
 
 if not reports:
-    st.info("还没有诊断报告。报错后返回此页，或先运行硬件编码检查。")
+    st.info("还没有检测到异常问题，请点击上方按钮收集最近的错误日志，或运行硬件诊断。")
 else:
     latest = st.session_state.get('last_diagnostic_report')
     index = next((i for i,p in enumerate(reports) if p.name == latest),0)
@@ -75,9 +75,9 @@ else:
         st.warning("日志上传配置无法读取，请下载诊断包并检查配置文件。")
     endpoint = config.get("endpoint", "")
     if not endpoint:
-        st.info("日志桶尚未配置，当前可以下载本地诊断包。线上地址将在版本收尾时补齐。")
+        st.info("远端日志服务不可用，无法完成上传，请下载本地诊断包。")
     description = st.text_area("问题描述（可选）", key="report_description")
-    confirmed = st.checkbox("我已查看提交内容，确认提交此报告", key=f"report_consent_{chosen.name}")
+    confirmed = st.checkbox("我已明确存在异常错误问题，确认提交此报告", key=f"report_consent_{chosen.name}")
     submitted_key = f"submitted_{chosen.name}"
     if st.button("确认提交错误报告", disabled=not endpoint or not confirmed or bool(st.session_state.get(submitted_key))):
         frozen_key = f"report_package_{chosen.name}"
@@ -102,4 +102,3 @@ else:
             st.error(str(exc))
     if result := st.session_state.get(submitted_key):
         st.success(f"报告已提交：{result['report_id']}；请求编号：{result['request_id']}")
-        st.caption("报告由维护者查看；本地诊断包仍可下载。")

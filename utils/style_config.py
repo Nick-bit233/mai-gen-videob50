@@ -8,8 +8,8 @@ import tempfile
 from utils.themes import DEFAULT_STYLES
 
 STYLE_CONFIG_PATH = "./static/video_style_config.json"
-INITIAL_STYLES = {"maimai": "Buddies", "chunithm": "Verse"}
-RESET_STYLES = {"maimai": "Circle", "chunithm": "X-Verse"}
+INITIAL_STYLES = {"maimai": "Prism", "chunithm": "Verse"}
+RESET_STYLES = {"maimai": "Prism", "chunithm": "X-Verse"}
 CONSTANT_MODES = {"cn": "国服", "latest": "最新", "compare": "定数对比"}
 
 
