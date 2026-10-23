@@ -383,20 +383,25 @@ def download_metadata(game_type="maimai") -> tuple[str, dict]:
         print(f"Failed to download metadata from {url}. Status code: {response.status_code}")
         raise FileNotFoundError
     
-@lru_cache(maxsize=2)
 def load_metadata(game_type: str) -> dict:
     metadata_dir = './music_metadata/'
     if game_type == "maimai":
-        json_path = os.path.join(metadata_dir, f"mai_fusion_data.json")
+        from utils.metadata_release import resolve_metadata_file
+        json_path = resolve_metadata_file('mai_fusion_data.json')
     elif game_type == "chunithm":
-        json_path = os.path.join(metadata_dir, f"chuni_fusion_data.json")
+        json_path = os.path.join(metadata_dir, "chuni_fusion_data.json")
     else:
         raise ValueError(f"Unsupported game type: {game_type}")
-    if os.path.exists(json_path):
-        with open(json_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    else:
-        raise FileNotFoundError(f"Metadata file not found: {json_path}")
+    return _load_metadata_file(str(os.path.abspath(json_path)))
+
+
+@lru_cache(maxsize=4)
+def _load_metadata_file(json_path):
+    with open(json_path, 'r', encoding='utf-8') as file:
+        return json.load(file)
+
+
+load_metadata.cache_clear = _load_metadata_file.cache_clear
 
 # --------------------------------------
 # song_id 编码/解码方法（TODO：暂时弃用，需要重新设计）
@@ -862,7 +867,9 @@ def lxns_to_new_record_format(lxns_record: dict, game_type: str = "maimai") -> d
             matched_chart_info = ci
             break
     # 解析定数
-    resolved_ds = get_level_value_from_chart_meta(matched_chart_info) if matched_chart_info else 0.0
+    resolved_ds = lxns_record.get('ds')
+    if resolved_ds is None:
+        resolved_ds = get_level_value_from_chart_meta(matched_chart_info) if matched_chart_info else 0.0
     # 计算max_dx_score
     if matched_chart_info:
         total_notes = matched_chart_info.get('note_counts', {}).get('total', 0) or 0  # 防止NULL
