@@ -1,4 +1,4 @@
-"""Build local application/runtime ZIPs from explicit distributable file sets."""
+"""Build application/runtime ZIPs from tracked distributable file sets."""
 import argparse
 import json
 from pathlib import Path
@@ -30,7 +30,9 @@ def main():
     parser.add_argument('--runtime-application',required=True,type=Path)
     parser.add_argument('--output',required=True,type=Path)
     parser.add_argument('--application-only',action='store_true',help='Rebuild only the app when the validated runtime is unchanged')
-    parser.add_argument('--manual-acceptance',action='store_true',help='Label the build for local human acceptance, without publishing')
+    mode=parser.add_mutually_exclusive_group()
+    mode.add_argument('--release',action='store_true',help='Build final release archives without acceptance labels')
+    mode.add_argument('--manual-acceptance',action='store_true',help='Label the build for local human acceptance, without publishing')
     args=parser.parse_args()
     runtime_application=args.runtime_application.resolve()
     if not runtime_application.is_relative_to(ROOT/'test_output') or not (runtime_application/'runtime/python.exe').is_file():
@@ -39,11 +41,11 @@ def main():
     if not output.is_relative_to(ROOT/'dist'):
         parser.error('Local release output must be within dist')
     output.mkdir(parents=True,exist_ok=True)
-    listed=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','-z'],cwd=ROOT).decode('utf-8').split('\0')
-    roots=('utils/','db_utils/','st_pages/','static/assets/','static/import_templates/','video_metadata/','md_res/','docs/')
+    listed=subprocess.check_output(['git','ls-files','--cached','-z'],cwd=ROOT).decode('utf-8').split('\0')
+    roots=('utils/','db_utils/','st_pages/','static/assets/','static/import_templates/','video_metadata/','md_res/','docs/','external_scripts/')
     files={'st_app.py','README.md','LICENSE','requirements.txt','requirements-gpu.txt','global_config.yaml',
            'static/error_report_config.json','static/metadata_release_config.json','static/oauth_public_clients.json','scripts/runtime_bootstrap.py',
-           'scripts/export_public_metadata_release.py','scripts/verify_release128_network.py'}
+           'scripts/export_public_metadata_release.py'}
     application={}
     for name in listed:
         if name and (name.startswith(roots) or name in files) and '__pycache__' not in name and not name.endswith(('.db','.sqlite','.pyc')):
@@ -89,6 +91,8 @@ def main():
     runtime['start.bat']=ROOT/'scripts/runtime-start.bat'
     runtime['runtime_bootstrap.py']=ROOT/'scripts/runtime_bootstrap.py'
     runtime['runtime-requirements.txt']=ROOT/'requirements.txt'
+    runtime['runtime-gpu-requirements.txt']=(ROOT/'requirements-gpu.txt').read_text(encoding='utf-8').replace(
+        '-r requirements.txt','-r runtime-requirements.txt').encode('utf-8')
     runtime['runtime-build-constraints.txt']=ROOT/'scripts/runtime-constraints-win-py312.txt'
     licenses=runtime_application/'runtime-licenses'
     if not (licenses/'FFmpeg-LICENSE.txt').is_file():
@@ -100,17 +104,17 @@ def main():
     runtime['RUNTIME-README.txt']=(f'Runtime {APP_VERSION}, Windows x64. Extract beside st_app.py and run start.bat.\n'
         'For upgrades, rename the old runtime directory and extract the complete new runtime; do not mix packages.\n'
         'Python 3.12.10, NumPy 2.2.6, OpenCV 4.14.0.94, MoviePy 2.2.1, Taichi 1.7.4 and openpyxl 3.1.5.\n'
-        'Local acceptance build: automatic checks and supplied materials are documented in docs/release_v1.2.8_local_acceptance.md; human acceptance is required before publishing.\n').encode()
-    label='manual' if args.manual_acceptance else 'local'
-    app_zip=output/f'maigen_release_v{APP_VERSION}_{label}.zip'
-    runtime_zip=output/f'runtime_v{APP_VERSION}_windows_x64_{label}.zip'
+        'Includes FFmpeg/FFprobe 7.1; no system Python is required. GPU drivers are supplied by your GPU vendor.\n'
+        'See README.md for usage and runtime-licenses for dependency source/license information.\n').encode('utf-8')
+    label='' if args.release else ('_manual' if args.manual_acceptance else '_local')
+    app_zip=output/f'maigen_release_v{APP_VERSION}{label}.zip'
+    runtime_zip=output/f'runtime_v{APP_VERSION}_windows_x64{label}.zip'
     write_archive(app_zip,application)
     if not args.application_only:
         write_archive(runtime_zip,runtime)
-    report={'version':APP_VERSION,'status':'manual_acceptance_pending' if args.manual_acceptance else 'local_acceptance','application':str(app_zip),'runtime':None if args.application_only else str(runtime_zip),
+    report={'version':APP_VERSION,'status':'release' if args.release else ('manual_acceptance_pending' if args.manual_acceptance else 'local_acceptance'),'application':str(app_zip),'runtime':None if args.application_only else str(runtime_zip),
             'application_file_count':len(application),'runtime_file_count':len(runtime),
             'runtime_archive_created':not args.application_only}
-    (output/'build-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     print(json.dumps(report,ensure_ascii=False))
 
 

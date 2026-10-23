@@ -211,7 +211,7 @@ Auto search and generate your best videos of MaimaiDX / Chunithm
     ```
     说明你使用的ip地址可能被youtube识别为机器人导致封禁，最简单的办法是尝试更换代理ip后重试。
 
-    如果更改代理仍然无法解决问题，请尝试配置`PO_TOKEN`或`OAUTH_TOKEN`后抓取视频，参考[使用自定义OAuth或PO Token](UseTokenGuide.md)。
+    如果更改代理仍然无法解决问题，请尝试配置`PO_TOKEN`或`OAUTH_TOKEN`后抓取视频，参考[使用自定义OAuth或PO Token](docs/UseTokenGuide.md)。
 
     如果仍然被风控请考虑使用 YouTube Data API v3 进行搜索（更稳定可靠）
 

@@ -192,11 +192,6 @@ cython_debug/
 !video_metadata/asset-manifest.json
 !music_metadata/mai_fusion_data.json
 
-# Keep ad-hoc data ignored while tracking the focused runtime regressions.
-!tests/
-tests/*
-!tests/test_runtime_regressions.py
-
 # debug and test resources
 test_html.txt
 test_dxrating.txt
@@ -217,15 +212,16 @@ static/assets/custom_jackets
 *.DS_Store
 .DS_Store
 
-# Theme-system behavioral regressions.
-!tests/test_theme_system.py
-
-# Version 1.2.8 focused behavioral regressions and local-only diagnostics.
-!tests/test_release128.py
-!tests/test_video_metadata.py
-!tests/test_score_oauth.py
+# Local-only diagnostics.
 logs/
 outputs/
 !static/error_report_config.json
 !static/metadata_release_config.json
 !static/oauth_public_clients.json
+
+# Local development scripts and internal asset notes.
+/db_utils/test_database_schema.py
+/scripts/build_import_templates.mjs
+/scripts/prepare_chunithm_placeholders.py
+/scripts/build_chunithm_advanced_frame.py
+/static/assets/images/Chunithm/ConstantDisplay/README.md
