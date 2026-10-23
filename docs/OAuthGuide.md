@@ -1,4 +1,4 @@
-# 1.2.8 查分器 OAuth 导入
+# 查分器 OAuth 导入
 
 舞萌的导入流程为：用户授权 → 读取全部成绩 → 选择 B50 或 AP B50 → 保存本地存档。
 水鱼、落雪均使用公开客户端的授权码 + PKCE，不再使用用户名、好友码、个人 API 密钥或开发者 Token 查分。
@@ -17,9 +17,11 @@ B50 按旧曲 35、新曲 15 分组，分别按单曲 Rating、定数、达成�
 
 中二节奏同样改为 OAuth 获取全部成绩，保留旧曲 B30、新曲 N20；不提供舞萌的 AP B50 选项。文件导入和历史存档继续可用。
 
-## 维护者登记应用
+## OAuth应用登记
 
-开源桌面程序需单独登记**公开客户端 / 分发给用户各自部署**的应用。不要复用线上 SaaS 的机密客户端或把 `client_secret` 放进安装包。
+桌面程序需单独登记**公开客户端 / 分发给用户各自部署**的应用。
+
+开发者已经在当前仓库配置了一份默认公开客户端应用ID，通常使用者无需修改。如果需要更改为自行分发的应用，请参考下面的内容。
 
 | 查分器 | 默认登记回调 | 读取权限 |
 | --- | --- | --- |
@@ -51,12 +53,4 @@ B50 按旧曲 35、新曲 15 分组，分别按单曲 Rating、定数、达成�
 - 端口占用时结束另一个授权流程或更换端口，并核对查分器登记的回调。
 - 若选中曲目尚未匹配本地曲库，请先更新元数据，再用当前快照重试保存。
 
-## 验证
-
-运行 `python -m pytest tests/test_score_oauth.py -q`。覆盖本机真实 HTTP 回调、模拟查分器响应、state/过期/拒绝/单次兑换、分表筛选、界面与隔离 SQLite 存档。
-
-自动测试本身不代表真实账号验收。2026-10-20 已使用两家真实舞萌账号验证授权、全部成绩读取、B50/AP B50 页面保存与新会话重载；用户撤销本地版应用后再次授权及保存/重载也通过。中二真实账号验收由用户明确允许跳过。
-
-`scripts/verify_score_oauth_live.py` 可将真实授权和页面测试限制在指定的 `test_output` 目录，支持将已获取的真实成绩快照回放到独立解压包。该目录包含私人成绩与测试数据库，不进入版本控制或分发包；OAuth 令牌仅在内存中。用户仍应在正式分发前使用新包完成自己的完整视频人工验收。
-
-接口依据：[落雪 OAuth 指南](https://maimai.lxns.net/docs/oauth-guide)、[水鱼 OAuth 迁移指南](https://maimai.diving-fish.com/manual/docs/developer/oauth-migration/)、[水鱼 OAuth 接口](https://maimai.diving-fish.com/manual/docs/developer/oauth-api-document/)。
+第三方查分器接口文档参考：[落雪 OAuth 指南](https://maimai.lxns.net/docs/oauth-guide)、[水鱼 OAuth 迁移指南](https://maimai.diving-fish.com/manual/docs/developer/oauth-migration/)、[水鱼 OAuth 接口](https://maimai.diving-fish.com/manual/docs/developer/oauth-api-document/)。
