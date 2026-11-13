@@ -205,7 +205,7 @@ mate_style["asset_paths"].update({
     "score_image_assets_path": os.path.join(default_static_dir, "images/Chunithm_MATE"),
     "score_image_base": os.path.join(default_static_dir, "images/Chunithm_MATE/ConstantDisplay/content_base.png"),
     "score_number_offset": (-10, -7),
-    "rating_number_offset": (-2, -18),
+    "rating_number_offset": (-2, -14),
     # constant values sit a little higher, closer under the version logos
     "constant_text_offset": (0, -10),
     # rating digits are shared by every CHUNITHM version and only change colour
