@@ -202,6 +202,15 @@ mate_style["style_name"] = "MATE"
 mate_style["asset_paths"].update({
     "intro_video_bg": os.path.join(default_static_dir, "bg_clips/opening_bg_chunithm_mate.mp4"),
     "content_bg_video": os.path.join(default_static_dir, "bg_clips/opening_bg_chunithm_mate.mp4"),
+    "score_image_assets_path": os.path.join(default_static_dir, "images/Chunithm_MATE"),
+    "score_image_base": os.path.join(default_static_dir, "images/Chunithm_MATE/ConstantDisplay/content_base.png"),
+    "score_number_offset": (-10, -7),
+    "rating_number_offset": (-2, -14),
+    # constant values sit a little higher, closer under the version logos
+    "constant_text_offset": (0, -10),
+    # rating digits are shared by every CHUNITHM version and only change colour
+    # with the rating band, so MATE reads the common set
+    "rating_number_assets": os.path.join(default_static_dir, "images/Chunithm/Numbers/RatingNumber"),
 })
 DEFAULT_STYLES["chunithm"].append(mate_style)
 THEME_COLORS["chunithm"]["MATE"] = {
@@ -223,12 +232,14 @@ for game, styles in DEFAULT_STYLES.items():
             style["asset_paths"]["ending_bgm"] = os.path.join(default_static_dir, f"audios/ending_chunithm_{suffix}.mp3")
             style["options"]["chunithm_constant_display"] = "compare"
             constant_root = os.path.join(default_static_dir, "images/Chunithm/ConstantDisplay")
+            if style["style_name"] == "MATE":
+                constant_root = os.path.join(default_static_dir, "images/Chunithm_MATE/ConstantDisplay")
             style["asset_paths"].update({
                 "score_image_base": os.path.join(constant_root, "content_base.png"),
                 "constant_header_compare": os.path.join(constant_root, "header_compare.png"),
                 "constant_header_single": os.path.join(constant_root, "header_single.png"),
-                "constant_logo_cn": os.path.join(constant_root, "logo_cn_2027.png"),
-                "constant_logo_latest": os.path.join(constant_root, "logo_latest_mate.png"),
+                "constant_logo_cn": os.path.join(default_static_dir, "images/Chunithm/ConstantDisplay/logo_cn_2027.png"),
+                "constant_logo_latest": os.path.join(default_static_dir, "images/Chunithm/ConstantDisplay/logo_latest_mate.png"),
             })
 
-del magical_style, mate_style, style, styles, game, suffix, asset_key, relative
+del magical_style, mate_style, style, styles, game, suffix, asset_key, relative, constant_root

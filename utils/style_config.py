@@ -57,6 +57,20 @@ def normalize_style(style, game_type):
         old_base = Path(old_paths.get("score_image_base") or "").resolve()
         if old_base == Path("static/assets/images/Chunithm/content_base_chunithm_verse.png").resolve():
             result["asset_paths"]["score_image_base"] = defaults["asset_paths"]["score_image_base"]
+        if name == "MATE":
+            # MATE used to share every card asset with Verse; move saved configs to its own set.
+            legacy_assets = Path("static/assets/images/Chunithm").resolve()
+            legacy_base = (Path("static/assets/images/Chunithm/ConstantDisplay/content_base.png").resolve(),
+                           Path("static/assets/images/Chunithm/content_base_chunithm_verse.png").resolve())
+            if Path(old_paths.get("score_image_assets_path") or "").resolve() == legacy_assets:
+                result["asset_paths"]["score_image_assets_path"] = defaults["asset_paths"]["score_image_assets_path"]
+            if old_base in legacy_base:
+                result["asset_paths"]["score_image_base"] = defaults["asset_paths"]["score_image_base"]
+            for key, filename in (("constant_header_compare", "header_compare.png"),
+                                  ("constant_header_single", "header_single.png")):
+                legacy_header = Path("static/assets/images/Chunithm/ConstantDisplay", filename).resolve()
+                if Path(old_paths.get(key) or "").resolve() == legacy_header:
+                    result["asset_paths"][key] = defaults["asset_paths"][key]
     return result
 
 

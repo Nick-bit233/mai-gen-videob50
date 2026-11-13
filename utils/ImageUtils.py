@@ -496,16 +496,37 @@ class ChuniImageGenerater:
     def RatingLoader(self, rating: float):
         if rating < 0:
             raise ValueError("Rating值无效")
-        
-        # 按照rating数值选择数字图片的样式
-        match rating:
-            case _ if rating >= 17:
+
+        # CHUNITHM 用同一套 rating 数字字形，只按数值换颜色；
+        # 分档见 https://chunithm.org/intermediate/rating/
+        rating_styles = (
+            (17.00, "ex_rainbow"),
+            (16.00, "rainbow"),
+            (15.25, "platinum"),
+            (14.50, "gold"),
+            (13.25, "silver"),
+            (12.00, "bronze"),
+            (10.00, "purple"),
+            (7.00, "red"),
+            (4.00, "orange"),
+        )
+        digit_style = "green"
+        for threshold, style_name in rating_styles:
+            if rating >= threshold:
+                digit_style = style_name
+                break
+
+        rating_root = self.asset_paths.get(
+            "rating_number_assets", f"{self.image_root_path}/Numbers/RatingNumber")
+        # 旧素材目录只有 gold / rainbow / ex_rainbow 三档，缺档时回退旧规则
+        if not os.path.exists(f"{rating_root}/{digit_style}/0.png"):
+            if rating >= 17:
                 digit_style = "ex_rainbow"
-            case _ if rating >= 16:
+            elif rating >= 16:
                 digit_style = "rainbow"
-            case _ if rating < 16:
+            else:
                 digit_style = "gold"
-        
+
         ra_number_formatted = f"{rating:.2f}"
         ra_number_img = Image.new('RGBA', (160, 50), (0, 0, 0, 0))
 
@@ -523,11 +544,11 @@ class ChuniImageGenerater:
         current_x = (160 - total_width) // 2
         for char in ra_number_formatted:
             if char == '.':
-                image_path = f"{self.image_root_path}/Numbers/RatingNumber/{digit_style}/dot.png"
+                image_path = f"{rating_root}/{digit_style}/dot.png"
                 char_width = dot_size[0] // 2
                 char_y = 8  # 小数点位置靠下
             else:   
-                image_path = f"{self.image_root_path}/Numbers/RatingNumber/{digit_style}/{char}.png"
+                image_path = f"{rating_root}/{digit_style}/{char}.png"
                 char_width = digit_size[0]
                 char_y = 0
             with Image.open(image_path) as char_img:
@@ -673,6 +694,7 @@ class ChuniImageGenerater:
                 with Image.open(header_path) as header:
                     header = header.convert("RGBA")
                     _temp_img.paste(header, (1448, 830), header)
+                constant_offset = self.asset_paths.get("constant_text_offset", (0, 0))
                 for version, text, text_pos in constants["columns"]:
                     fallback = "logo_cn_2027.png" if version == "cn" else "logo_latest_mate.png"
                     logo_path = self.asset_paths.get(f"constant_logo_{version}", f"{asset_root}/{fallback}")
@@ -681,17 +703,21 @@ class ChuniImageGenerater:
                         logo.thumbnail((202, 106), Image.Resampling.LANCZOS)
                         x = text_pos[0] - logo.width // 2
                         _temp_img.paste(logo, (x, 890 + (106 - logo.height) // 2), logo)
+                    text_pos = (text_pos[0] + int(constant_offset[0]),
+                                text_pos[1] + int(constant_offset[1]))
                     _temp_img = self.TextDraw(_temp_img, text, text_pos,
                         font_path=self.title_font_path, font_size=45,
                         font_color=(77, 77, 77), h_align="center")
 
                 # 加载分数
-                score_pos = (706, 958)
+                score_offset = self.asset_paths.get("score_number_offset", (0, 0))
+                score_pos = (706 + int(score_offset[0]), 958 + int(score_offset[1]))
                 score = self.ScoreLoader(record_detail["score"])
                 _temp_img.paste(score, score_pos, score)
                 
                 # 加载Rating值
-                rating_pos = (1216, 980)
+                rating_offset = self.asset_paths.get("rating_number_offset", (0, 0))
+                rating_pos = (1216 + int(rating_offset[0]), 980 + int(rating_offset[1]))
                 rating = self.RatingLoader(record_detail['ra'])
                 _temp_img.paste(rating, rating_pos, rating)
 
