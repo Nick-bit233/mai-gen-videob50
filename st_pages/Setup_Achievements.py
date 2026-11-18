@@ -10,6 +10,9 @@ from utils.score_oauth import OAuthError
 from utils.PageUtils import process_username, get_game_type_text
 from db_utils.DatabaseDataHandler import get_database_handler
 from utils.PathUtils import get_user_base_dir
+from utils.user_preferences import (
+    save_username, save_archive, save_data_source, load_saved_data_source,
+)
 
 # Get a handler for database operations
 db_handler = get_database_handler()
@@ -287,6 +290,10 @@ def handle_new_data(username: str, source: str, params: dict = None):
         if len(saved_records) != len(initial_records):
             st.warning(f"警告: 保存的记录数 ({len(saved_records)}) 与预期 ({len(initial_records)}) 不匹配！")
         
+        archive_game_type = new_archive_data.get('game_type', 'maimai')
+        save_archive(username, archive_game_type, archive_name)
+        save_data_source(username, archive_game_type, source)
+
         st.session_state.archive_name = archive_name
         print(f"成功创建新存档: {archive_name}， ID: {archive_id}，保存了 {len(saved_records)} 条记录")
         st.session_state.data_created_step1 = True
@@ -329,9 +336,15 @@ with st.container(border=True):
                 st.session_state.config_saved = False
             else:
                 raw_username, safe_username = process_username(input_username)
+                previous_username = st.session_state.get("username")
                 st.session_state.username = raw_username
                 st.session_state.safe_username = safe_username
-     
+                save_username(raw_username, safe_username)
+                if previous_username != raw_username:
+                    # 切换用户后清除旧用户的存档状态，交给自动恢复加载新用户存档。
+                    for key in ("archive_id", "archive_name", "archive_meta", "records"):
+                        st.session_state.pop(key, None)
+
                 # Set user in database
                 db_handler.set_current_user(raw_username)
                 st.session_state.config_saved = True
@@ -346,6 +359,7 @@ with st.container(border=True):
 # Only proceed if a username has been set
 if st.session_state.get('config_saved', False):
     username = st.session_state.username
+    saved_source = load_saved_data_source(username, G_type)
 
     # Create user base directory if not exists
     user_base_dir = get_user_base_dir(username)
@@ -461,14 +475,18 @@ if st.session_state.get('config_saved', False):
         st.info(f"💡 从外部数据源获取您的分表成绩，并创建一个新的本地存档。")
         st.caption(f"当前用户名: **{username}**")
         
-        with st.expander("🌊 从水鱼查分器获取（OAuth）", expanded=True):
+        manual_sources = ("mgbl", "html", "dxjs", "mujs")
+        with st.expander("🌊 从水鱼查分器获取（OAuth）",
+                         expanded=saved_source in ("", "fish")):
             render_score_oauth("fish", G_type, username, handle_new_data)
 
-        with st.expander(":snowflake: 从落雪查分器获取（OAuth）"):
+        with st.expander(":snowflake: 从落雪查分器获取（OAuth）",
+                         expanded=saved_source == "lxns"):
             render_score_oauth("lxns", G_type, username, handle_new_data)
 
         # Data from DX Web (INTL/JP Server)
-        with st.expander("🌏 手动导入数据 (国际服/日服)"):
+        with st.expander("🌏 手动导入数据 (国际服/日服)",
+                         expanded=saved_source in manual_sources):
             st.warning("✅ 我们的国际服/日服数据书签页导入工具Mai-gen Booklet绝赞测试中!")
             if G_type == "maimai":
                 st.write("请将获取的数据文本粘贴到下方输入框中，并选择对应的数据源类型和其他信息。")
@@ -485,7 +503,35 @@ if st.session_state.get('config_saved', False):
                 KEEP_FLOOR_OPTIONS = ["不保留", "保留"]
                 FILTER_TAG_OPTIONS = ["无筛选 (根据版本区分B35+B15或整体B50)", "极50 (只筛选FC以上成绩)", "神50 (只筛选AP以上成绩)"]
 
-                data_source = st.radio("选择导入的数据源类型：", options=DATA_SOURCE_OPTIONS, key="data_source")
+                DATA_SOURCE_KEYS = {
+                    DATA_SOURCE_OPTIONS[0]: "mgbl",
+                    DATA_SOURCE_OPTIONS[1]: "html",
+                    DATA_SOURCE_OPTIONS[2]: "dxjs",
+                    DATA_SOURCE_OPTIONS[3]: "mujs",
+                }
+                data_source_key = f"data_source_{G_type}"
+                if data_source_key not in st.session_state:
+                    default_source = DATA_SOURCE_KEYS.get(saved_source)
+                    if default_source is None:
+                        st.session_state[data_source_key] = DATA_SOURCE_OPTIONS[0]
+                    else:
+                        st.session_state[data_source_key] = next(
+                            label for label, source_key in DATA_SOURCE_KEYS.items()
+                            if source_key == default_source)
+                def _on_manual_source_change():
+                    selected = DATA_SOURCE_KEYS.get(
+                        st.session_state.get(data_source_key))
+                    if selected:
+                        save_data_source(username, G_type, selected)
+
+                # on_change 只在用户实际切换时保存，避免页面首次渲染
+                # 把上次的 OAuth 数据源覆盖成手动导入的默认项。
+                data_source = st.radio(
+                    "选择导入的数据源类型：",
+                    options=DATA_SOURCE_OPTIONS,
+                    key=data_source_key,
+                    on_change=_on_manual_source_change,
+                )
 
                 if data_source == DATA_SOURCE_OPTIONS[0]:
                     mgbl_version = st.radio("B15筛选设置", options=MGBL_VERSION_OPTIONS, key="mgbl_version")

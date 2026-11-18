@@ -872,6 +872,26 @@ def render_all_video_clips(game_type: str, style_config: dict, main_configs: lis
         except ImportError:
             print("[VideoUtils] Taichi 未安装，回退到 CPU 渲染")
 
+    # 默认 CPU 路线：NumPy 多线程合成 + libx264，避免 MoviePy 逐帧开销。
+    if os.environ.get("MAIGEN_LEGACY_CPU") != "1":
+        from utils.AccelRenderer import render_all_clips_cpu
+        render_all_clips_cpu(
+            game_type=game_type,
+            style_config=style_config,
+            main_configs=main_configs,
+            video_output_path=video_output_path,
+            video_res=video_res,
+            video_bitrate=video_bitrate,
+            intro_configs=intro_configs,
+            ending_configs=ending_configs,
+            auto_add_transition=auto_add_transition,
+            trans_time=trans_time,
+            force_render=force_render,
+            fps=video_fps,
+            progress_callback=progress_callback,
+        )
+        return
+
     vfile_prefix = 0
     rendered_names = []
 
@@ -892,6 +912,7 @@ def render_all_video_clips(game_type: str, style_config: dict, main_configs: lis
             return
         temporary = os.path.join(video_output_path, f".render-{uuid4().hex}.mp4")
         try:
+            t_clip = time.perf_counter()
             clip = normalize_audio_volume(clip)
             if auto_add_transition:
                 clip = clip.with_effects([
@@ -902,6 +923,7 @@ def render_all_video_clips(game_type: str, style_config: dict, main_configs: lis
             clip.close()
             os.replace(temporary, output_file)
             record_clip_recipe(output_file, recipe)
+            print(f"[Timer] 片段 {clip_title_name} CPU 渲染耗时: {time.perf_counter() - t_clip:.2f}s")
         finally:
             clip.close()
             if os.path.exists(temporary):
@@ -963,7 +985,7 @@ def render_complete_full_video(
         video_fps: int = 60,
         video_trans_enable: bool = True, video_trans_time: float = 1.0, full_last_clip: bool = False,
         use_gpu_accel: bool = None, use_baked_fade: bool = None, progress_callback=None,
-        force_render: bool = False, taichi_backend=None):
+        force_render: bool = False, taichi_backend=None, stage_callback=None):
     """ 根据完整配置合成完整视频，并保存到指定路径的文件。
         当 use_gpu_accel=True 时，先用 GPU 加速渲染所有片段，再用 FFmpeg 拼接。
         use_baked_fade: 已废弃，仅为兼容旧调用保留。GPU 路线默认使用低内存 transition island + concat。
@@ -1012,6 +1034,14 @@ def render_complete_full_video(
 
                 # 第二步：低内存拼接
                 t_step = time.perf_counter()
+                if stage_callback:
+                    stage_callback("transition", 0.0, "正在拼接转场...", 0, None)
+
+                def _transition_progress(fraction, done, total, text, substage):
+                    if stage_callback:
+                        stage_callback("transition", fraction, text,
+                                       done, total, substage)
+
                 if video_trans_enable:
                     print(f"[GPU] 转场模式: transition island xfade + concat + {hw_codec_name}")
                     output_file = combine_full_video_xfade_islands(
@@ -1019,7 +1049,8 @@ def render_complete_full_video(
                         trans_time=video_trans_time,
                         codec=hw_codec,
                         bitrate=video_bitrate,
-                        video_fps=video_fps, video_res=video_res
+                        video_fps=video_fps, video_res=video_res,
+                        progress_callback=_transition_progress,
                     )
                     print(f"[Timer] 步骤2 - 视频拼接(transition island)耗时: {time.perf_counter() - t_step:.2f}s")
                 else:
@@ -1030,12 +1061,18 @@ def render_complete_full_video(
                         trans_time=video_trans_time,
                         video_fps=video_fps
                     )
+                    if stage_callback:
+                        stage_callback("transition", 1.0, "拼接完成", 1, 1)
                     print(f"[Timer] 步骤2 - 视频拼接(流拷贝)耗时: {time.perf_counter() - t_step:.2f}s")
 
                 # 第三步：音频均衡化 + 重命名
                 t_step = time.perf_counter()
                 final_path = os.path.join(video_output_path, f"{username}_FULL_VIDEO.mp4")
+                if stage_callback:
+                    stage_callback("audio", 0.0, "正在音频均衡化...", 0, 1)
                 _normalize_video_audio(output_file, final_path)
+                if stage_callback:
+                    stage_callback("audio", 1.0, "音频均衡化完成", 1, 1)
                 print(f"[Timer] 步骤3 - 音频均衡化耗时: {time.perf_counter() - t_step:.2f}s")
 
                 t_total = time.perf_counter() - t_total_start
@@ -1048,6 +1085,66 @@ def render_complete_full_video(
                 print("[VideoUtils] Taichi 初始化失败，回退到 CPU 渲染")
         except ImportError:
             print("[VideoUtils] Taichi 未安装，回退到 CPU 渲染")
+
+    # CPU 路线：逐片段 NumPy 合成 + FFmpeg 拼接，避免 MoviePy 全时间线合成。
+    if os.environ.get("MAIGEN_LEGACY_CPU") != "1" and not full_last_clip:
+        try:
+            from utils.AccelRenderer import render_all_clips_cpu
+            t_cpu_start = time.perf_counter()
+            render_all_clips_cpu(
+                game_type=game_type,
+                style_config=style_config,
+                main_configs=main_configs,
+                video_output_path=video_output_path,
+                video_res=video_res,
+                video_bitrate=video_bitrate,
+                intro_configs=intro_configs,
+                ending_configs=ending_configs,
+                auto_add_transition=False,
+                trans_time=video_trans_time,
+                force_render=force_render,
+                fps=video_fps,
+                progress_callback=progress_callback,
+            )
+            if stage_callback:
+                stage_callback("transition", 0.0, "正在拼接转场...", 0, None)
+
+            def _cpu_transition_progress(fraction, done, total, text, substage):
+                if stage_callback:
+                    stage_callback("transition", fraction, text,
+                                   done, total, substage)
+
+            if video_trans_enable:
+                output_file = combine_full_video_xfade_islands(
+                    video_output_path,
+                    trans_time=video_trans_time,
+                    codec='libx264',
+                    bitrate=video_bitrate,
+                    video_fps=video_fps,
+                    video_res=video_res,
+                    progress_callback=_cpu_transition_progress,
+                )
+            else:
+                output_file = combine_full_video_direct(
+                    video_output_path,
+                    auto_add_transition=False,
+                    trans_time=video_trans_time,
+                    video_fps=video_fps,
+                )
+                if stage_callback:
+                    stage_callback("transition", 1.0, "拼接完成", 1, 1)
+            final_path = os.path.join(video_output_path, f"{username}_FULL_VIDEO.mp4")
+            if stage_callback:
+                stage_callback("audio", 0.0, "正在音频均衡化...", 0, 1)
+            _normalize_video_audio(output_file, final_path)
+            if stage_callback:
+                stage_callback("audio", 1.0, "音频均衡化完成", 1, 1)
+            print(f"[Timer] CPU 完整视频生成总耗时: {time.perf_counter() - t_cpu_start:.2f}s")
+            return {"status": "success", "info": "CPU合成完整视频成功"}
+        except Exception as e:
+            from utils.diagnostics import capture_exception
+            capture_exception(e, 'CPU完整视频(NumPy)')
+            print(f"[VideoUtils] CPU NumPy 路线失败，回退 MoviePy: {e}")
 
     # CPU 渲染回退路径
     print(f"正在合成完整视频...")
@@ -1265,6 +1362,69 @@ def _run_ffmpeg_encode_with_fallback(cmd_prefix: list, output_path: str,
         raise last_error
 
 
+def _list_keyframe_times(input_path: str) -> list:
+    """返回视频流中关键帧的时间戳（秒）。"""
+    cmd = [
+        get_ffmpeg_binary('ffprobe'), '-v', 'error',
+        '-select_streams', 'v:0', '-skip_frame', 'nokey',
+        '-show_entries', 'frame=pts_time', '-of', 'csv=p=0',
+        input_path,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    times = []
+    for line in result.stdout.splitlines():
+        value = line.strip().strip(',')
+        if not value:
+            continue
+        try:
+            times.append(float(value))
+        except ValueError:
+            continue
+    return times
+
+
+def _copy_body_segment(input_path: str, start: float, duration: float,
+                       output_path: str, video_fps: int,
+                       keyframe_times: list = None):
+    """关键帧对齐的主体片段流拷贝，避免二次视频编码。
+
+    start 必须落在关键帧上；输出时长与预期偏差过大时抛错，由调用方回退重编码。
+    """
+    from utils.media_probe import probe_media
+
+    info = probe_media(input_path)
+    if not info['audio']:
+        raise RuntimeError('源片段没有音轨，回退重编码以生成静音轨')
+
+    keyframes = keyframe_times if keyframe_times is not None else _list_keyframe_times(input_path)
+    tolerance = max(0.5 / max(video_fps, 1), 0.02)
+    if not any(abs(value - start) <= tolerance for value in keyframes):
+        raise RuntimeError(f'起点 {start:.3f}s 附近没有关键帧')
+
+    frame_count = max(1, int(round(duration * video_fps)))
+    cmd = [
+        get_ffmpeg_binary('ffmpeg'), '-y', '-hide_banner', '-loglevel', 'warning',
+        '-ss', _format_seconds(start), '-i', input_path,
+        '-t', _format_seconds(duration),
+        '-map', '0:v:0', '-map', '0:a:0',
+        '-c:v', 'copy', '-frames:v', str(frame_count),
+        '-af', f'atrim=duration={_format_seconds(duration)},'
+               'aresample=48000:async=1:first_pts=0,asetpts=N/SR/TB',
+        '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
+        '-avoid_negative_ts', 'make_zero',
+        '-movflags', '+faststart',
+        output_path,
+    ]
+    _run_subprocess_checked(cmd, '主体片段流拷贝')
+    actual = _get_video_duration(output_path)
+    allowed = max(0.15, 2.0 / max(video_fps, 1))
+    if abs(actual - duration) > allowed:
+        raise RuntimeError(
+            f'流拷贝时长偏差过大: {actual:.3f}s vs {duration:.3f}s')
+    if not probe_media(output_path)['video']:
+        raise RuntimeError('流拷贝输出缺少视频流')
+
+
 def _render_xfade_body_segment(input_path: str, start: float, duration: float,
                                output_path: str, codec: str, bitrate: str,
                                video_fps: int, stage: str, resolution=None):
@@ -1309,12 +1469,88 @@ def _render_xfade_transition_segment(left_path: str, right_path: str,
     _run_ffmpeg_encode_with_fallback(cmd_prefix, output_path, codec, bitrate, stage)
 
 
+def _render_xfade_transition_batch(jobs: list, codec: str, bitrate: str,
+                                   video_fps: int, resolution=None):
+    """在同一个 FFmpeg 进程里渲染多个独立转场，减少进程/NVENC 会话启动。
+
+    jobs: [{"left", "right", "left_start", "duration", "output", "stage"}, ...]
+    """
+    if not jobs:
+        return []
+    if len(jobs) == 1:
+        job = jobs[0]
+        _render_xfade_transition_segment(
+            job["left"], job["right"], job["left_start"], job["duration"],
+            job["output"], codec, bitrate, video_fps,
+            job.get("stage", "转场"), resolution)
+        return [job["output"]]
+
+    from utils.media_probe import (
+        probe_media, normalized_video, normalized_audio,
+    )
+    probes = []
+    for job in jobs:
+        probes.append((probe_media(job["left"]), probe_media(job["right"])))
+
+    cmd = [get_ffmpeg_binary('ffmpeg'), '-y', '-hide_banner',
+           '-loglevel', 'warning']
+    for job in jobs:
+        cmd += ['-i', job["left"], '-i', job["right"]]
+
+    filters = []
+    for index, job in enumerate(jobs):
+        left_probe, right_probe = probes[index]
+        left_index, right_index = index * 2, index * 2 + 1
+        duration_s = _format_seconds(job["duration"])
+        job_resolution = resolution or (
+            left_probe['video']['width'], left_probe['video']['height'])
+        filters.append(normalized_video(
+            left_index, job["left_start"], job["duration"],
+            video_fps, job_resolution, f"vL{index}"))
+        filters.append(normalized_video(
+            right_index, 0, job["duration"],
+            video_fps, job_resolution, f"vR{index}"))
+        filters.append(
+            f"[vL{index}][vR{index}]xfade=transition=fade:"
+            f"duration={duration_s}:offset=0,format=yuv420p,settb=AVTB"
+            f"[vout{index}]")
+        filters.append(normalized_audio(
+            left_index, job["left_start"], job["duration"],
+            bool(left_probe['audio']), f"aL{index}"))
+        filters.append(normalized_audio(
+            right_index, 0, job["duration"],
+            bool(right_probe['audio']), f"aR{index}"))
+        filters.append(
+            f"[aL{index}][aR{index}]acrossfade=d={duration_s}:c1=tri:c2=tri,"
+            f"aresample=48000:async=1:first_pts=0,asetpts=N/SR/TB"
+            f"[aout{index}]")
+
+    cmd += ['-filter_complex', ';'.join(filters)]
+    encoder_args = _get_encoder_args_with_fallback(codec, bitrate)
+    for index, job in enumerate(jobs):
+        cmd += [
+            '-map', f'[vout{index}]', '-map', f'[aout{index}]',
+            *encoder_args,
+            '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
+            job["output"],
+        ]
+
+    _run_subprocess_checked(cmd, f"转场批量渲染 ({len(jobs)} 个)")
+    for job in jobs:
+        info = probe_media(job["output"])
+        if not info['audio'] or not info['video']:
+            raise RuntimeError(f'批量转场输出无效: {job["output"]}')
+    return [job["output"] for job in jobs]
+
+
 def _concat_island_segments(segment_paths: list, list_file: str, output_path: str,
-                            video_fps: int):
+                            video_fps: int, segment_durations: list = None):
     with open(list_file, 'w', encoding='utf-8') as f:
-        for path in segment_paths:
+        for index, path in enumerate(segment_paths):
             safe_path = os.path.abspath(path).replace('\\', '/').replace("'", "'\\''")
             f.write(f"file '{safe_path}'\n")
+            if segment_durations and index < len(segment_durations):
+                f.write(f"duration {_format_seconds(segment_durations[index])}\n")
 
     copy_cmd = [
         get_ffmpeg_binary('ffmpeg'), '-y', '-hide_banner', '-loglevel', 'warning',
@@ -1344,7 +1580,8 @@ def _concat_island_segments(segment_paths: list, list_file: str, output_path: st
 def combine_full_video_xfade_islands(video_clip_path: str, trans_time: float = 1,
                                      codec: str = None, bitrate: str = "5000k",
                                      video_fps: int = 60,
-                                     temp_dir_name: str = "xfade_islands_tmp", video_res=None):
+                                     temp_dir_name: str = "xfade_islands_tmp",
+                                     video_res=None, progress_callback=None):
     """低内存 xfade 拼接：每次只处理相邻两个片段的转场窗口，再 concat。
 
     此函数服务于 GPU 渲染路线，内部仅调用 FFmpeg/FFprobe，不依赖 MoviePy。
@@ -1357,14 +1594,26 @@ def combine_full_video_xfade_islands(video_clip_path: str, trans_time: float = 1
     if not sorted_files:
         raise ValueError("Error: 没有有效的视频片段文件！")
     if len(sorted_files) == 1 or trans_time <= 0:
-        return combine_full_video_direct(video_clip_path, auto_add_transition=False,
-                                         trans_time=trans_time, video_fps=video_fps)
+        result = combine_full_video_direct(video_clip_path, auto_add_transition=False,
+                                           trans_time=trans_time, video_fps=video_fps)
+        if progress_callback:
+            progress_callback(1.0, 1, 1, "拼接完成", "拼接")
+        return result
 
     file_paths = [os.path.join(video_clip_path, f) for f in sorted_files]
     from utils.media_probe import probe_media
     from utils.diagnostics import current_report, capture_exception
-    probes = [probe_media(fp) for fp in file_paths]
+    t_probe_start = time.perf_counter()
+    probes = []
+    for index, file_path in enumerate(file_paths):
+        probes.append(probe_media(file_path))
+        if (progress_callback
+                and (index % 4 == 0 or index == len(file_paths) - 1)):
+            progress_callback(
+                0.04 * (index + 1) / len(file_paths),
+                index + 1, len(file_paths), "读取片段信息", "片段探测")
     durations = [p['duration'] for p in probes]
+    t_probe_durations = time.perf_counter() - t_probe_start
     video_res = video_res or (probes[0]['video']['width'], probes[0]['video']['height'])
     if video_fps <= 0 or len(video_res) != 2 or any(int(v) != v or v < 2 or v % 2 for v in video_res):
         raise ValueError('转场输出分辨率必须为正偶数，帧率必须为正数。')
@@ -1393,68 +1642,243 @@ def combine_full_video_xfade_islands(video_clip_path: str, trans_time: float = 1
     os.makedirs(temp_dir, exist_ok=True)
 
     generated_segments = []
+    generated_durations = []
     success = False
+    t_body_total = 0.0
+    t_transition_total = 0.0
     try:
-        segment_index = 0
+        from concurrent.futures import ThreadPoolExecutor
+        try:
+            stage_workers = max(
+                1, int(os.environ.get("MAIGEN_STEP2_WORKERS", "2")))
+            body_workers = max(1, int(os.environ.get(
+                "MAIGEN_STEP2_BODY_WORKERS", str(stage_workers))))
+            transition_workers = max(1, int(os.environ.get(
+                "MAIGEN_STEP2_TRANSITION_WORKERS", "4")))
+        except ValueError:
+            body_workers, transition_workers = 2, 4
+        try:
+            transition_batch = max(1, int(os.environ.get(
+                "MAIGEN_TRANSITION_BATCH", "1")))
+        except ValueError:
+            transition_batch = 1
+
+        # 预先读取关键帧，避免多个线程重复 ffprobe。
+        t_keyframe_start = time.perf_counter()
+        from utils.keyframe_cache import read_keyframe_cache, write_keyframe_cache
+        keyframe_cache = {}
+        misses = []
+        for index, file_path in enumerate(file_paths):
+            cached = read_keyframe_cache(file_path)
+            if cached is not None:
+                keyframe_cache[file_path] = cached
+            else:
+                misses.append((index, file_path))
+
+        completed = len(file_paths) - len(misses)
+        if progress_callback and completed:
+            progress_callback(
+                0.04 + 0.19 * completed / len(file_paths),
+                completed, len(file_paths),
+                f"关键帧缓存命中 {completed} 个", "关键帧扫描")
+        if misses:
+            try:
+                scan_workers = max(1, min(
+                    int(os.environ.get("MAIGEN_KEYFRAME_SCAN_WORKERS", "4")),
+                    len(misses)))
+            except ValueError:
+                scan_workers = min(4, len(misses))
+            with ThreadPoolExecutor(
+                    max_workers=scan_workers,
+                    thread_name_prefix="keyframe-scan") as executor:
+                futures = {
+                    index: executor.submit(_list_keyframe_times, path)
+                    for index, path in misses
+                }
+                for index, future in futures.items():
+                    path = file_paths[index]
+                    values = future.result()
+                    keyframe_cache[path] = values
+                    if values:
+                        try:
+                            write_keyframe_cache(path, values)
+                        except Exception as exc:
+                            print(f"[Island] Warning: 写入关键帧缓存失败: {exc}")
+                    completed += 1
+                    if progress_callback:
+                        progress_callback(
+                            0.04 + 0.19 * completed / len(file_paths),
+                            completed, len(file_paths),
+                            "扫描关键帧", "关键帧扫描")
+        elif progress_callback:
+            progress_callback(0.23, len(file_paths), len(file_paths),
+                              "关键帧缓存全部命中", "关键帧扫描")
+        t_keyframe_scan = time.perf_counter() - t_keyframe_start
+
+        body_entries = {}
+        body_jobs = []
         for i, file_path in enumerate(file_paths):
             left_transition = transition_times[i - 1] if i > 0 else 0.0
             right_transition = transition_times[i] if i < len(transition_times) else 0.0
             body_start = left_transition
-            body_end = durations[i] - right_transition
-            body_duration = body_end - body_start
-
-            if body_duration > frame_epsilon:
-                body_path = os.path.join(temp_dir, f"{segment_index:04d}_body_{i:04d}.mp4")
-                print(f"[Island] 生成主体片段 {i + 1}/{len(file_paths)}: "
-                      f"start={body_start:.3f}, duration={body_duration:.3f}")
-                _render_xfade_body_segment(
-                    file_path,
-                    body_start,
-                    body_duration,
-                    body_path,
-                    codec,
-                    bitrate,
-                    video_fps,
-                    f"主体片段 {i + 1}", video_res
-                )
-                generated_segments.append(body_path)
-                segment_index += 1
-            else:
+            body_duration = durations[i] - right_transition - body_start
+            if body_duration <= frame_epsilon:
                 print(f"[Island] 跳过过短主体片段 {i + 1}: duration={body_duration:.3f}")
+                body_entries[i] = None
+                continue
+            body_path = os.path.join(temp_dir, f"body_{i:04d}.mp4")
 
-            if i < len(file_paths) - 1:
-                transition_duration = transition_times[i]
-                if transition_duration > frame_epsilon:
-                    transition_path = os.path.join(temp_dir, f"{segment_index:04d}_transition_{i:04d}_{i + 1:04d}.mp4")
-                    left_start = durations[i] - transition_duration
-                    print(f"[Island] 生成转场 {i + 1}->{i + 2}: duration={transition_duration:.3f}")
+            def render_body(index=i, path=body_path, start=body_start,
+                            length=body_duration, source=file_path):
+                print(f"[Island] 生成主体片段 {index + 1}/{len(file_paths)}: "
+                      f"start={start:.3f}, duration={length:.3f}")
+                try:
+                    _copy_body_segment(source, start, length, path,
+                                       video_fps, keyframe_cache[source])
+                    print(f"[Island] 主体片段 {index + 1} 使用关键帧流拷贝")
+                except Exception as copy_exc:
+                    print(f"[Island] 主体片段 {index + 1} 流拷贝不可用，回退重编码: {copy_exc}")
+                    try:
+                        from utils.keyframe_cache import invalidate_keyframe_cache
+                        invalidate_keyframe_cache(source)
+                    except Exception:
+                        pass
+                    _render_xfade_body_segment(
+                        source, start, length, path, codec, bitrate,
+                        video_fps, f"主体片段 {index + 1}", video_res)
+                return path, length
+
+            body_entries[i] = None
+            body_jobs.append((i, render_body))
+
+        transition_entries = {}
+        transition_specs = []
+        for i in range(len(file_paths) - 1):
+            transition_duration = transition_times[i]
+            transition_entries[i] = None
+            if transition_duration <= frame_epsilon:
+                print(f"[Island] 片段 {i + 1}->{i + 2} 太短，退化为无转场拼接")
+                continue
+            transition_specs.append({
+                "index": i,
+                "left": file_paths[i],
+                "right": file_paths[i + 1],
+                "left_start": durations[i] - transition_duration,
+                "duration": transition_duration,
+                "output": os.path.join(
+                    temp_dir, f"transition_{i:04d}_{i + 1:04d}.mp4"),
+                "stage": f"转场 {i + 1}->{i + 2}",
+            })
+        transition_jobs = transition_specs
+
+        total_steps = len(body_jobs) + len(transition_jobs) + 1
+        done_steps = 0
+        prep_progress = 0.23
+
+        def report_job_progress(done, total, label, substage):
+            if progress_callback:
+                progress_callback(
+                    prep_progress + (1.0 - prep_progress) * done / max(total, 1),
+                    done, total, label, substage)
+
+        t_body = time.perf_counter()
+        if body_workers > 1 and len(body_jobs) > 1:
+            with ThreadPoolExecutor(max_workers=body_workers,
+                                    thread_name_prefix="island-body") as executor:
+                futures = {index: executor.submit(job) for index, job in body_jobs}
+                for index, future in futures.items():
+                    body_entries[index] = future.result()
+                    done_steps += 1
+                    report_job_progress(done_steps, total_steps,
+                                        f"主体片段 {index + 1}", "主体处理")
+        else:
+            for index, job in body_jobs:
+                body_entries[index] = job()
+                done_steps += 1
+                report_job_progress(done_steps, total_steps,
+                                    f"主体片段 {index + 1}", "主体处理")
+        t_body_total = time.perf_counter() - t_body
+
+        t_transition = time.perf_counter()
+        batches = [
+            transition_specs[index:index + transition_batch]
+            for index in range(0, len(transition_specs), transition_batch)
+        ]
+
+        def render_transition_batch(batch):
+            try:
+                _render_xfade_transition_batch(
+                    batch, codec, bitrate, video_fps, video_res)
+            except Exception as batch_exc:
+                print(f"[Island] 批量转场失败，回退逐个渲染: {batch_exc}")
+                for spec in batch:
+                    print(f"[Island] 生成转场 {spec['index'] + 1}->"
+                          f"{spec['index'] + 2}: duration={spec['duration']:.3f}")
                     _render_xfade_transition_segment(
-                        file_path,
-                        file_paths[i + 1],
-                        left_start,
-                        transition_duration,
-                        transition_path,
-                        codec,
-                        bitrate,
-                        video_fps,
-                        f"转场 {i + 1}->{i + 2}", video_res
-                    )
-                    generated_segments.append(transition_path)
-                    segment_index += 1
-                else:
-                    print(f"[Island] 片段 {i + 1}->{i + 2} 太短，退化为无转场拼接")
+                        spec["left"], spec["right"], spec["left_start"],
+                        spec["duration"], spec["output"], codec, bitrate,
+                        video_fps, spec["stage"], video_res)
+            return [(spec["index"], spec["output"], spec["duration"])
+                    for spec in batch]
+
+        if transition_workers > 1 and len(batches) > 1:
+            with ThreadPoolExecutor(max_workers=transition_workers,
+                                    thread_name_prefix="island-transition") as executor:
+                futures = [(batch, executor.submit(render_transition_batch, batch))
+                           for batch in batches]
+                for batch, future in futures:
+                    for index, path, duration in future.result():
+                        transition_entries[index] = (path, duration)
+                    done_steps += len(batch)
+                    report_job_progress(
+                        done_steps, total_steps,
+                        f"批量转场 {len(batch)} 个", "转场渲染")
+        else:
+            for batch in batches:
+                for index, path, duration in render_transition_batch(batch):
+                    transition_entries[index] = (path, duration)
+                done_steps += len(batch)
+                report_job_progress(
+                    done_steps, total_steps,
+                    f"批量转场 {len(batch)} 个", "转场渲染")
+        t_transition_total = time.perf_counter() - t_transition
+
+        for i in range(len(file_paths)):
+            body_entry = body_entries.get(i)
+            if body_entry:
+                generated_segments.append(body_entry[0])
+                generated_durations.append(body_entry[1])
+            transition_entry = transition_entries.get(i)
+            if transition_entry:
+                generated_segments.append(transition_entry[0])
+                generated_durations.append(transition_entry[1])
 
         if not generated_segments:
             raise RuntimeError("transition island 未生成任何有效临时片段")
 
         list_file = os.path.join(temp_dir, "concat_list.txt")
-        _concat_island_segments(generated_segments, list_file, pending_output, video_fps)
+        t_concat_phase_start = time.perf_counter()
+        _concat_island_segments(generated_segments, list_file, pending_output,
+                                video_fps, generated_durations)
+        t_concat = time.perf_counter() - t_concat_phase_start
+        t_final_probe_start = time.perf_counter()
         final_probe = probe_media(pending_output)
+        t_final_probe = time.perf_counter() - t_final_probe_start
         if not final_probe['audio'] or (final_probe['video']['width'], final_probe['video']['height']) != tuple(video_res):
             raise RuntimeError('最终转场视频的尺寸或音轨无效。')
         os.replace(pending_output, output_path)
         success = True
-        print(f"[Timer] transition island 拼接总耗时: {time.perf_counter() - t_concat_start:.2f}s")
+        if progress_callback:
+            progress_callback(1.0, total_steps, total_steps, "拼接完成", "拼接")
+        t_total = time.perf_counter() - t_concat_start
+        print(f"[Timer] transition island 拼接总耗时: {t_total:.2f}s "
+              f"(主体处理 {t_body_total:.2f}s, 转场渲染 {t_transition_total:.2f}s, "
+              f"其余探测/concat {t_total - t_body_total - t_transition_total:.2f}s)")
+        print(f"[Timer] island breakdown: 片段探测 {t_probe_durations:.2f}s, "
+              f"关键帧扫描 {t_keyframe_scan:.2f}s, "
+              f"主体处理 {t_body_total:.2f}s ({len(body_jobs)} 个), "
+              f"转场渲染 {t_transition_total:.2f}s ({len(transition_jobs)} 个), "
+              f"concat {t_concat:.2f}s, 最终校验 {t_final_probe:.2f}s")
         return output_path
     except Exception as e:
         capture_exception(e, 'transition island')

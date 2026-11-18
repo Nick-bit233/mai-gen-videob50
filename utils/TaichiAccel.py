@@ -10,6 +10,7 @@ import traceback
 import threading
 import queue as _queue_module
 import atexit
+import os
 import platform
 from pathlib import Path
 import subprocess
@@ -428,6 +429,92 @@ if TAICHI_AVAILABLE:
             out[i, j, 1] = ti.min(g, 255.0)
             out[i, j, 2] = ti.min(b, 255.0)
 
+    @ti.func
+    def _five_layer_pixel(
+        bg: ti.types.ndarray(dtype=ti.f32, ndim=3),
+        video: ti.types.ndarray(dtype=ti.u8, ndim=3),
+        score_rgb: ti.types.ndarray(dtype=ti.f32, ndim=3),
+        score_mask: ti.types.ndarray(dtype=ti.f32, ndim=2),
+        text_rgb: ti.types.ndarray(dtype=ti.f32, ndim=3),
+        text_mask: ti.types.ndarray(dtype=ti.f32, ndim=2),
+        i: ti.i32, j: ti.i32,
+        bg_brightness: ti.f32,
+        vid_x: ti.i32, vid_y: ti.i32,
+        vid_h: ti.i32, vid_w: ti.i32,
+        score_h: ti.i32, score_w: ti.i32,
+        text_x: ti.i32, text_y: ti.i32,
+        text_h: ti.i32, text_w: ti.i32,
+    ):
+        r = bg[i, j, 0] * bg_brightness
+        g = bg[i, j, 1] * bg_brightness
+        b = bg[i, j, 2] * bg_brightness
+
+        vi = i - vid_y
+        vj = j - vid_x
+        if 0 <= vi < vid_h and 0 <= vj < vid_w:
+            r = ti.cast(video[vi, vj, 0], ti.f32)
+            g = ti.cast(video[vi, vj, 1], ti.f32)
+            b = ti.cast(video[vi, vj, 2], ti.f32)
+
+        if i < score_h and j < score_w:
+            sa = score_mask[i, j]
+            inv_sa = 1.0 - sa
+            r = r * inv_sa + score_rgb[i, j, 0] * sa
+            g = g * inv_sa + score_rgb[i, j, 1] * sa
+            b = b * inv_sa + score_rgb[i, j, 2] * sa
+
+        ti_i = i - text_y
+        tj_j = j - text_x
+        if 0 <= ti_i < text_h and 0 <= tj_j < text_w:
+            ta = text_mask[ti_i, tj_j]
+            inv_ta = 1.0 - ta
+            r = r * inv_ta + text_rgb[ti_i, tj_j, 0] * ta
+            g = g * inv_ta + text_rgb[ti_i, tj_j, 1] * ta
+            b = b * inv_ta + text_rgb[ti_i, tj_j, 2] * ta
+
+        return ti.Vector([ti.min(r, 255.0), ti.min(g, 255.0), ti.min(b, 255.0)])
+
+    @ti.kernel
+    def _five_layer_nv12_kernel(
+        bg: ti.types.ndarray(dtype=ti.f32, ndim=3),
+        video: ti.types.ndarray(dtype=ti.u8, ndim=3),
+        score_rgb: ti.types.ndarray(dtype=ti.f32, ndim=3),
+        score_mask: ti.types.ndarray(dtype=ti.f32, ndim=2),
+        text_rgb: ti.types.ndarray(dtype=ti.f32, ndim=3),
+        text_mask: ti.types.ndarray(dtype=ti.f32, ndim=2),
+        out: ti.types.ndarray(dtype=ti.u8, ndim=2),
+        bg_brightness: ti.f32,
+        vid_x: ti.i32, vid_y: ti.i32,
+        vid_h: ti.i32, vid_w: ti.i32,
+        score_h: ti.i32, score_w: ti.i32,
+        text_x: ti.i32, text_y: ti.i32,
+        text_h: ti.i32, text_w: ti.i32,
+        out_h: ti.i32, out_w: ti.i32,
+    ):
+        """五层合成后直接输出 NV12（BT.601 limited range）。
+
+        Y 平面写满分辨率；UV 平面在偶数坐标采样左上像素的色度，
+        总高度为 out_h * 3 / 2，UV 行内交错存放 U/V。
+        """
+        for i, j in ti.ndrange(out_h, out_w):
+            rgb = _five_layer_pixel(
+                bg, video, score_rgb, score_mask, text_rgb, text_mask,
+                i, j, bg_brightness,
+                vid_x, vid_y, vid_h, vid_w,
+                score_h, score_w,
+                text_x, text_y, text_h, text_w,
+            )
+            y = 16.0 + (65.481 * rgb[0] + 128.553 * rgb[1] + 24.966 * rgb[2]) / 255.0
+            out[i, j] = ti.cast(ti.min(ti.max(y + 0.5, 0.0), 255.0), ti.u8)
+
+            if i % 2 == 0 and j % 2 == 0:
+                u = 128.0 + (-37.797 * rgb[0] - 74.203 * rgb[1] + 112.0 * rgb[2]) / 255.0
+                v = 128.0 + (112.0 * rgb[0] - 93.786 * rgb[1] - 18.214 * rgb[2]) / 255.0
+                out[out_h + i // 2, j] = ti.cast(
+                    ti.min(ti.max(u + 0.5, 0.0), 255.0), ti.u8)
+                out[out_h + i // 2, j + 1] = ti.cast(
+                    ti.min(ti.max(v + 0.5, 0.0), 255.0), ti.u8)
+
     @ti.kernel
     def _five_layer_fast_kernel(
         bg: ti.types.ndarray(dtype=ti.f32, ndim=3),
@@ -671,6 +758,7 @@ class FrameCompositor:
         text_pos: tuple,
         bg_brightness: float = 0.8,
         output_size: tuple = (1920, 1080),
+        use_device_arrays: bool = None,
     ):
         if not is_available():
             raise RuntimeError("Taichi 未初始化")
@@ -690,6 +778,55 @@ class FrameCompositor:
         # 输出缓冲区复用
         self._out_buf = np.zeros((self.out_h, self.out_w, 3), dtype=np.uint8)
 
+        # 设备常驻图层：静态图层只上传一次，帧循环只传视频帧和输出帧。
+        if use_device_arrays is None:
+            use_device_arrays = os.environ.get("MAIGEN_LEGACY_LAYERS") != "1"
+        self._device = None
+        self.nv12_supported = False
+        if use_device_arrays:
+            try:
+                self._init_device_arrays()
+                self.nv12_supported = (
+                    self._device is not None
+                    and self._device.get("out_nv12") is not None)
+            except Exception as exc:
+                print(f"[TaichiAccel] Warning: 设备常驻图层初始化失败，回退到主机内存: {exc}")
+                self._device = None
+                self.nv12_supported = False
+
+    def _init_device_arrays(self):
+        even_size = self.out_h % 2 == 0 and self.out_w % 2 == 0
+
+        def allocate():
+            device = {
+                "bg": ti.ndarray(ti.f32, shape=self.bg_f.shape),
+                "score_rgb": ti.ndarray(ti.f32, shape=self.score_rgb.shape),
+                "score_mask": ti.ndarray(ti.f32, shape=self.score_mask.shape),
+                "text_rgb": ti.ndarray(ti.f32, shape=self.text_rgb.shape),
+                "text_mask": ti.ndarray(ti.f32, shape=self.text_mask.shape),
+                "out": ti.ndarray(ti.u8, shape=(self.out_h, self.out_w, 3)),
+                "out_nv12": (ti.ndarray(
+                    ti.u8, shape=(self.out_h + self.out_h // 2, self.out_w))
+                    if even_size else None),
+                "video": None,
+                "video_shape": None,
+            }
+            for key, array in (("bg", self.bg_f), ("score_rgb", self.score_rgb),
+                               ("score_mask", self.score_mask),
+                               ("text_rgb", self.text_rgb), ("text_mask", self.text_mask)):
+                device[key].from_numpy(np.ascontiguousarray(array))
+            return device
+
+        self._device = _submit_to_worker(allocate)
+
+    def _ensure_video_device(self, shape):
+        if self._device["video_shape"] == shape:
+            return
+        self._device["video"] = _submit_to_worker(
+            lambda: ti.ndarray(ti.u8, shape=shape)
+        )
+        self._device["video_shape"] = shape
+
     def update_bg(self, bg: np.ndarray):
         """动态背景（视频背景）时更新 bg，复用缓冲区避免每帧分配"""
         src = bg[:, :, :3]
@@ -697,16 +834,17 @@ class FrameCompositor:
             np.copyto(self.bg_f, src, casting='unsafe')
         else:
             self.bg_f = src.astype(np.float32)
+        if self._device is not None:
+            def upload():
+                self._device["bg"].from_numpy(np.ascontiguousarray(self.bg_f))
+            try:
+                _submit_to_worker(upload)
+            except Exception as exc:
+                print(f"[TaichiAccel] Warning: 背景上传失败，回退到主机内存: {exc}")
+                self._device = None
 
-    def composite(self, video_frame: np.ndarray) -> np.ndarray:
-        """
-        合成一帧。video_frame 为 uint8 RGB，直接传入 GPU kernel。
-        返回的 ndarray 是内部缓冲区的引用，下次调用会被覆盖。
-        如果需要保留，请调用方自行 .copy()。
-        """
-        vid_h, vid_w = video_frame.shape[:2]
-        video_u8 = np.ascontiguousarray(video_frame[:, :, :3])
-
+    def _composite_host(self, video_u8: np.ndarray) -> np.ndarray:
+        vid_h, vid_w = video_u8.shape[:2]
         _submit_to_worker(
             _five_layer_fast_kernel,
             self.bg_f, video_u8,
@@ -719,4 +857,73 @@ class FrameCompositor:
             self.text_x, self.text_y, self.text_h, self.text_w,
             self.out_h, self.out_w,
         )
-        return self._out_buf
+        return self._out_buf.copy()
+
+    def _composite_device(self, video_u8: np.ndarray) -> np.ndarray:
+        vid_h, vid_w = video_u8.shape[:2]
+        self._ensure_video_device(video_u8.shape)
+
+        def step():
+            device = self._device
+            device["video"].from_numpy(video_u8)
+            _five_layer_fast_kernel(
+                device["bg"], device["video"],
+                device["score_rgb"], device["score_mask"],
+                device["text_rgb"], device["text_mask"],
+                device["out"],
+                self.bg_brightness,
+                self.vid_x, self.vid_y, vid_h, vid_w,
+                self.score_h, self.score_w,
+                self.text_x, self.text_y, self.text_h, self.text_w,
+                self.out_h, self.out_w,
+            )
+            return device["out"].to_numpy()
+
+        return _submit_to_worker(step)
+
+    def _composite_device_nv12(self, video_u8: np.ndarray) -> np.ndarray:
+        vid_h, vid_w = video_u8.shape[:2]
+        self._ensure_video_device(video_u8.shape)
+
+        def step():
+            device = self._device
+            device["video"].from_numpy(video_u8)
+            _five_layer_nv12_kernel(
+                device["bg"], device["video"],
+                device["score_rgb"], device["score_mask"],
+                device["text_rgb"], device["text_mask"],
+                device["out_nv12"],
+                self.bg_brightness,
+                self.vid_x, self.vid_y, vid_h, vid_w,
+                self.score_h, self.score_w,
+                self.text_x, self.text_y, self.text_h, self.text_w,
+                self.out_h, self.out_w,
+            )
+            return device["out_nv12"].to_numpy()
+
+        return _submit_to_worker(step)
+
+    def composite(self, video_frame: np.ndarray) -> np.ndarray:
+        """合成一帧 RGB 数据。返回调用方独占的 numpy 数组。"""
+        video_u8 = np.ascontiguousarray(video_frame[:, :, :3])
+        if self._device is not None:
+            try:
+                return self._composite_device(video_u8)
+            except Exception as exc:
+                print(f"[TaichiAccel] Warning: 设备常驻合成失败，回退到主机内存: {exc}")
+                self._device = None
+                self.nv12_supported = False
+        return self._composite_host(video_u8)
+
+    def composite_nv12(self, video_frame: np.ndarray) -> np.ndarray:
+        """合成一帧并直接输出 NV12 数据，减少一半主机下载量。"""
+        if not self.nv12_supported or self._device is None:
+            raise RuntimeError("NV12 输出不可用")
+        video_u8 = np.ascontiguousarray(video_frame[:, :, :3])
+        try:
+            return self._composite_device_nv12(video_u8)
+        except Exception as exc:
+            print(f"[TaichiAccel] Warning: NV12 合成失败: {exc}")
+            self._device = None
+            self.nv12_supported = False
+            raise

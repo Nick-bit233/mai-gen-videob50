@@ -1,5 +1,7 @@
 """Checked OpenCV decoding shared by all Taichi video layers."""
 import math
+import queue
+import threading
 
 import cv2
 
@@ -87,3 +89,58 @@ class VideoFrameReader:
 
     def __del__(self):
         self.close()
+
+
+class FramePrefetcher:
+    """在后台线程按时间戳顺序预解码帧，与 GPU 合成重叠。"""
+
+    def __init__(self, reader: VideoFrameReader, start_time: float,
+                 count: int, fps: float, queue_depth: int = 4):
+        self._reader = reader
+        self._start_time = float(start_time)
+        self._count = max(0, int(count))
+        self._fps = max(1e-6, float(fps))
+        self._queue = queue.Queue(maxsize=max(1, int(queue_depth)))
+        self._stop = threading.Event()
+        self._error = None
+        self._thread = threading.Thread(
+            target=self._run, name="video-decode-prefetch", daemon=True)
+        self._thread.start()
+
+    def _run(self):
+        try:
+            for index in range(self._count):
+                if self._stop.is_set():
+                    break
+                frame = self._reader.get_frame(
+                    self._start_time + index / self._fps)
+                while not self._stop.is_set():
+                    try:
+                        self._queue.put(frame, timeout=0.2)
+                        break
+                    except queue.Full:
+                        continue
+        except Exception as exc:  # noqa: BLE001 - surfaced from get()
+            self._error = exc
+        finally:
+            try:
+                self._queue.put(None, timeout=1.0)
+            except queue.Full:
+                pass
+
+    def get(self):
+        frame = self._queue.get()
+        if frame is None and self._error is not None:
+            raise self._error
+        return frame
+
+    def close(self):
+        self._stop.set()
+        # 排空队列，避免生产线程卡在 put 上。
+        try:
+            while True:
+                self._queue.get_nowait()
+        except queue.Empty:
+            pass
+        if self._thread.is_alive():
+            self._thread.join(timeout=2)
