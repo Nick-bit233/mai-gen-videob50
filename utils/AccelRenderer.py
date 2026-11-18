@@ -11,13 +11,17 @@ import subprocess
 import traceback
 import time
 import tempfile
+import math
+import queue
+import threading
+from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import cv2
 from PIL import Image
 from typing import Optional, Tuple, List
 
 from utils.PageUtils import remove_invalid_chars
-from utils.video_frames import VideoFrameReader
+from utils.video_frames import VideoFrameReader, FramePrefetcher
 from utils.style_config import resolve_bgm
 from utils.theme_artifacts import clip_recipe, clip_is_current, record_clip_recipe, validate_image_style, record_clip_order, ordered_clip_files
 from utils.diagnostics import current_report, execute, capture_exception
@@ -192,6 +196,48 @@ def _measure_audio_rms(audio_path: str, start: float = 0, duration: float = None
     return -20.0  # fallback: 假设已在目标电平
 
 
+# 音频响度预取：渲染开始前把全部片段的 volumedetect 放进后台线程池，
+# 与前面的片段渲染重叠，避免每个片段串行等待一次 FFmpeg 进程。
+_RMS_EXECUTOR = None
+_RMS_FUTURES = {}
+_RMS_LOCK = threading.Lock()
+
+
+def _audio_rms_key(audio_path: str, start: float, duration: float):
+    return (os.path.abspath(audio_path), round(float(start or 0), 3),
+            round(float(duration or 0), 3))
+
+
+def _prewarm_audio_rms(requests):
+    global _RMS_EXECUTOR
+    with _RMS_LOCK:
+        _RMS_FUTURES.clear()
+        if not requests:
+            return
+        if _RMS_EXECUTOR is None:
+            _RMS_EXECUTOR = ThreadPoolExecutor(
+                max_workers=2, thread_name_prefix="audio-rms")
+        for audio_path, start, duration in requests:
+            if not audio_path or not os.path.exists(audio_path):
+                continue
+            key = _audio_rms_key(audio_path, start, duration)
+            if key not in _RMS_FUTURES:
+                _RMS_FUTURES[key] = _RMS_EXECUTOR.submit(
+                    _measure_audio_rms, audio_path, start, duration)
+
+
+def _get_audio_rms_cached(audio_path: str, start: float, duration: float):
+    key = _audio_rms_key(audio_path, start, duration)
+    with _RMS_LOCK:
+        future = _RMS_FUTURES.get(key)
+    if future is not None:
+        try:
+            return future.result()
+        except Exception as exc:
+            print(f"[AccelRenderer] Warning: 预取音频响度失败，改为同步测量: {exc}")
+    return _measure_audio_rms(audio_path, start, duration)
+
+
 # ============================================================================
 # 视频帧读取工具
 # ============================================================================
@@ -207,12 +253,28 @@ class FFmpegWriter:
                  fps: int = 30, codec: str = None, bitrate: str = "5000k",
                  audio_path: str = None, audio_start: float = 0, audio_duration: float = None,
                  audio_fade_in: float = 0, audio_fade_out: float = 0,
-                 volume_adjust_db: float = 0, audio_loop: bool = False):
+                 volume_adjust_db: float = 0, audio_loop: bool = False,
+                 input_pix_fmt: str = "rgb24", async_write: bool = None,
+                 queue_depth: int = 6, keyframe_times: list = None,
+                 preset: str = None, threads: int = None,
+                 input_fps: int = None):
         self.output_path = output_path
         self.width = width
         self.height = height
+        self.fps = int(fps)
+        self.input_fps = int(input_fps or fps)
+        self.input_pix_fmt = input_pix_fmt
+        self.keyframe_times = keyframe_times
+        self.preset = preset
+        self.threads = threads
         self.process = None
         self._stderr = tempfile.TemporaryFile()
+        if async_write is None:
+            async_write = os.environ.get("MAIGEN_SYNC_WRITER") != "1"
+        self._async_write = async_write
+        self._write_queue = queue.Queue(maxsize=max(1, int(queue_depth))) if async_write else None
+        self._writer_thread = None
+        self._write_error = None
 
         if codec is None:
             codec, _ = detect_hw_encoder()
@@ -222,8 +284,8 @@ class FFmpegWriter:
         cmd = [
             get_ffmpeg_binary('ffmpeg'), '-y', '-hide_banner', '-loglevel', 'warning',
             # 视频输入 (raw frames from stdin)
-            '-f', 'rawvideo', '-pix_fmt', 'rgb24',
-            '-s', f'{width}x{height}', '-r', str(fps),
+            '-f', 'rawvideo', '-pix_fmt', self.input_pix_fmt,
+            '-s', f'{width}x{height}', '-r', str(self.input_fps),
             '-i', 'pipe:0',
         ]
 
@@ -243,7 +305,23 @@ class FFmpegWriter:
 
         # 视频编码参数
         cmd += encoder_args
-        cmd += ['-pix_fmt', 'yuv420p']
+        if self.preset:
+            cmd += ['-preset', str(self.preset)]
+        if self.threads:
+            cmd += ['-threads', str(int(self.threads))]
+        if self.keyframe_times:
+            times = sorted({round(float(value), 3) for value in self.keyframe_times
+                            if float(value) > 0})
+            if times:
+                cmd += ['-force_key_frames', ','.join(f'{value:.3f}' for value in times)]
+                # NVENC/部分编码器会忽略 force_key_frames；用能整除所有切点的
+                # GOP 长度保证关键帧落在转场边界上。
+                cut_frames = [max(1, int(round(value * fps))) for value in times]
+                gop = cut_frames[0]
+                for frame_index in cut_frames[1:]:
+                    gop = math.gcd(gop, frame_index)
+                cmd += ['-g', str(max(1, gop))]
+        cmd += ['-pix_fmt', 'yuv420p', '-r', str(self.fps)]
 
         # 音频编码 + 可选淡入淡出滤镜
         if has_audio:
@@ -279,33 +357,95 @@ class FFmpegWriter:
             self._diagnostic_attempt.finish(error=exc)
             self._stderr.close()
             raise
+        self._start_writer_thread()
 
-    def write_frame(self, frame: np.ndarray):
-        """写入一帧 RGB uint8 数据"""
-        if self.process is None or self.process.stdin.closed:
-            raise RuntimeError("视频编码器已关闭")
-        if self.process.stdin:
-            # 确保帧尺寸正确
+    def _start_writer_thread(self):
+        if self._write_queue is None:
+            return
+        self._writer_thread = threading.Thread(
+            target=self._write_loop, name="FFmpegPipeWriter", daemon=True)
+        self._writer_thread.start()
+
+    def _write_loop(self):
+        while True:
+            frame = self._write_queue.get()
+            if frame is None:
+                break
+            try:
+                self.process.stdin.write(frame)
+            except Exception as exc:  # noqa: BLE001 - surfaced from close()
+                self._write_error = exc
+                break
+
+    def _prepare_frame(self, frame: np.ndarray):
+        if self.input_pix_fmt == "nv12":
+            expected = (self.height + self.height // 2, self.width)
+            if frame.shape[:2] != expected:
+                raise ValueError(
+                    f"NV12 帧尺寸不匹配: {frame.shape[:2]} != {expected}")
+        else:
             if frame.shape[0] != self.height or frame.shape[1] != self.width:
                 frame = cv2.resize(frame, (self.width, self.height))
-            if frame.shape[2] == 4:
+            if frame.ndim == 3 and frame.shape[2] == 4:
                 frame = frame[:, :, :3]
+        frame = np.ascontiguousarray(frame, dtype=np.uint8)
+        return memoryview(frame)
+
+    def write_frame(self, frame: np.ndarray):
+        """写入一帧原始视频数据（RGB24 或 NV12）"""
+        if self.process is None or self.process.stdin.closed:
+            raise RuntimeError("视频编码器已关闭")
+        if self._write_error is not None:
+            raise RuntimeError(f"视频编码管道写入失败: {self._write_error}")
+        buffer = self._prepare_frame(frame)
+        if self._write_queue is not None:
+            # 队列有界：编码落后时在这里形成背压，但写入与合成已并行。
+            while True:
+                if self._write_error is not None:
+                    raise RuntimeError(f"视频编码管道写入失败: {self._write_error}")
+                if self._writer_thread is None or not self._writer_thread.is_alive():
+                    raise RuntimeError("视频编码写入线程已退出")
+                try:
+                    self._write_queue.put(buffer, timeout=1.0)
+                    break
+                except queue.Full:
+                    continue
+            return
+        try:
+            self.process.stdin.write(buffer)
+        except OSError as exc:
+            # Surface FFmpeg's actual diagnostic instead of just BrokenPipe/EINVAL.
+            self.close()
+            raise RuntimeError(f"视频编码管道写入失败: {exc}") from exc
+
+    def _stop_writer_thread(self, wait: bool = True):
+        if self._write_queue is None or self._writer_thread is None:
+            return
+        try:
+            self._write_queue.put_nowait(None)
+        except queue.Full:
             try:
-                self.process.stdin.write(frame.astype(np.uint8).tobytes())
-            except OSError as exc:
-                # Surface FFmpeg's actual diagnostic instead of just BrokenPipe/EINVAL.
-                self.close()
-                raise RuntimeError(f"视频编码管道写入失败: {exc}") from exc
+                self._write_queue.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                self._write_queue.put_nowait(None)
+            except queue.Full:
+                pass
+        if wait:
+            self._writer_thread.join(timeout=120)
+        self._writer_thread = None
 
     def close(self):
         if self.process is None:
             return
         try:
-            pipe_error = None
+            pipe_error = self._write_error
+            self._stop_writer_thread(wait=True)
             try:
                 self.process.stdin.close()
             except OSError as exc:
-                pipe_error = exc
+                pipe_error = pipe_error or exc
             code = self.process.wait(timeout=60)
             self._diagnostic_attempt.finish(code, pipe_error)
             if code or pipe_error:
@@ -320,6 +460,7 @@ class FFmpegWriter:
 
     def abort(self):
         """Release a failed or completed encoder without committing its output."""
+        self._stop_writer_thread(wait=False)
         if self.process is not None:
             if self.process.poll() is None:
                 self.process.terminate()
@@ -506,30 +647,46 @@ def render_segment_accel(
     codec: str = None,
     progress_callback=None,
     fade_in: float = 0,
-    fade_out: float = 0
+    fade_out: float = 0,
+    keyframe_times: list = None,
+    cpu_mode: bool = False,
+    preset: str = None,
+    encoder_threads: int = None,
+    cpu_bands: int = None,
 ) -> dict:
     """
-    使用 Taichi GPU + FFmpeg 硬件编码渲染单个视频片段。
-    替代 VideoUtils.create_video_segment() + write_videofile() 的组合。
-    
-    Returns:
-        {"status": "success"|"error", "info": str}
+    渲染单个视频片段。cpu_mode=False 时使用 Taichi GPU 合成，
+    cpu_mode=True 时使用 NumPy/OpenCV 多线程 CPU 合成。
     """
-    from utils.TaichiAccel import (
-        is_available as ti_available,
-        composite_five_layers,
-        FrameCompositor
-    )
+    if cpu_mode:
+        from utils.CpuCompositor import CpuFrameCompositor as FrameCompositor
+        ti_available = None
+    else:
+        from utils.TaichiAccel import (
+            is_available as ti_available,
+            FrameCompositor,
+        )
 
     clip_name = clip_config.get('clip_title_name', 'clip')
-    print(f"[AccelRenderer] 正在渲染: {clip_name} (GPU加速)")
+    backend_name = "CPU" if cpu_mode else "GPU加速"
+    print(f"[AccelRenderer] 正在渲染: {clip_name} ({backend_name})")
+    if cpu_mode:
+        codec = codec or 'libx264'
+        preset = preset or os.environ.get("MAIGEN_CPU_PRESET", "veryfast")
+        if encoder_threads is None:
+            encoder_threads = int(os.environ.get("MAIGEN_CPU_ENCODER_THREADS", "8"))
 
-    if not ti_available():
+    if not cpu_mode and not ti_available():
         return {"status": "error", "info": "Taichi GPU 加速不可用"}
 
     writer = video_reader = bg_video_reader = None
+    compositor = None
+    prefetcher = None
     temporary_output = None
     try:
+        profile = os.environ.get("MAIGEN_RENDER_PROFILE") == "1"
+        t_begin = time.perf_counter()
+        t_decode = t_composite = t_fade = t_write = 0.0
         validate_image_style(clip_config.get('main_image'), game_type, style_config)
         duration = clip_config.get('duration', 10)
         total_frames = int(duration * fps)
@@ -635,6 +792,19 @@ def render_segment_accel(
         start_time = clip_config.get('start', 0)
         end_time = clip_config.get('end', start_time + duration)
 
+        # 60fps 输出时，如果素材本身是 30fps，按 30fps 合成再由 FFmpeg 补帧，
+        # 合成/下载/上传量减半，最终输出帧率仍为 fps。
+        composite_fps = fps
+        if (video_reader is not None
+                and os.environ.get("MAIGEN_SOURCE_FPS_COMPOSITE", "1") != "0"):
+            try:
+                source_fps = float(video_reader.fps)
+                if 1.0 <= source_fps < float(fps):
+                    composite_fps = max(1, int(round(source_fps)))
+            except Exception:
+                composite_fps = fps
+        total_frames = int(duration * composite_fps)
+
         # === 提取音频路径 ===
         audio_path = clip_config.get('video', None)
         audio_start = start_time
@@ -642,7 +812,7 @@ def render_segment_accel(
         # === 逐片段音频响度均衡（匹配 CPU 路径的 per-clip RMS 归一化）===
         volume_adjust_db = 0
         if audio_path and os.path.exists(audio_path):
-            measured_rms = _measure_audio_rms(audio_path, audio_start, duration)
+            measured_rms = _get_audio_rms_cached(audio_path, audio_start, duration)
             target_rms_db = -20.0
             volume_adjust_db = target_rms_db - measured_rms
             # 限制增益范围：对应 CPU 路径 gain clamp [0.1, 3.0] → [-20dB, +9.5dB]
@@ -650,22 +820,12 @@ def render_segment_accel(
             if abs(volume_adjust_db) > 0.5:
                 print(f"[AccelRenderer] 音频均衡: {clip_name} RMS={measured_rms:.1f}dB, 调整={volume_adjust_db:+.1f}dB")
 
-        # === FFmpeg 写入器 ===
-        temporary_output = _temporary_output(output_path)
-        writer = FFmpegWriter(
-            temporary_output, resolution[0], resolution[1],
-            fps=fps, codec=codec, bitrate=bitrate,
-            audio_path=audio_path, audio_start=audio_start, audio_duration=duration,
-            audio_fade_in=fade_in, audio_fade_out=fade_out,
-            volume_adjust_db=volume_adjust_db
-        )
-
         # === 预计算淡入淡出帧数 ===
-        fade_in_frames = int(fade_in * fps) if fade_in > 0 else 0
-        fade_out_frames = int(fade_out * fps) if fade_out > 0 else 0
+        fade_in_frames = int(fade_in * composite_fps) if fade_in > 0 else 0
+        fade_out_frames = int(fade_out * composite_fps) if fade_out > 0 else 0
 
         # === 逐帧渲染（使用 FrameCompositor 预计算静态层）===
-        compositor = FrameCompositor(
+        compositor_args = dict(
             bg=bg_frame,
             score_image=score_img_resized,
             text_image=text_img,
@@ -674,12 +834,57 @@ def render_segment_accel(
             bg_brightness=0.8,
             output_size=resolution,
         )
+        if cpu_mode and cpu_bands:
+            compositor_args['bands'] = int(cpu_bands)
+        compositor = FrameCompositor(**compositor_args)
+        # NV12 把输出下载量减半；有淡入淡出时仍走 RGB，避免在 YUV 上缩放色度。
+        use_nv12 = (
+            not cpu_mode
+            and compositor.nv12_supported
+            and fade_in_frames == 0
+            and fade_out_frames == 0
+        )
 
+        # === FFmpeg 写入器 ===
+        temporary_output = _temporary_output(output_path)
+        writer = FFmpegWriter(
+            temporary_output, resolution[0], resolution[1],
+            fps=fps, codec=codec, bitrate=bitrate,
+            audio_path=audio_path, audio_start=audio_start, audio_duration=duration,
+            audio_fade_in=fade_in, audio_fade_out=fade_out,
+            volume_adjust_db=volume_adjust_db,
+            input_pix_fmt="nv12" if use_nv12 else "rgb24",
+            keyframe_times=keyframe_times,
+            preset=preset if cpu_mode else None,
+            threads=encoder_threads if cpu_mode else None,
+            input_fps=composite_fps,
+        )
+
+        if (video_reader is not None
+                and os.environ.get("MAIGEN_DECODE_PREFETCH", "1") != "0"):
+            prefetcher = FramePrefetcher(
+                video_reader, start_time, total_frames, composite_fps)
+
+        t_loop_start = time.perf_counter()
         for frame_idx in range(total_frames):
-            t = start_time + frame_idx / fps
+            t = start_time + frame_idx / composite_fps
+            t_frame = time.perf_counter()
 
             # 准备当前视频帧
-            if video_reader:
+            if prefetcher is not None:
+                raw_frame = prefetcher.get()
+                if raw_frame is None:
+                    raw_frame = np.zeros((target_video_size[1], target_video_size[0], 3), dtype=np.uint8)
+                else:
+                    raw_frame = cv2.resize(raw_frame, (target_video_size[0], target_video_size[1]))
+                    if crop_rect:
+                        x1, y1, x2, y2 = crop_rect
+                        x1, y1 = max(0, x1), max(0, y1)
+                        x2 = min(raw_frame.shape[1], x2)
+                        y2 = min(raw_frame.shape[0], y2)
+                        raw_frame = raw_frame[y1:y2, x1:x2]
+                video_frame = raw_frame
+            elif video_reader:
                 raw_frame = video_reader.get_frame(t)
                 if raw_frame is None:
                     raw_frame = np.zeros((target_video_size[1], target_video_size[0], 3), dtype=np.uint8)
@@ -701,24 +906,37 @@ def render_segment_accel(
                 current_bg = _prepare_bg_frame(bg_path, resolution, is_video=True,
                                                reader=bg_video_reader, time_sec=bg_t)
                 compositor.update_bg(current_bg)
+            t_decode += time.perf_counter() - t_frame
 
-            # GPU 快速合成（零拷贝路径）
-            composed = compositor.composite(video_frame)
+            # GPU 快速合成（设备常驻 / NV12 零拷贝下载）
+            t_frame = time.perf_counter()
+            if use_nv12:
+                composed = compositor.composite_nv12(video_frame)
+            else:
+                composed = compositor.composite(video_frame)
+            t_composite += time.perf_counter() - t_frame
 
-            # 视频淡入淡出（GPU 亮度渐变）
-            if fade_in_frames > 0 and frame_idx < fade_in_frames:
-                brightness = frame_idx / fade_in_frames
-                composed = (composed.astype(np.float32) * brightness).clip(0, 255).astype(np.uint8)
-            elif fade_out_frames > 0 and frame_idx >= total_frames - fade_out_frames:
-                brightness = (total_frames - 1 - frame_idx) / fade_out_frames
-                composed = (composed.astype(np.float32) * brightness).clip(0, 255).astype(np.uint8)
+            # 视频淡入淡出（GPU 亮度渐变，NV12 模式不使用）
+            t_frame = time.perf_counter()
+            if not use_nv12:
+                if fade_in_frames > 0 and frame_idx < fade_in_frames:
+                    brightness = frame_idx / fade_in_frames
+                    composed = (composed.astype(np.float32) * brightness).clip(0, 255).astype(np.uint8)
+                elif fade_out_frames > 0 and frame_idx >= total_frames - fade_out_frames:
+                    brightness = (total_frames - 1 - frame_idx) / fade_out_frames
+                    composed = (composed.astype(np.float32) * brightness).clip(0, 255).astype(np.uint8)
+            t_fade += time.perf_counter() - t_frame
 
+            t_frame = time.perf_counter()
             writer.write_frame(composed)
+            t_write += time.perf_counter() - t_frame
 
             # 节流的进度回调（每 30 帧或最后一帧）
             if progress_callback and (frame_idx % 30 == 0 or frame_idx == total_frames - 1):
                 progress_callback(frame_idx + 1, total_frames, clip_name)
+        t_close = time.perf_counter()
         writer.close()
+        t_flush = time.perf_counter() - t_close
         if video_reader:
             video_reader.close()
         if bg_video_reader:
@@ -726,7 +944,23 @@ def render_segment_accel(
 
         os.replace(temporary_output, output_path)
         temporary_output = None
+        if keyframe_times:
+            try:
+                from utils.keyframe_cache import write_keyframe_cache
+                write_keyframe_cache(output_path, [0.0, *keyframe_times])
+            except Exception as exc:
+                print(f"[AccelRenderer] Warning: 写入关键帧缓存失败: {exc}")
         print(f"[AccelRenderer] ✓ 渲染完成: {clip_name}")
+        if profile:
+            t_total = time.perf_counter() - t_begin
+            t_loop = t_close - t_loop_start
+            print(
+                f"[Profile] {clip_name}: frames={total_frames} total={t_total:.2f}s "
+                f"({total_frames / t_total:.1f} fps) | "
+                f"prep={t_loop_start - t_begin:.2f}s decode={t_decode:.2f}s "
+                f"composite={t_composite:.2f}s fade={t_fade:.2f}s "
+                f"write={t_write:.2f}s flush={t_flush:.2f}s loop={t_loop:.2f}s"
+            )
         return {"status": "success", "info": f"GPU加速渲染 {clip_name} 完成"}
 
     except Exception as e:
@@ -734,7 +968,154 @@ def render_segment_accel(
         capture_exception(e, 'GPU曲目片段')
         return {"status": "error", "info": f"GPU渲染失败: {str(e)}"}
     finally:
+        if prefetcher is not None:
+            prefetcher.close()
         _cleanup_render(writer, (video_reader, bg_video_reader), temporary_output)
+        if compositor is not None and hasattr(compositor, 'close'):
+            compositor.close()
+
+
+def _render_info_text_png(clip_config: dict, style_config: dict, output_path: str):
+    """把开场/片尾文字用现有 TextRenderer 渲染成透明 PNG。"""
+    from utils.TextRenderer import TextRenderer, TextStyle, LayoutConfig
+
+    ts = style_config['intro_text_style']
+    font_path = style_config['asset_paths']['comment_font']
+    enable_stroke = ts['enable_stroke']
+    style = TextStyle(
+        font_path=font_path,
+        font_size=ts['font_size'],
+        color=ts['font_color'],
+        stroke_color=ts.get('stroke_color') if enable_stroke else None,
+        stroke_width=ts.get('stroke_width', 0) if enable_stroke else 0,
+    )
+    layout = LayoutConfig(
+        width=max(400, ts['inline_max_chara'] * ts['font_size']),
+        auto_height=True,
+        padding=(10, 10, 10, 10),
+        line_spacing=ts['interline'] * 1.2,
+        horizontal_align=ts['horizontal_align'],
+        vertical_align="top",
+    )
+    renderer = TextRenderer(style, layout)
+    renderer.render(clip_config.get('text', '')).save(output_path)
+
+
+def render_info_segment_ffmpeg(
+    clip_config: dict,
+    style_config: dict,
+    resolution: tuple,
+    output_path: str,
+    fps: int = 30,
+    bitrate: str = "5000k",
+    codec: str = None,
+    progress_callback=None,
+    fade_in: float = 0,
+    fade_out: float = 0,
+    section: str = "intro",
+) -> dict:
+    """用单条 FFmpeg filter graph 渲染开场/片尾。
+
+    背景是循环视频，底板和文字是静态 PNG，不需要 Python 逐帧合成。
+    亮度、叠加、淡入淡出和 BGM 均交给 FFmpeg/NVENC。
+    """
+    clip_name = clip_config.get('clip_title_name', '片段')
+    print(f"[AccelRenderer] 正在渲染信息片段: {clip_name} (FFmpeg filter)")
+    t_begin = time.perf_counter()
+
+    duration = float(clip_config.get('duration', 5))
+    width, height = int(resolution[0]), int(resolution[1])
+    text_x = int(0.16 * width)
+    text_y = int(0.18 * height)
+    text_bg_path = style_config['asset_paths']['intro_text_bg']
+    bg_video_path = style_config['asset_paths']['intro_video_bg']
+    bgm_path = resolve_bgm(style_config, section)
+
+    temporary_output = _temporary_output(output_path)
+    fd, text_png = tempfile.mkstemp(prefix='.info-text-', suffix='.png',
+                                    dir=os.path.dirname(os.path.abspath(output_path)))
+    os.close(fd)
+    try:
+        _render_info_text_png(clip_config, style_config, text_png)
+
+        volume_db = 0.0
+        if bgm_path and os.path.exists(bgm_path):
+            measured_rms = _get_audio_rms_cached(bgm_path, 0, duration)
+            volume_db = max(-20.0, min(9.5, -20.0 - measured_rms))
+
+        fade_in = max(0.0, float(fade_in or 0))
+        fade_out = max(0.0, float(fade_out or 0))
+        fade_out_start = max(0.0, duration - fade_out)
+
+        fade_parts = []
+        if fade_in > 0:
+            fade_parts.append(f"fade=t=in:st=0:d={fade_in:.3f}")
+        if fade_out > 0:
+            fade_parts.append(f"fade=t=out:st={fade_out_start:.3f}:d={fade_out:.3f}")
+        video_chain = (
+            f"[bg2][tx]overlay={text_x}:{text_y}:format=rgb,"
+            f"fps={fps},"
+            + (",".join(fade_parts) + "," if fade_parts else "")
+            + "format=yuv420p,setsar=1[vout]"
+        )
+
+        audio_filters = [
+            f"atrim=duration={duration:.3f}",
+            "asetpts=PTS-STARTPTS",
+        ]
+        if abs(volume_db) > 0.5:
+            audio_filters.append(f"volume={volume_db:.1f}dB")
+        if fade_in > 0:
+            audio_filters.append(f"afade=t=in:d={fade_in:.3f}")
+        if fade_out > 0:
+            audio_filters.append(
+                f"afade=t=out:st={fade_out_start:.3f}:d={fade_out:.3f}")
+        audio_filters.extend([
+            "aresample=48000:first_pts=0",
+            "asetpts=N/SR/TB",
+        ])
+
+        filter_complex = ";".join([
+            f"[0:v]scale={width}:{height}:flags=bilinear,format=rgb24,"
+            f"lutrgb=r=val*0.75:g=val*0.75:b=val*0.75[bg]",
+            f"[1:v]scale={width}:{height}:flags=area,format=rgba[tb]",
+            "[bg][tb]overlay=0:0:format=rgb[bg2]",
+            "[2:v]format=rgba[tx]",
+            video_chain,
+            f"[3:a]{','.join(audio_filters)}[aout]",
+        ])
+
+        cmd_prefix = [
+            get_ffmpeg_binary('ffmpeg'), '-y', '-hide_banner', '-loglevel', 'warning',
+            '-stream_loop', '-1', '-i', bg_video_path,
+            '-loop', '1', '-framerate', str(fps), '-i', text_bg_path,
+            '-loop', '1', '-framerate', str(fps), '-i', text_png,
+            '-stream_loop', '-1', '-i', bgm_path,
+            '-filter_complex', filter_complex,
+            '-map', '[vout]', '-map', '[aout]',
+            '-t', f'{duration:.3f}', '-r', str(fps),
+            '-g', str(max(1, int(fps))),
+        ]
+
+        from utils.VideoUtils import _run_ffmpeg_encode_with_fallback
+        _run_ffmpeg_encode_with_fallback(
+            cmd_prefix, temporary_output, codec, bitrate, f"信息片段 {section}")
+
+        from utils.media_probe import probe_media
+        probe_media(temporary_output)
+        os.replace(temporary_output, output_path)
+        temporary_output = None
+        if progress_callback:
+            total_frames = int(duration * fps)
+            progress_callback(total_frames, total_frames, clip_name)
+        print(f"[AccelRenderer] ✓ 信息片段渲染完成: {clip_name}")
+        print(f"[Profile] {clip_name}: ffmpeg filter total={time.perf_counter() - t_begin:.2f}s")
+        return {"status": "success", "info": f"渲染 {clip_name} 完成"}
+    finally:
+        if temporary_output and os.path.exists(temporary_output):
+            os.remove(temporary_output)
+        if os.path.exists(text_png):
+            os.remove(text_png)
 
 
 def render_info_segment_accel(
@@ -758,9 +1139,22 @@ def render_info_segment_accel(
     clip_name = clip_config.get('clip_title_name', '片段')
     print(f"[AccelRenderer] 正在渲染信息片段: {clip_name}")
 
+    if os.environ.get("MAIGEN_LEGACY_INFO") != "1":
+        try:
+            return render_info_segment_ffmpeg(
+                clip_config, style_config, resolution, output_path,
+                fps=fps, bitrate=bitrate, codec=codec,
+                progress_callback=progress_callback,
+                fade_in=fade_in, fade_out=fade_out, section=section)
+        except Exception as exc:
+            print(f"[AccelRenderer] Warning: FFmpeg 信息片段失败，回退 Taichi: {exc}")
+
     writer = bg_reader = None
     temporary_output = None
     try:
+        profile = os.environ.get("MAIGEN_RENDER_PROFILE") == "1"
+        t_begin = time.perf_counter()
+        t_decode = t_composite = t_fade = t_write = 0.0
         duration = clip_config.get('duration', 5)
         total_frames = int(duration * fps)
 
@@ -806,7 +1200,7 @@ def render_info_segment_accel(
         # === 逐片段音频响度均衡 ===
         volume_adjust_db = 0
         if intro_bgm_path and os.path.exists(intro_bgm_path):
-            measured_rms = _measure_audio_rms(intro_bgm_path, 0, duration)
+            measured_rms = _get_audio_rms_cached(intro_bgm_path, 0, duration)
             target_rms_db = -20.0
             volume_adjust_db = target_rms_db - measured_rms
             volume_adjust_db = max(-20.0, min(9.5, volume_adjust_db))
@@ -826,12 +1220,16 @@ def render_info_segment_accel(
         fade_in_frames = int(fade_in * fps) if fade_in > 0 else 0
         fade_out_frames = int(fade_out * fps) if fade_out > 0 else 0
 
+        t_loop_start = time.perf_counter()
         for frame_idx in range(total_frames):
             t = frame_idx / fps
+            t_frame = time.perf_counter()
             bg_t = t % bg_reader.duration
             # Match source timestamps when input/output frame rates differ.
             bg_frame = cv2.resize(bg_reader.get_frame(bg_t), resolution)
+            t_decode += time.perf_counter() - t_frame
 
+            t_frame = time.perf_counter()
             if ti_available():
                 bg_frame = multiply_brightness(bg_frame, 0.75)
                 composed = alpha_composite(bg_frame if bg_frame.shape[2] == 4 else
@@ -858,8 +1256,10 @@ def render_info_segment_accel(
                         mask3 = text_img_mask[:sh, :sw, np.newaxis]
                         composed[y1:y2, x1:x2] = composed[y1:y2, x1:x2] * (1 - mask3) + text_img_rgb[:sh, :sw] * mask3
                 composed = composed.clip(0, 255).astype(np.uint8)
+            t_composite += time.perf_counter() - t_frame
 
             # 视频淡入淡出（亮度渐变）
+            t_frame = time.perf_counter()
             out_frame = composed[:, :, :3]
             if fade_in_frames > 0 and frame_idx < fade_in_frames:
                 brightness = frame_idx / fade_in_frames
@@ -867,16 +1267,31 @@ def render_info_segment_accel(
             elif fade_out_frames > 0 and frame_idx >= total_frames - fade_out_frames:
                 brightness = (total_frames - 1 - frame_idx) / fade_out_frames
                 out_frame = (out_frame.astype(np.float32) * brightness).clip(0, 255).astype(np.uint8)
+            t_fade += time.perf_counter() - t_frame
 
+            t_frame = time.perf_counter()
             writer.write_frame(out_frame)
+            t_write += time.perf_counter() - t_frame
 
             if progress_callback and (frame_idx % 30 == 0 or frame_idx == total_frames - 1):
                 progress_callback(frame_idx + 1, total_frames, clip_name)
+        t_close = time.perf_counter()
         writer.close()
+        t_flush = time.perf_counter() - t_close
         bg_reader.close()
         os.replace(temporary_output, output_path)
         temporary_output = None
         print(f"[AccelRenderer] ✓ 信息片段渲染完成: {clip_name}")
+        if profile:
+            t_total = time.perf_counter() - t_begin
+            t_loop = t_close - t_loop_start
+            print(
+                f"[Profile] {clip_name}: frames={total_frames} total={t_total:.2f}s "
+                f"({total_frames / t_total:.1f} fps) | "
+                f"prep={t_loop_start - t_begin:.2f}s decode={t_decode:.2f}s "
+                f"composite={t_composite:.2f}s fade={t_fade:.2f}s "
+                f"write={t_write:.2f}s flush={t_flush:.2f}s loop={t_loop:.2f}s"
+            )
         return {"status": "success", "info": f"渲染 {clip_name} 完成"}
 
     except Exception as e:
@@ -932,10 +1347,27 @@ def render_all_clips_accel(
         output_file = os.path.join(video_output_path, f"{prefix}_{name}.mp4")
         rendered_names.append(os.path.basename(output_file))
 
+        # 转场拼接时，在转场边界强制关键帧，使主体片段可以直接流拷贝。
+        keyframes = None
+        if clip_type == "content" and not auto_add_transition and trans_time > 0:
+            clip_duration = float(config.get('duration') or 0)
+            keyframes = [value for value in (trans_time, clip_duration - trans_time)
+                         if 1.0 / max(fps, 1) < value < clip_duration - 1.0 / max(fps, 1)]
+
+        if clip_type == "content":
+            engine = ("host" if os.environ.get("MAIGEN_LEGACY_LAYERS") == "1"
+                      else "device-nv12")
+            if keyframes:
+                engine += "-kf"
+        else:
+            engine = "taichi" if os.environ.get("MAIGEN_LEGACY_INFO") == "1" else "ffmpeg"
         recipe = clip_recipe(game_type, style_config, config, clip_type, video_res,
-                             fps, video_bitrate, [auto_add_transition, trans_time], f"gpu:{codec}")
+                             fps, video_bitrate, [auto_add_transition, trans_time],
+                             f"gpu:{codec}:{engine}")
         if not force_render and clip_is_current(output_file, recipe):
             print(f"[AccelRenderer] 配置未变化，跳过: {prefix}_{name}.mp4")
+            if progress_callback is not None:
+                progress_callback(clip_index[0], total_clips, 1, 1, name)
             clip_index[0] += 1
             return
 
@@ -950,7 +1382,8 @@ def render_all_clips_accel(
                 game_type, config, style_config, video_res,
                 output_file, fps=fps, bitrate=video_bitrate, codec=codec,
                 progress_callback=frame_cb,
-                fade_in=fade_in_time, fade_out=fade_out_time
+                fade_in=fade_in_time, fade_out=fade_out_time,
+                keyframe_times=keyframes,
             )
         else:
             result = render_info_segment_accel(
@@ -976,6 +1409,20 @@ def render_all_clips_accel(
     if intro_configs:
         print(f"[Timer] === 开场片段阶段耗时: {time.perf_counter() - t_phase:.2f}s ===")
 
+    # 开场渲染完成后再预热音频响度，避免 50 个 volumedetect 进程拖慢开场。
+    rms_requests = [
+        (config.get('video'), config.get('start', 0), config.get('duration', 10))
+        for config in main_configs
+    ]
+    for section, configs in (("ending", ending_configs or []),):
+        try:
+            bgm_path = resolve_bgm(style_config, section)
+        except Exception:
+            bgm_path = None
+        for config in configs:
+            rms_requests.append((bgm_path, 0, config.get('duration', 5)))
+    _prewarm_audio_rms(rms_requests)
+
     # 主要片段
     t_phase = time.perf_counter()
     for config in main_configs:
@@ -996,3 +1443,161 @@ def render_all_clips_accel(
 
     t_all_elapsed = time.perf_counter() - t_all_start
     print(f"[Timer] ====== 全部片段渲染总耗时: {t_all_elapsed:.2f}s (共 {vfile_prefix} 个) ======")
+
+
+def render_all_clips_cpu(
+    game_type: str,
+    style_config: dict,
+    main_configs: list,
+    video_output_path: str,
+    video_res: tuple,
+    video_bitrate: str,
+    intro_configs: list = None,
+    ending_configs: list = None,
+    auto_add_transition: bool = True,
+    trans_time: float = 1,
+    force_render: bool = False,
+    fps: int = 30,
+    progress_callback=None,
+):
+    """NumPy/OpenCV CPU 合成 + libx264 的片段渲染，替代 MoviePy 路线。"""
+    codec = 'libx264'
+    print("=" * 60)
+    print("🧮 使用 NumPy CPU 合成模式（libx264）")
+    print("=" * 60)
+
+    t_all_start = time.perf_counter()
+    total_clips = len(main_configs) + len(intro_configs or []) + len(ending_configs or [])
+    vfile_prefix = 0
+    rendered_names = [None] * max(1, total_clips)
+
+    try:
+        clip_workers = int(os.environ.get("MAIGEN_CPU_CLIP_WORKERS", "1"))
+    except ValueError:
+        clip_workers = 1
+    clip_workers = max(1, min(clip_workers, max(1, len(main_configs))))
+    total_bands = int(os.environ.get("MAIGEN_CPU_BANDS", "8"))
+    total_encoder_threads = int(os.environ.get("MAIGEN_CPU_ENCODER_THREADS", "8"))
+    cpu_bands = max(1, total_bands // clip_workers)
+    encoder_threads = max(2, total_encoder_threads // clip_workers)
+    print(f"[AccelRenderer] CPU 并行: {clip_workers} 片段 × {cpu_bands} 带, "
+          f"编码线程 {encoder_threads}")
+
+    def _make_frame_callback(index):
+        if progress_callback is None:
+            return None
+        def cb(frame, total_frames, clip_name):
+            progress_callback(index, total_clips, frame, total_frames, clip_name)
+        return cb
+
+    def render_clip(config, prefix, clip_type="content", override_name=None,
+                    progress_index=None, report_progress=True):
+        name = override_name or config.get('clip_title_name', 'clip')
+        name = remove_invalid_chars(name)
+        output_file = os.path.join(video_output_path, f"{prefix}_{name}.mp4")
+        if 0 <= prefix < len(rendered_names):
+            rendered_names[prefix] = os.path.basename(output_file)
+
+        keyframes = None
+        if clip_type == "content" and not auto_add_transition and trans_time > 0:
+            clip_duration = float(config.get('duration') or 0)
+            keyframes = [value for value in (trans_time, clip_duration - trans_time)
+                         if 1.0 / max(fps, 1) < value < clip_duration - 1.0 / max(fps, 1)]
+
+        if clip_type == "content":
+            engine = "cpu-numpy" + ("-kf" if keyframes else "")
+        else:
+            engine = "cpu-ffmpeg"
+        recipe = clip_recipe(game_type, style_config, config, clip_type, video_res,
+                             fps, video_bitrate, [auto_add_transition, trans_time],
+                             engine)
+        if not force_render and clip_is_current(output_file, recipe):
+            print(f"[AccelRenderer] 配置未变化，跳过: {prefix}_{name}.mp4")
+            skip_index = progress_index if progress_index is not None else prefix
+            if report_progress and progress_callback is not None:
+                progress_callback(skip_index, total_clips, 1, 1, name)
+            return
+
+        fade_time = trans_time if auto_add_transition else 0
+        t_clip = time.perf_counter()
+        callback_index = progress_index if progress_index is not None else prefix
+        frame_cb = (_make_frame_callback(callback_index)
+                    if report_progress else None)
+        if clip_type == "content":
+            result = render_segment_accel(
+                game_type, config, style_config, video_res,
+                output_file, fps=fps, bitrate=video_bitrate, codec=codec,
+                progress_callback=frame_cb,
+                fade_in=fade_time, fade_out=fade_time,
+                keyframe_times=keyframes,
+                cpu_mode=True,
+                encoder_threads=encoder_threads,
+                cpu_bands=cpu_bands,
+            )
+        else:
+            result = render_info_segment_ffmpeg(
+                config, style_config, video_res, output_file,
+                fps=fps, bitrate=video_bitrate, codec=codec,
+                progress_callback=frame_cb,
+                fade_in=fade_time, fade_out=fade_time, section=clip_type,
+            )
+        print(f"[Timer] 片段 {prefix}_{name} CPU 渲染耗时: "
+              f"{time.perf_counter() - t_clip:.2f}s")
+        if result['status'] == 'error':
+            raise RuntimeError(f"[AccelRenderer] 片段 {prefix}_{name} 渲染失败: {result['info']}")
+        record_clip_recipe(output_file, recipe)
+
+    # 开场片段
+    t_phase = time.perf_counter()
+    if intro_configs:
+        for config in intro_configs:
+            render_clip(config, vfile_prefix, "intro", "INTRO")
+            vfile_prefix += 1
+    if intro_configs:
+        print(f"[Timer] === 开场片段阶段耗时: {time.perf_counter() - t_phase:.2f}s ===")
+
+    # 开场后预热音频响度，避免与开场编码抢 CPU。
+    rms_requests = [
+        (config.get('video'), config.get('start', 0), config.get('duration', 10))
+        for config in main_configs
+    ]
+    try:
+        ending_bgm = resolve_bgm(style_config, 'ending')
+    except Exception:
+        ending_bgm = None
+    for config in (ending_configs or []):
+        rms_requests.append((ending_bgm, 0, config.get('duration', 5)))
+    _prewarm_audio_rms(rms_requests)
+
+    # 主要片段
+    t_phase = time.perf_counter()
+    main_start = vfile_prefix
+    if clip_workers > 1 and len(main_configs) > 1:
+        with ThreadPoolExecutor(max_workers=clip_workers,
+                                thread_name_prefix="cpu-clip") as executor:
+            futures = [
+                executor.submit(render_clip, config, main_start + index,
+                                "content", None, main_start + index, False)
+                for index, config in enumerate(main_configs)
+            ]
+            for future in futures:
+                future.result()
+    else:
+        for index, config in enumerate(main_configs):
+            render_clip(config, main_start + index, "content",
+                        progress_index=main_start + index)
+    vfile_prefix += len(main_configs)
+    print(f"[Timer] === 主要片段阶段耗时: {time.perf_counter() - t_phase:.2f}s ({len(main_configs)} 个) ===")
+
+    # 结尾片段
+    t_phase = time.perf_counter()
+    if ending_configs:
+        for config in ending_configs:
+            render_clip(config, vfile_prefix, "ending", "ENDING")
+            vfile_prefix += 1
+    if ending_configs:
+        print(f"[Timer] === 结尾片段阶段耗时: {time.perf_counter() - t_phase:.2f}s ===")
+
+    record_clip_order(video_output_path, [name for name in rendered_names if name])
+    print(f"[Timer] ====== 全部片段渲染总耗时: "
+          f"{time.perf_counter() - t_all_start:.2f}s (共 {vfile_prefix} 个) ======")

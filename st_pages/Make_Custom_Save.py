@@ -8,6 +8,7 @@ from copy import deepcopy
 from utils.PathUtils import *
 from utils.PageUtils import get_db_manager, process_username, get_game_type_text
 from db_utils.DatabaseDataHandler import get_database_handler
+from utils.user_preferences import save_username
 from utils.DataUtils import load_metadata, search_songs, level_label_to_index, chart_type_value2str, compute_chunithm_rating, compute_rating
 from utils.ChartUtils import (
     get_chart_type_options, get_level_index_options,
@@ -1206,7 +1207,8 @@ if not st.session_state.get("username", None):
                 raw_username, safe_username = process_username(input_username)
                 st.session_state.username = raw_username
                 st.session_state.safe_username = safe_username
-                
+                save_username(raw_username, safe_username)
+
                 # Set user in database
                 db_handler.set_current_user(raw_username)
                 
